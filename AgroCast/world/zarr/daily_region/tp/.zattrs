@@ -1,0 +1,24 @@
+{
+    "_ARRAY_DIMENSIONS": [
+        "time",
+        "lat",
+        "lon"
+    ],
+    "actual_range": [
+        0.0,
+        428.02423095703125
+    ],
+    "avg_period": "0000-00-01 00:00:00",
+    "cell_methods": "time: sum",
+    "dataset": "CPC Global Precipitation",
+    "level_desc": "Surface",
+    "long_name": "Daily total of precipitation",
+    "parent_stat": "Other",
+    "statistic": "Total",
+    "units": "mm",
+    "valid_range": [
+        0.0,
+        1000.0
+    ],
+    "var_desc": "Precipitation"
+}

@@ -1,0 +1,132 @@
+{
+    "metadata": {
+        ".zattrs": {},
+        ".zgroup": {
+            "zarr_format": 2
+        },
+        "lat/.zarray": {
+            "chunks": [
+                89
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f8",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                89
+            ],
+            "zarr_format": 2
+        },
+        "lat/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "lat"
+            ],
+            "axis": "Y",
+            "comment": "Uniform grid from -88 to 88 by 2",
+            "long_name": "Latitude",
+            "standard_name": "latitude",
+            "units": "degrees_north"
+        },
+        "lon/.zarray": {
+            "chunks": [
+                180
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f8",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                180
+            ],
+            "zarr_format": 2
+        },
+        "lon/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "lon"
+            ],
+            "axis": "X",
+            "comment": "Uniform grid from 0 to 358 by 2",
+            "long_name": "Longitude",
+            "standard_name": "longitude",
+            "units": "degrees_east"
+        },
+        "sst/.zarray": {
+            "chunks": [
+                607,
+                89,
+                180
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                607,
+                89,
+                180
+            ],
+            "zarr_format": 2
+        },
+        "sst/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "time",
+                "lat",
+                "lon"
+            ],
+            "long_name": "Extended reconstructed sea surface temperature",
+            "standard_name": "sea_surface_temperature",
+            "units": "degC",
+            "valid_max": 45.0,
+            "valid_min": -3.0
+        },
+        "time/.zarray": {
+            "chunks": [
+                607
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<i8",
+            "fill_value": null,
+            "filters": null,
+            "order": "C",
+            "shape": [
+                607
+            ],
+            "zarr_format": 2
+        },
+        "time/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "time"
+            ],
+            "calendar": "proleptic_gregorian",
+            "units": "days since 1976-01-15"
+        }
+    },
+    "zarr_consolidated_format": 1
+}

@@ -1,0 +1,23 @@
+{
+  "actual_range": [
+    0.09999997168779373,
+    0.42847102880477905
+  ],
+  "dataset": "NCEP Reanalysis Derived Products",
+  "level_desc": "Between 0-10 cm BGL",
+  "long_name": "Monthly Mean of Volumetric Soil Moisture",
+  "parent_stat": "Individual Obs",
+  "precision": 1,
+  "statistic": "Mean",
+  "units": "fraction",
+  "valid_range": [
+    -400.0,
+    700.0
+  ],
+  "var_desc": "Volumetric Soil Moisture",
+  "_ARRAY_DIMENSIONS": [
+    "time",
+    "lat",
+    "lon"
+  ]
+}

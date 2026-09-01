@@ -1,0 +1,9 @@
+{
+  "units": "fraction",
+  "source": "noaa-cdr-snow-cover-ext-north-pds",
+  "_ARRAY_DIMENSIONS": [
+    "time",
+    "lat",
+    "lon"
+  ]
+}

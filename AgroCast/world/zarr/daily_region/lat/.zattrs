@@ -1,0 +1,14 @@
+{
+    "_ARRAY_DIMENSIONS": [
+        "lat"
+    ],
+    "actual_range": [
+        89.75,
+        -89.75
+    ],
+    "axis": "Y",
+    "coordinate_defines": "center",
+    "long_name": "Latitude",
+    "standard_name": "latitude",
+    "units": "degrees_north"
+}

@@ -1,0 +1,86 @@
+{
+    "metadata": {
+        ".zattrs": {},
+        ".zgroup": {
+            "zarr_format": 2
+        },
+        "black_sst/.zarray": {
+            "chunks": [
+                539
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                539
+            ],
+            "zarr_format": 2
+        },
+        "black_sst/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "time"
+            ]
+        },
+        "med_sst/.zarray": {
+            "chunks": [
+                539
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                539
+            ],
+            "zarr_format": 2
+        },
+        "med_sst/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "time"
+            ]
+        },
+        "time/.zarray": {
+            "chunks": [
+                539
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<i8",
+            "fill_value": null,
+            "filters": null,
+            "order": "C",
+            "shape": [
+                539
+            ],
+            "zarr_format": 2
+        },
+        "time/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "time"
+            ],
+            "calendar": "proleptic_gregorian",
+            "units": "days since 1981-09-01 00:00:00"
+        }
+    },
+    "zarr_consolidated_format": 1
+}

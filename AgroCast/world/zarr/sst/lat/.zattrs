@@ -1,0 +1,10 @@
+{
+    "_ARRAY_DIMENSIONS": [
+        "lat"
+    ],
+    "axis": "Y",
+    "comment": "Uniform grid from -88 to 88 by 2",
+    "long_name": "Latitude",
+    "standard_name": "latitude",
+    "units": "degrees_north"
+}

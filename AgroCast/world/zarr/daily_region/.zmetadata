@@ -1,0 +1,194 @@
+{
+    "metadata": {
+        ".zattrs": {},
+        ".zgroup": {
+            "zarr_format": 2
+        },
+        "lat/.zarray": {
+            "chunks": [
+                9
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                9
+            ],
+            "zarr_format": 2
+        },
+        "lat/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "lat"
+            ],
+            "actual_range": [
+                89.75,
+                -89.75
+            ],
+            "axis": "Y",
+            "coordinate_defines": "center",
+            "long_name": "Latitude",
+            "standard_name": "latitude",
+            "units": "degrees_north"
+        },
+        "lon/.zarray": {
+            "chunks": [
+                11
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                11
+            ],
+            "zarr_format": 2
+        },
+        "lon/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "lon"
+            ],
+            "actual_range": [
+                0.25,
+                359.75
+            ],
+            "axis": "X",
+            "coordinate_defines": "center",
+            "long_name": "Longitude",
+            "standard_name": "longitude",
+            "units": "degrees_east"
+        },
+        "t2m/.zarray": {
+            "chunks": [
+                1024,
+                9,
+                11
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                17407,
+                9,
+                11
+            ],
+            "zarr_format": 2
+        },
+        "t2m/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "time",
+                "lat",
+                "lon"
+            ],
+            "units": "degC"
+        },
+        "time/.zarray": {
+            "chunks": [
+                17407
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f8",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                17407
+            ],
+            "zarr_format": 2
+        },
+        "time/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "time"
+            ],
+            "actual_range": [
+                692496.0,
+                701232.0
+            ],
+            "avg_period": "0000-00-01 00:00:00",
+            "axis": "T",
+            "calendar": "gregorian",
+            "coordinate_defines": "start",
+            "delta_t": "0000-00-01 00:00:00",
+            "long_name": "Time",
+            "standard_name": "time",
+            "units": "hours since 1900-01-01"
+        },
+        "tp/.zarray": {
+            "chunks": [
+                1024,
+                9,
+                11
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                17407,
+                9,
+                11
+            ],
+            "zarr_format": 2
+        },
+        "tp/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "time",
+                "lat",
+                "lon"
+            ],
+            "actual_range": [
+                0.0,
+                428.02423095703125
+            ],
+            "avg_period": "0000-00-01 00:00:00",
+            "cell_methods": "time: sum",
+            "dataset": "CPC Global Precipitation",
+            "level_desc": "Surface",
+            "long_name": "Daily total of precipitation",
+            "parent_stat": "Other",
+            "statistic": "Total",
+            "units": "mm",
+            "valid_range": [
+                0.0,
+                1000.0
+            ],
+            "var_desc": "Precipitation"
+        }
+    },
+    "zarr_consolidated_format": 1
+}

@@ -1,0 +1,23 @@
+{
+  "data_dir": "/home/user/agrocast_world",
+  "region": {
+    "lat_min": 43.0,
+    "lat_max": 47.0,
+    "lon_min": 37.0,
+    "lon_max": 42.0
+  },
+  "daily_grid": 0.5,
+  "station_calibrated_targets": true,
+  "calib_end_year": 2004,
+  "clim_window": 30,
+  "clim_half_life": 20.0,
+  "base_start": 1991,
+  "base_end": 2020,
+  "train_start": 1980,
+  "backtest_start": 2000,
+  "analog_k": 10,
+  "n_pcs": 3,
+  "horizon_max": 6,
+  "n_ensemble": 200,
+  "random_state": 0
+}

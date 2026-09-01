@@ -1,0 +1,224 @@
+{
+    "metadata": {
+        ".zattrs": {},
+        ".zgroup": {
+            "zarr_format": 2
+        },
+        "lat/.zarray": {
+            "chunks": [
+                45
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                45
+            ],
+            "zarr_format": 2
+        },
+        "lat/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "lat"
+            ],
+            "actual_range": [
+                90.0,
+                -90.0
+            ],
+            "axis": "Y",
+            "long_name": "Latitude",
+            "standard_name": "latitude",
+            "units": "degrees_north"
+        },
+        "level/.zarray": {
+            "chunks": [],
+            "compressor": null,
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [],
+            "zarr_format": 2
+        },
+        "level/.zattrs": {
+            "GRIB_id": 100,
+            "GRIB_name": "hPa",
+            "_ARRAY_DIMENSIONS": [],
+            "actual_range": [
+                1000.0,
+                10.0
+            ],
+            "axis": "Z",
+            "long_name": "Level",
+            "positive": "down",
+            "units": "millibar"
+        },
+        "lon/.zarray": {
+            "chunks": [
+                144
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                144
+            ],
+            "zarr_format": 2
+        },
+        "lon/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "lon"
+            ]
+        },
+        "mslp/.zarray": {
+            "chunks": [
+                938,
+                45,
+                144
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                938,
+                45,
+                144
+            ],
+            "zarr_format": 2
+        },
+        "mslp/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "time",
+                "lat",
+                "lon"
+            ],
+            "actual_range": [
+                955.5608520507812,
+                1082.5582275390625
+            ],
+            "coordinates": "level",
+            "dataset": "NCEP Reanalysis Derived Products",
+            "level_desc": "Sea Level",
+            "long_name": "Sea Level Pressure",
+            "parent_stat": "Other",
+            "precision": 1,
+            "statistic": "Mean",
+            "units": "hPa",
+            "valid_range": [
+                870.0,
+                1150.0
+            ],
+            "var_desc": "Sea Level Pressure"
+        },
+        "time/.zarray": {
+            "chunks": [
+                938
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f8",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                938
+            ],
+            "zarr_format": 2
+        },
+        "time/.zattrs": {
+            "_ARRAY_DIMENSIONS": [
+                "time"
+            ],
+            "actual_range": [
+                1297320.0,
+                1981824.0
+            ],
+            "axis": "T",
+            "calendar": "gregorian",
+            "delta_t": "0000-01-00 00:00:00",
+            "long_name": "Time",
+            "prev_avg_period": "0000-00-01 00:00:00",
+            "standard_name": "time",
+            "units": "hours since 1800-01-01"
+        },
+        "z500/.zarray": {
+            "chunks": [
+                938,
+                45,
+                144
+            ],
+            "compressor": {
+                "blocksize": 0,
+                "clevel": 5,
+                "cname": "lz4",
+                "id": "blosc",
+                "shuffle": 1
+            },
+            "dtype": "<f4",
+            "fill_value": "NaN",
+            "filters": null,
+            "order": "C",
+            "shape": [
+                938,
+                45,
+                144
+            ],
+            "zarr_format": 2
+        },
+        "z500/.zattrs": {
+            "GRIB_id": 7,
+            "GRIB_name": "HGT",
+            "_ARRAY_DIMENSIONS": [
+                "time",
+                "lat",
+                "lon"
+            ],
+            "actual_range": [
+                -354.4583435058594,
+                32321.09765625
+            ],
+            "coordinates": "level",
+            "dataset": "NCEP Reanalysis Derived Products",
+            "level_desc": "Pressure Levels",
+            "long_name": "Monthly mean geopotential height",
+            "parent_stat": "Other",
+            "precision": 0,
+            "statistic": "Mean",
+            "units": "m",
+            "valid_range": [
+                -700.0,
+                35000.0
+            ],
+            "var_desc": "Geopotential height"
+        }
+    },
+    "zarr_consolidated_format": 1
+}

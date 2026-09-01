@@ -1,0 +1,13 @@
+{
+  "actual_range": [
+    0.0,
+    358.125
+  ],
+  "axis": "X",
+  "long_name": "Longitude",
+  "standard_name": "longitude",
+  "units": "degrees_east",
+  "_ARRAY_DIMENSIONS": [
+    "lon"
+  ]
+}

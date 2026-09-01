@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AgroCast — прогнозы для сельского хозяйства России</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#0f1a12;color:#e8f0e4;display:flex;overflow:hidden}
+#map{flex:1;height:100%;background:#16241a;z-index:1}
+#side{width:400px;flex:0 0 400px;background:#13221a;border-right:1px solid #2a4030;padding:20px;overflow-y:auto;height:100%}
+h1{font-size:21px;color:#a4d65e;letter-spacing:.5px}
+h1 span{color:#6f8f57}
+.sub{font-size:12.5px;color:#8fae86;margin-top:6px;line-height:1.5}
+.card{background:#1a2f20;border:1px solid #2e4a36;border-radius:12px;padding:14px 16px;margin-top:14px}
+.card h3{font-size:14px;color:#c8e6b0;margin-bottom:8px}
+.btn{display:block;width:100%;background:#6fae3f;color:#fff;border:none;border-radius:9px;padding:11px 18px;font-size:15px;cursor:pointer;font-weight:600}
+.btn:hover{background:#7fc24b}
+.btn:disabled{background:#44602f;cursor:default}
+.btn.ghost{background:#2a4030;margin-top:8px}
+.btn.ghost:hover{background:#365238}
+input[type=month]{width:100%;background:#0e1a12;border:1px solid #3a5a44;color:#e8f0e4;border-radius:8px;padding:9px 11px;font-size:15px}
+label{font-size:12.5px;color:#9dbd90;display:block;margin:10px 0 5px}
+.opt{display:flex;align-items:center;gap:10px;background:#0e1a12;border:1px solid #3a5a44;border-radius:10px;padding:9px 12px;margin-top:8px;cursor:pointer}
+.opt:hover{border-color:#6fae3f}
+.opt input{accent-color:#6fae3f}
+.opt b{font-size:13.5px}
+.opt i{font-size:11.5px;color:#8fae86;font-style:normal;display:block}
+.coords{font-size:13px;color:#c8e6b0;margin-top:4px}
+#log{font-family:Consolas,monospace;font-size:11.5px;color:#9dc488;max-height:250px;overflow-y:auto;background:#0c1710;border-radius:8px;padding:10px;margin-top:10px;line-height:1.6}
+.spin{width:36px;height:36px;border:4px solid #2e4a36;border-top-color:#6fae3f;border-radius:50%;animation:r 1s linear infinite;margin:12px auto}
+@keyframes r{to{transform:rotate(360deg)}}
+.warn{background:#4a1e1e;border-color:#7a3030}
+.err{color:#ff9d9d;font-size:13px;margin-top:8px;line-height:1.5}
+.hint{font-size:11.5px;color:#7d9878;margin-top:10px;line-height:1.5}
+.modehint{font-size:12.5px;color:#a4d65e;margin-top:8px;line-height:1.5;min-height:18px}
+#dlg,#prog{display:none}
+@media (max-width:760px){body{flex-direction:column;overflow:auto}#side{width:100%;flex:none;height:auto;order:2}#map{height:52vh;order:1}}
+</style>
+</head>
+<body>
+<div id="side">
+<h1>Agro<span>Cast</span> · Россия</h1>
+<div class="sub">Собственные сезонные прогнозы температуры и осадков на 1–6 месяцев для любой точки России. Движок качает открытые данные (NOAA · NCEP · CPC) и считает всё сам.</div>
+
+<div class="card">
+<h3>1 · Выберите точку на карте</h3>
+<div class="coords" id="pt">Точка не выбрана — кликните по карте</div>
+</div>
+
+<div class="card" id="dlg">
+<h3>2 · Месяц расчёта — любой</h3>
+<input type="month" id="start">
+<div class="modehint" id="modehint"></div>
+
+<h3 style="margin-top:14px">3 · Период</h3>
+<div id="opts"></div>
+
+<button class="btn" id="go" style="margin-top:16px">Пуск</button>
+<div class="err" id="goerr"></div>
+</div>
+
+<div class="card" id="prog">
+<h3 id="ptitle">Движок работает</h3>
+<div class="spin"></div>
+<div id="log"></div>
+<div class="err" id="perr"></div>
+<button class="btn ghost" id="back" style="display:none">← Назад к настройкам</button>
+</div>
+
+<div class="card">
+<h3>Мои поля (попадут в отчёт)</h3>
+<div id="fields"><div class="sub" style="margin-top:0">Полей пока нет — добавьте, и отчёт посчитает воду в м³ на каждое поле.</div></div>
+<div style="display:flex;gap:8px;margin-top:8px">
+<input type="text" id="fname" placeholder="Название" style="flex:2">
+<select id="fcrop" style="flex:2"></select>
+<input type="number" id="farea" placeholder="га" min="1" style="flex:1;min-width:70px">
+</div>
+<button class="btn ghost" id="fadd" style="margin-top:8px">+ Добавить поле</button>
+</div>
+
+<div class="card warn" id="outwarn" style="display:none">
+<h3>Вне зоны поддержки</h3>
+<div class="sub" id="outtxt"></div>
+</div>
+
+<div class="hint">Будущий месяц — прогноз. Прошлый (2008–2024) — система «сойдёт в прошлое», сделает прогноз того времени, зная только более ранние годы, и честно покажет: где попала, где ошиблась. Первый расчёт для новой точки занимает 10–25 минут (скачивание данных NOAA), повторные — секунды. Вне России продукт не работает. Прогноз не заменяет агронома.</div>
+</div>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map=L.map('map',{zoomControl:true,attributionControl:true,minZoom:3}).setView([55,50],4);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenStreetMap'}).addTo(map);
+map.fitBounds([[41,19],[78,190]]);
+let marker=null,pt=null;
+const PERIODS=[
+ {id:'s3',t:'Сезон (3 месяца)',d:'основной продукт — самая высокая точность',mode:'seasonal',horizon:3,default:true},
+ {id:'s6',t:'Два сезона (6 месяцев)',d:'текущий + следующий сезон',mode:'seasonal',horizon:6},
+ {id:'m1',t:'1 месяц вперёд',d:'месячный режим · горизонт 1',mode:'monthly',horizon:1},
+ {id:'m3',t:'3 месяца вперёд',d:'месячный режим · горизонты 1–3',mode:'monthly',horizon:3},
+ {id:'m6',t:'6 месяцев вперёд',d:'месячный режим · горизонты 1–6',mode:'monthly',horizon:6},
+];
+const el=id=>document.getElementById(id);
+const MN=['','январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+el('opts').innerHTML=PERIODS.map(p=>'<label class="opt"><input type="radio" name="per" value="'+p.id+'"'+(p.default?' checked':'')+'><span><b>'+p.t+'</b><i>'+p.d+'</i></span></label>').join('');
+const nextMonth=()=>{const d=new Date();let y=d.getFullYear(),m=d.getMonth()+2;if(m>12){m-=12;y++}return y+'-'+String(m).padStart(2,'0')};
+const parseMonth=v=>{const p=(v||'').split('-');return p.length===2&&/^\d{4}$/.test(p[0])&&/^\d{2}$/.test(p[1])?{y:+p[0],m:+p[1]}:null};
+function modeOf(){
+ const s=parseMonth(el('start').value);
+ if(!s)return '';
+ const nx=parseMonth(nextMonth());
+ if(s.y>nx.y||(s.y===nx.y&&s.m>=nx.m))return 'fc';
+ if(s.y>=2008&&s.y<=2024)return 'hc';
+ return 'na';
+}
+function updHint(){
+ const s=parseMonth(el('start').value);const k=modeOf();const h=el('modehint');
+ if(!s){h.textContent='';return}
+ const nm=MN[s.m]&&s.m>=1&&s.m<=12?MN[s.m]:'';
+ if(k==='fc')h.textContent='→ прогноз на будущее: '+nm+' '+s.y;
+ else if(k==='hc')h.textContent='→ прошлая дата: система проверит себя на истории ('+nm+' '+s.y+') и сравнит с фактом';
+ else h.textContent='→ для прошлых дат доступна проверка за 2008–2024; выберите год из диапазона или будущий месяц';
+}
+el('start').addEventListener('input',updHint);
+el('start').addEventListener('change',updHint);
+map.on('click',async e=>{
+ const{lat,lng}=e.latlng;
+ el('outwarn').style.display='none';el('prog').style.display='none';el('goerr').textContent='';
+ let r;
+ try{r=await(await fetch('/api/inside?lat='+lat+'&lon='+lng)).json()}
+ catch(err){el('goerr').textContent='Сервер недоступен — проверьте, запущен ли app.py';return}
+ if(!r.inside){
+  el('dlg').style.display='none';
+  el('outwarn').style.display='block';
+  el('outtxt').textContent='Продукт поддерживает только территорию России.'+(r.nearest_russia_km?' Ближайшая поддерживаемая точка ≈ '+r.nearest_russia_km+' км.':'');
+  return;
+ }
+ pt={lat:lat,lon:lng};
+ if(marker)map.removeLayer(marker);
+ marker=L.circleMarker([lat,lng],{radius:9,color:'#a4d65e',weight:3,fillColor:'#6fae3f',fillOpacity:.6}).addTo(map).bindPopup(lat.toFixed(3)+'°N · '+lng.toFixed(3)+'°E').openPopup();
+ el('pt').innerHTML='Широта '+lat.toFixed(3)+'° · Долгота '+lng.toFixed(3)+'°';
+ el('start').value=nextMonth();
+ updHint();
+ el('dlg').style.display='block';
+ el('dlg').scrollIntoView({behavior:'smooth'});
+});
+el('go').onclick=async()=>{
+ el('goerr').textContent='';
+ if(!pt){el('goerr').textContent='Сначала выберите точку на карте';return}
+ const per=PERIODS.find(p=>p.id===(document.querySelector('input[name=per]:checked')||{}).value);
+ if(!per){el('goerr').textContent='Выберите период';return}
+ const start=el('start').value;
+ if(!parseMonth(start)){el('goerr').textContent='Выберите месяц расчёта';return}
+ const k=modeOf();
+ if(k==='na'){el('goerr').textContent='Прошлая дата: проверка на истории доступна за 2008–2024. Выберите год из диапазона или будущий месяц.';return}
+ const body=k==='fc'
+  ?{lat:pt.lat,lon:pt.lon,kind:'forecast',start:start,horizon:per.horizon,mode:per.mode,season_len:3}
+  :{lat:pt.lat,lon:pt.lon,kind:'hindcast',start:start,horizon:per.horizon,mode:per.mode,season_len:3};
+ el('ptitle').textContent=(k==='fc'?'Прогноз · ':'Проверка на истории · ')+start;
+ el('go').disabled=true;
+ let r;
+ try{r=await(await fetch('/api/prepare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json()}
+ catch(err){el('go').disabled=false;el('goerr').textContent='Сервер недоступен: '+err;return}
+ el('go').disabled=false;
+ if(r.error){el('goerr').textContent=r.error;return}
+ el('dlg').style.display='none';el('prog').style.display='block';el('perr').textContent='';el('back').style.display='none';el('log').innerHTML='';
+ const t=setInterval(async()=>{
+  let st;
+  try{st=await(await fetch('/api/job/'+r.job)).json()}catch(err){return}
+  el('log').innerHTML=st.log.map(l=>'<div>▸ '+l+'</div>').join('');
+  el('log').scrollTop=el('log').scrollHeight;
+  if(st.status==='done'){clearInterval(t);location='/report.html?job='+r.job}
+  if(st.status==='error'){clearInterval(t);el('perr').textContent=st.error||'ошибка';el('back').style.display='block'}
+ },1800);
+};
+el('back').onclick=()=>{el('prog').style.display='none';el('dlg').style.display='block'};
+const CROPS_JS=[['winter_wheat','Озимая пшеница'],['winter_barley','Озимый ячмень'],['sunflower','Подсолнечник'],['maize','Кукуруза'],['soy','Соя'],['rapeseed','Озимый рапс'],['sugar_beet','Сахарная свёкла']];
+el('fcrop').innerHTML=CROPS_JS.map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('');
+const fldKey='agrocast_fields';
+const fldLoad=()=>{try{return JSON.parse(localStorage.getItem(fldKey)||'[]')}catch(e){return[]}};
+const fldSave=a=>localStorage.setItem(fldKey,JSON.stringify(a));
+function fldRender(){
+ const a=fldLoad();const box=el('fields');
+ if(!a.length){box.innerHTML='<div class="sub" style="margin-top:0">Полей пока нет — добавьте, и отчёт посчитает воду в м³ на каждое поле.</div>';return}
+ box.innerHTML='<table style="width:100%;font-size:12.5px">'+a.map((f,i)=>'<tr><td>'+f.name+'</td><td style="color:#9dbd90">'+CROPS_JS.find(c=>c[0]===f.crop)[1]+'</td><td style="text-align:right">'+f.area+' га</td><td style="width:30px;text-align:right"><button data-i="'+i+'" class="fx" style="background:none;border:none;color:#c4554d;cursor:pointer;font-size:14px">✕</button></td></tr>').join('')+'</table>';
+ box.querySelectorAll('.fx').forEach(b=>b.onclick=()=>{const arr=fldLoad();arr.splice(+b.dataset.i,1);fldSave(arr);fldRender()});
+}
+el('fadd').onclick=()=>{
+ const n=el('fname').value.trim();
+ const a=parseFloat(el('farea').value);
+ if(!n||!(a>0)){alert('Укажите название и площадь');return}
+ const arr=fldLoad();arr.push({name:n,crop:el('fcrop').value,area:a});fldSave(arr);
+ el('fname').value='';el('farea').value='';fldRender();
+};
+fldRender();
+</script>
+</body>
+</html>

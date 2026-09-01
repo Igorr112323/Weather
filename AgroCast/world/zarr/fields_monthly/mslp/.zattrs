@@ -1,0 +1,24 @@
+{
+    "_ARRAY_DIMENSIONS": [
+        "time",
+        "lat",
+        "lon"
+    ],
+    "actual_range": [
+        955.5608520507812,
+        1082.5582275390625
+    ],
+    "coordinates": "level",
+    "dataset": "NCEP Reanalysis Derived Products",
+    "level_desc": "Sea Level",
+    "long_name": "Sea Level Pressure",
+    "parent_stat": "Other",
+    "precision": 1,
+    "statistic": "Mean",
+    "units": "hPa",
+    "valid_range": [
+        870.0,
+        1150.0
+    ],
+    "var_desc": "Sea Level Pressure"
+}

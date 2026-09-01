@@ -1,0 +1,17 @@
+{
+    "_ARRAY_DIMENSIONS": [
+        "time"
+    ],
+    "actual_range": [
+        692496.0,
+        701232.0
+    ],
+    "avg_period": "0000-00-01 00:00:00",
+    "axis": "T",
+    "calendar": "gregorian",
+    "coordinate_defines": "start",
+    "delta_t": "0000-00-01 00:00:00",
+    "long_name": "Time",
+    "standard_name": "time",
+    "units": "hours since 1900-01-01"
+}

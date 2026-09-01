@@ -1,0 +1,26 @@
+{
+    "GRIB_id": 7,
+    "GRIB_name": "HGT",
+    "_ARRAY_DIMENSIONS": [
+        "time",
+        "lat",
+        "lon"
+    ],
+    "actual_range": [
+        -354.4583435058594,
+        32321.09765625
+    ],
+    "coordinates": "level",
+    "dataset": "NCEP Reanalysis Derived Products",
+    "level_desc": "Pressure Levels",
+    "long_name": "Monthly mean geopotential height",
+    "parent_stat": "Other",
+    "precision": 0,
+    "statistic": "Mean",
+    "units": "m",
+    "valid_range": [
+        -700.0,
+        35000.0
+    ],
+    "var_desc": "Geopotential height"
+}

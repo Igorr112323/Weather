@@ -9,7 +9,7 @@ import pandas as pd
 from agrocast.core.config import Config, Region
 from agrocast.ingest.openobs import fetch_cpc_daily, fetch_soil
 
-HINDCAST_YEARS = list(range(2008, 2025))
+HINDCAST_YEARS = list(range(2004, 2025))
 
 
 def point_box(lat, lon):
@@ -52,11 +52,9 @@ def point_config(world_dir, data_root, lat, lon):
 
 def _fit_artifacts(cfg, log):
     from agrocast.backtest.engine import run_backtest
-    from agrocast.blend.blender import Blender, blended_records
+    from agrocast.blend.blender import Blender, blended_records, attach_obs, season_of
     from agrocast.blend.calibration import TercileCalibrator
-    from agrocast.features.dataset import PointDataset, feature_columns_for
-    from agrocast.models.nn_kernel import PooledNN
-    from agrocast.backtest.metrics import rps_mean
+    from agrocast.features.dataset import PointDataset
 
     for mode, leads in [("seasonal", [1]), ("monthly", list(range(1, 7)))]:
         log(f"обучаю модели: режим {mode}")
@@ -65,53 +63,48 @@ def _fit_artifacts(cfg, log):
             variables=("t2m", "tp"),
             start_months=list(range(1, 13)),
             leads=leads,
-            years=range(2005, 2025),
+            years=range(2004, 2025),
             mode=mode,
             season_len=3,
+            half_life_years=5.0,
         )
         pieces = []
         for y in sorted(rec.year.unique()):
-            b = Blender().fit(rec[rec.year != y])
+            b = Blender(half_life_years=5.0).fit(rec[rec.year != y])
             br = blended_records(rec[rec.year == y], b.weights)
             pieces.append(br)
         blend = pd.concat(pieces, ignore_index=True)
-        cal = TercileCalibrator().fit(blend[["p0", "p1", "p2"]].to_numpy(), blend.obs_tercile.to_numpy())
-        cal.save(cfg.artifact_dir / f"calib_{mode}_t2m.json")
-        log(f"калибровка {mode}: {cal.n} записей")
-        if mode == "seasonal":
-            pt = PointDataset(cfg, cfg.region.lat_min + 0.5, cfg.region.lon_min + 0.5, cfg.zarr_store())
-            pf = pt.predictor_frame()
-            std = pt.seasonal_std("t2m", 3)
-            pool = feature_columns_for(pf, "t2m", mode="seasonal")
-            nn_year = {}
-            for Y in range(2005, 2025):
-                nn = PooledNN().fit(pf, std, pool, "seasonal", Y)
-                if not nn.usable():
-                    continue
-                for tgt in std.index:
-                    if tgt.year == Y:
-                        Pn = nn.probs_for(pf, tgt - 1, pool, tgt.month, 1)
-                        if Pn is not None:
-                            nn_year[(tgt.year, tgt.month)] = Pn
-            bmap = {
-                (int(r.year), int(r.target_month)): (r[["p0", "p1", "p2"]].to_numpy(float), int(r.obs_tercile))
-                for _, r in blend.iterrows()
-            }
-            Sy, Ny, oy = [], [], []
-            for k, (ps, ob) in bmap.items():
-                if k in nn_year:
-                    Sy.append(ps)
-                    Ny.append(nn_year[k])
-                    oy.append(ob)
-            if len(oy) >= 30:
-                Sy, Ny, oy = np.array(Sy), np.array(Ny), np.array(oy)
-                best_a, best_r = 0.0, 1e9
-                for a in np.arange(0, 0.61, 0.05):
-                    rr = rps_mean((1 - a) * Sy + a * Ny, oy)
-                    if rr < best_r:
-                        best_r, best_a = rr, float(a)
-                (cfg.artifact_dir / "stack_seasonal_t2m.json").write_text('{"alpha": %s}' % round(best_a, 3))
-                log(f"нейроядро: alpha={round(best_a, 3)}")
+        blend = attach_obs(blend, rec)
+        blend["season"] = blend["target_month"].map(season_of)
+        from agrocast.blend.conformal import ConformalQuantileCalibrator
+        from agrocast.blend.regime_clim import RegimeClimatology, SPECS
+        from agrocast.blend.nn_stack import select_alpha, save_alpha, nn_map, mix, row_keys
+
+        _pt = PointDataset(cfg, cfg.region.lat_min + 0.5, cfg.region.lon_min + 0.5, cfg.zarr_store())
+        alphas = {}
+        nnmaps = {}
+        for v in ("t2m", "tp"):
+            sub = blend[blend.variable == v]
+            nnmap = nn_map(_pt, v, mode, sorted(sub["year"].unique()))
+            nnmaps[v] = nnmap
+            a = select_alpha(_pt, v, mode, blend, nnmap=nnmap)
+            alphas[v] = a
+            save_alpha(cfg, mode, v, a)
+            log(f"нейроядро {mode} {v}: alpha={a}")
+        for v in ("t2m", "tp"):
+            sub = blend[blend.variable == v]
+            P = sub[["p0", "p1", "p2"]].to_numpy(float)
+            if alphas[v] > 0:
+                P = mix(P, row_keys(sub), nnmaps[v], alphas[v])
+            cal = TercileCalibrator().fit(P, sub.obs_tercile.to_numpy())
+            cal.save(cfg.artifact_dir / f"calib_{mode}_{v}.json")
+            ccal = ConformalQuantileCalibrator().fit(sub)
+            ccal.save(cfg.artifact_dir / f"conformal_{mode}_{v}.json")
+            log(f"калибровка {mode} {v}: {cal.n} записей")
+        if SPECS.get(mode):
+            rc = RegimeClimatology.fit_history(mode, _pt)
+            rc.save_live(cfg.artifact_dir / f"regimeclim_{mode}.json")
+            log(f"режимная климатология {mode}: группы {sorted(set(g for _, g in rc.history))}")
 
 
 def ensure_point(cfg, world_dir, log):
@@ -138,29 +131,11 @@ def ensure_point(cfg, world_dir, log):
     log("точка готова")
 
 
-def _nn_probs(cfg, pf, std, pool, mode, targets):
-    from agrocast.models.nn_kernel import PooledNN
-
-    by_year = {}
-    for t in targets:
-        by_year.setdefault(t.year, []).append(t)
-    out = {}
-    for y, ts in by_year.items():
-        nn = PooledNN().fit(pf, std, pool, mode, y)
-        if not nn.usable():
-            continue
-        for t in ts:
-            Pn = nn.probs_for(pf, t - 1, pool, t.month, 1)
-            if Pn is not None:
-                out[(t.year, t.month)] = Pn
-    return out
-
-
 def run_hindcast(cfg, lat, lon, start, mode, horizon, log):
     from agrocast.blend.blender import Blender, blended_records
     from agrocast.blend.calibration import TercileCalibrator
-    from agrocast.features.dataset import PointDataset, feature_columns_for
-    from agrocast.backtest.metrics import rps_mean
+    from agrocast.blend.nn_stack import load_alpha, mix, nn_map, row_keys
+    from agrocast.features.dataset import PointDataset
 
     start = pd.Period(str(start), "M")
     horizon = int(horizon)
@@ -170,8 +145,8 @@ def run_hindcast(cfg, lat, lon, start, mode, horizon, log):
         targets = [start + k for k in range(horizon)]
     if targets[-1] > pd.Period("2024-12", "M"):
         raise ValueError("горизонт уходит за пределы честной проверки (до 2024-12): выберите более раннюю дату или меньший период")
-    if targets[0] < pd.Period("2008-01", "M"):
-        raise ValueError("проверка на истории доступна с 2008 года")
+    if targets[0] < pd.Period("2004-01", "M"):
+        raise ValueError("проверка на истории доступна с 2004 года")
     log(f"проверка на истории: старт {start}, режим {mode}, целей {len(targets)}")
     rec = pd.read_parquet(cfg.artifact_dir / f"backtest_records_{mode}.parquet")
     if mode == "monthly":
@@ -193,38 +168,25 @@ def run_hindcast(cfg, lat, lon, start, mode, horizon, log):
         past.append(bt)
     past = pd.concat(past, ignore_index=True) if past else None
     pt = PointDataset(cfg, lat, lon, cfg.zarr_store())
-    pf = pt.predictor_frame()
     stds = {}
     for v in ("t2m", "tp"):
         stds[v] = pt.seasonal_std(v, 3) if mode == "seasonal" else pt.standardized(v)
-    cal = None
+    alphas = {}
+    nnmaps = {}
+    for v in ("t2m", "tp"):
+        alphas[v] = load_alpha(cfg, mode, v)
+        if alphas[v] > 0:
+            nnmaps[v] = nn_map(pt, v, mode, sorted(int(y) for y in rec.year.unique()))
+    cals = {}
     if past is not None:
-        g = past[past.variable == "t2m"]
-        if len(g) >= 60:
-            cal = TercileCalibrator().fit(g[["p0", "p1", "p2"]].to_numpy(), g.obs_tercile.to_numpy())
-    pool = feature_columns_for(pf, "t2m", mode=mode)
-    alpha = 0.0
-    nn_now = _nn_probs(cfg, pf, stds["t2m"], pool, mode, targets)
-    if past is not None and mode == "seasonal":
-        tmonths = sorted({int(t.month) for t in targets})
-        past_targets = [pd.Period(year=y, month=m, freq="M") for y in past_years for m in tmonths]
-        nn_past = _nn_probs(cfg, pf, stds["t2m"], pool, mode, past_targets)
-        g = past[past.variable == "t2m"]
-        Sy, Ny, oy = [], [], []
-        for _, r in g.iterrows():
-            k = (int(r.year), int(r.target_month))
-            if k in nn_past:
-                Sy.append(r[["p0", "p1", "p2"]].to_numpy(float))
-                Ny.append(nn_past[k])
-                oy.append(int(r.obs_tercile))
-        if len(oy) >= 20:
-            Sy, Ny, oy = np.array(Sy), np.array(Ny), np.array(oy)
-            best_r = 1e9
-            for a in np.arange(0, 0.61, 0.05):
-                rr = rps_mean((1 - a) * Sy + a * Ny, oy)
-                if rr < best_r:
-                    best_r, alpha = rr, float(a)
-    log(f"нейроядро: alpha={round(alpha, 2)} (обучено только на годах до {max(tyears)})")
+        for v in ("t2m", "tp"):
+            g = past[past.variable == v]
+            Pp = g[["p0", "p1", "p2"]].to_numpy(float)
+            if alphas[v] > 0:
+                Pp = mix(Pp, row_keys(g), nnmaps[v], alphas[v])
+            if len(g) >= 60:
+                cals[v] = TercileCalibrator().fit(Pp, g.obs_tercile.to_numpy())
+    log(f"нейроядро: alpha t2m={alphas['t2m']}, tp={alphas['tp']} (выбрано при обучении точки)")
     items = []
     for t in targets:
         block = {"year": int(t.year), "target_month": int(t.month)}
@@ -234,11 +196,12 @@ def run_hindcast(cfg, lat, lon, start, mode, horizon, log):
                 continue
             r = g.iloc[0]
             P = r[["p0", "p1", "p2"]].to_numpy(float)
-            if v == "t2m" and cal is not None and cal.usable():
-                P = cal.transform(P.reshape(1, -1))[0]
-            if v == "t2m" and alpha > 0 and (t.year, t.month) in nn_now:
-                P = (1 - alpha) * P + alpha * nn_now[(t.year, t.month)]
-                P = P / P.sum()
+            if alphas[v] > 0:
+                k = (int(t.year), int(t.month), 1)
+                if k in nnmaps[v]:
+                    P = (1 - alphas[v]) * P + alphas[v] * nnmaps[v][k]
+            if cals.get(v) is not None and cals[v].usable():
+                P = cals[v].transform(P.reshape(1, -1))[0]
             std = stds[v]
             if t not in std.index:
                 continue

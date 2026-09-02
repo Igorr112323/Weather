@@ -145,6 +145,16 @@ fetch('/api/job/'+job).then(r=>r.json()).then(st=>{
   (ins.risks||[]).slice(0,1).forEach(r=>{lights.push('<div class="light '+(r.prob>0.5?'g-warn':'g-mid')+'">'+r.label.split('(')[0]+': '+Math.round(r.prob*100)+'%</div>')});
   if(lights.length)h+='<div class="lights">'+lights.join('')+'</div>';
   h+='</div>';
+  const wtd=agro.what_to_do||[];
+  if(wtd.length){
+   h+='<div class="block agro"><h2>Главное — что делать</h2>';
+   wtd.forEach(c=>{
+    const cls=c.level==='high'?'bad':(c.level==='mid'?'warn':'');
+    const lab=c.level==='high'?'важно':(c.level==='mid'?'держать в голове':'фон');
+    h+='<div style="margin-top:8px"><span class="tag '+cls+'">'+lab+'</span> <b>'+c.action+'</b><div class="verdict">'+(c.reason||'')+(c.note?' · <i>'+c.note+'</i>':'')+'</div></div>';
+   });
+   h+='<div class="foot">Топ-3 по вероятности события и порогу окупаемости: действие окупается, если вероятность выше доли затрат в возможных потерях.</div></div>';
+  }
   const pp=agro.passport;
   if(pp){
    h+='<div class="block"><h2>Паспорт доверия (сеть станций, этот сезон)</h2>'+
@@ -152,6 +162,35 @@ fetch('/api/job/'+job).then(r=>r.json()).then(st=>{
    chip3('точность доминанты',Math.round(pp.hit_all*100)+'%',(pp.hit_conf!=null?'на уверенных '+Math.round(pp.hit_conf*100)+'%':''))+
    chip3('охват уверенных',Math.round((pp.coverage_conf||0)*100)+'%','доля прогнозов с заявленной позицией')+'</div>'+
    '<div class="foot">RPSS>0 — лучше климатологической нормы; наугад −0.5…0. Навык оценён по всем станциям сети за 17 лет walk-forward без подглядывания и относится к этому сезону; для конкретной точки это фоновая, а не точечная оценка. Полную проверку любого прошедшего года можно запустить на карте: выберите прошлый месяц — система сойдёт в прошлое без подглядывания.</div></div>';
+  }
+  const tl=agro.trust_ledger;
+  if(tl&&tl.overall){
+   h+='<div class="block"><h2>Реестр доверия: публичный счёт навыка</h2><div class="dash">'+
+   chip3('навык всего, RPSS',(tl.overall.rpss>0?'+':'')+tl.overall.rpss, tl.overall.n+' посчитанных прогнозов')+
+   (tl.t2m?chip3('температура, RPSS',(tl.t2m.rpss>0?'+':'')+tl.t2m.rpss, 'попадание '+Math.round(tl.t2m.hit*100)+'%'):'')+
+   (tl.tp?chip3('осадки, RPSS',(tl.tp.rpss>0?'+':'')+tl.tp.rpss, 'попадание '+Math.round(tl.tp.hit*100)+'%'):'')+
+   (tl.p80_coverage!=null?chip3('коридор P10–P90',Math.round(tl.p80_coverage*100)+'%','факт внутри коридора; цель ≈80%'):'')+
+   '</div>';
+   if(tl.by_season){
+    h+='<table><tr><th>Сезон</th><th>RPSS</th><th>Попадание</th><th>Попадание (уверенные)</th><th>ECE</th><th>n</th></tr>';
+    ['DJF','MAM','JJA','SON'].forEach(se=>{const b=tl.by_season[se]; if(!b)return;
+     h+='<tr><td>'+({DJF:'зима',MAM:'весна',JJA:'лето',SON:'осень'})[se]+'</td><td class="num">'+(b.rpss>0?'+':'')+b.rpss+'</td><td class="num">'+Math.round(b.hit*100)+'%</td><td class="num">'+(b.hit_conf!=null?Math.round(b.hit_conf*100)+'%':'—')+'</td><td class="num">'+(b.ece!=null?b.ece:'—')+'</td><td class="num">'+b.n+'</td></tr>';
+    });
+    h+='</table>';
+   }
+   if(tl.by_lead){
+    h+='<table style="margin-top:10px"><tr><th>Горизонт</th><th>RPSS</th><th>Попадание</th><th>ECE</th><th>n</th></tr>';
+    ['1','2-3','4-6'].forEach(lk=>{const b=tl.by_lead[lk]; if(!b)return;
+     h+='<tr><td>'+lk+' мес</td><td class="num">'+(b.rpss>0?'+':'')+b.rpss+'</td><td class="num">'+Math.round(b.hit*100)+'%</td><td class="num">'+(b.ece!=null?b.ece:'—')+'</td><td class="num">'+b.n+'</td></tr>';
+    });
+    h+='</table>';
+   }
+   if(tl.live&&tl.live.length){
+    h+='<h3>Живые выпуски (с хэшем входов — подлинностно проверяемы)</h3><table><tr><th>Выпуск</th><th>Переменная</th><th>Цель</th><th>Вероятности ниже/норма/выше</th><th>Хэш</th></tr>';
+    tl.live.forEach(r=>{h+='<tr><td>'+r.issue+'</td><td>'+(r.variable==='t2m'?'температура':'осадки')+'</td><td>'+r.target+'</td><td class="num">'+r.p0.toFixed(2)+' / '+r.p1.toFixed(2)+' / '+r.p2.toFixed(2)+'</td><td style="font-family:Consolas,monospace;font-size:11px">'+(r.hash||'')+'</td></tr>'});
+    h+='</table>';
+   }
+   h+='<div class="foot">Каждый прогноз фиксируется в реестре с SHA-256-хэшем входов — «навык за годы» пересчитывается из этих записей, подделка видна. RPSS>0 — лучше климатологической нормы. ECE — среднее |заявленная вероятность − наблюдаемая частота| по калибровочным корзинам (меньше — вероятности честнее). Коридор P10–P90 — конформная калибровка: конечновыборочная гарантия, что факт внутри коридора ≈80% случаев.</div></div>';
   }
   if(ins.decades&&ins.decades.length){
    h+='<div class="block"><h2>По декадам (коридоры P10–P90 по ансамблю '+agro.n_ensemble+' реализаций)</h2><table><tr><th>Декада</th><th>T к норме, °C</th><th>Осадки, мм</th><th>ET₀, мм</th><th>Полив нетто, м³/га</th><th>Мин. tmin, °C</th><th>Полевые работы</th></tr>';
@@ -204,11 +243,11 @@ fetch('/api/job/'+job).then(r=>r.json()).then(st=>{
    });
    h+='<div class="foot">Вероятности — доля ансамбля погодных реализаций, в которой событие фазы наступает. «Окно сева» — наоборот, доля пригодных реализаций (сухо и почва прогрета).</div></div>';
   }
-  const dr=agro.drivers||{};
-  if((dr.t2m&&dr.t2m.length)||(dr.tp&&dr.tp.length)){
+  const drv=agro.drivers||{};
+  if((drv.t2m&&drv.t2m.length)||(drv.tp&&drv.tp.length)){
    h+='<div class="block"><h2>Почему такой прогноз (драйверы)</h2><table><tr><th>Драйвер</th><th>Связь с сезоном (r)</th><th>Сейчас</th><th>Куда тянет</th></tr>';
-   (dr.t2m||[]).forEach(d=>{h+='<tr><td>'+d.name+' <span style="color:#8a9a82;font-size:11px">→ температура</span></td><td class="num">'+(d.r>0?'+':'')+d.r+'</td><td class="num">'+(d.now>0?'+':'')+d.now+'σ</td><td><b style="color:'+(d.push==='к теплу'?'#c4672a':'#4d7fc4')+'">'+d.push+'</b></td></tr>'});
-   (dr.tp||[]).forEach(d=>{h+='<tr><td>'+d.name+' <span style="color:#8a9a82;font-size:11px">→ осадки</span></td><td class="num">'+(d.r>0?'+':'')+d.r+'</td><td class="num">'+(d.now>0?'+':'')+d.now+'σ</td><td><b style="color:'+(d.push==='к влаге'?'#4d7fc4':'#c4672a')+'">'+d.push+'</b></td></tr>'});
+   (drv.t2m||[]).forEach(d=>{h+='<tr><td>'+d.name+' <span style="color:#8a9a82;font-size:11px">→ температура</span></td><td class="num">'+(d.r>0?'+':'')+d.r+'</td><td class="num">'+(d.now>0?'+':'')+d.now+'σ</td><td><b style="color:'+(d.push==='к теплу'?'#c4672a':'#4d7fc4')+'">'+d.push+'</b></td></tr>'});
+   (drv.tp||[]).forEach(d=>{h+='<tr><td>'+d.name+' <span style="color:#8a9a82;font-size:11px">→ осадки</span></td><td class="num">'+(d.r>0?'+':'')+d.r+'</td><td class="num">'+(d.now>0?'+':'')+d.now+'σ</td><td><b style="color:'+(d.push==='к влаге'?'#4d7fc4':'#c4672a')+'">'+d.push+'</b></td></tr>'});
    h+='</table><div class="foot">Связь — корреляция на истории (только прошлые годы). «Сейчас» — состояние предиктора в сигмах относительно собственной изменчивости.</div></div>';
   }
   const dec=agro.decisions||[];
@@ -273,7 +312,7 @@ fetch('/api/job/'+job).then(r=>r.json()).then(st=>{
    });
    h+='</table><div class="foot">Фактическая погода тех лет в тот же сезон — прямая проверка, во что вырождаются аналоги. Справка по сбору зерна в РФ — Росстат (округлённо).</div></div>';
   }
-  h+='<div class="foot">Движок AgroCast: собственные расчёты на открытых данных (NOAA NCEP/CPC/ERSST/OISST) — SST-лаги, LIM-прогноз океана, режимы NAO/EA, стратосфера, ансамбль с сезонными воротами, изотоническая калибровка, нейроядро. Валидация 2005–2024: сезонная T RPSS +0.29 против климатологии. Прогноз вероятностный — решения принимайте с учётом рисков.<br>Отчёт сгенерирован '+new Date().toLocaleString('ru-RU')+'.</div>';
+  h+='<div class="foot">Движок AgroCast: собственные расчёты на открытых данных (NOAA NCEP/CPC/ERSST/OISST, NOAA CDR snow) — SST-лаги, LIM-прогноз океана, режимы NAO/EA, стратосфера (полярный вихрь), ансамбль из 9 моделей с сезонными воротами, изотоническая и конформная калибровка, нейроядро, публичный реестр доверия. Прогноз вероятностный — решения принимайте с учётом рисков.<br>Отчёт сгенерирован '+new Date().toLocaleString('ru-RU')+'.</div>';
  }
   h+='<div class="printfoot">AgroCast — сезонный агропрогноз · точка '+(f.lat!=null?f.lat.toFixed(2):'?')+'°N '+(f.lon!=null?f.lon.toFixed(2):'?')+'°E · период '+f.start+' · отпечатано '+new Date().toLocaleString('ru-RU')+' · вероятностный прогноз, не гарантия</div>';
   h+='<button class="btn" onclick="window.print()">Скачать / печать в PDF</button> <button class="btn g" onclick="location=\'/\'">← Новый расчёт</button>';

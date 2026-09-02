@@ -74,6 +74,41 @@ def lim_forecast_frame(pcs, index, horizons=(1, 2, 3, 4, 5, 6)):
     return out
 
 
+def lim_ensemble_frame(pcs, index, horizons=(1, 2, 3, 4, 5, 6), n_members=40, sigma=0.25, seed=0):
+    cols = list(pcs.columns)
+    out_cols = [f"{c}_sp_f{h}" for h in horizons for c in cols]
+    out = pd.DataFrame(np.nan, index=index, columns=out_cols, dtype=float)
+    src = pcs.dropna()
+    if len(src) < 40:
+        return out
+    arr = {t: src.loc[t] for t in src.index}
+    issues = [t for t in index if t in arr]
+    cache = {}
+    for t in issues:
+        y = t.year
+        if y not in cache:
+            A, _ = fit_lim_monthly(src, pd.Period(f"{y}-01", "M"))
+            if A is None:
+                continue
+            cache[y] = A
+    for t in issues:
+        A = cache.get(t.year)
+        if A is None:
+            continue
+        rng = np.random.default_rng(seed + (t.year * 100 + t.month))
+        M = rng.normal(0.0, sigma, (n_members, len(cols)))
+        for h in horizons:
+            Mp = M.copy()
+            m = t.month
+            for _ in range(h):
+                Mp = Mp @ A[m].T
+                m = m % 12 + 1
+            sd = Mp.std(axis=0)
+            for j, c in enumerate(cols):
+                out.loc[t, f"{c}_sp_f{h}"] = sd[j]
+    return out
+
+
 def persistence_frame(pcs, index, horizons=(1, 2, 3, 4, 5, 6)):
     cols = list(pcs.columns)
     out = pd.DataFrame(np.nan, index=index, columns=[f"{c}_f{h}" for h in horizons for c in cols], dtype=float)

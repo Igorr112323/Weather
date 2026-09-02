@@ -1,4 +1,5 @@
 import datetime as dt
+import os
 import numpy as np
 import pandas as pd
 
@@ -11,17 +12,76 @@ from agrocast.models import build_models
 from agrocast.blend.blender import Blender
 from agrocast.backtest.engine import load_skill_map, blender_name, skill_name
 from agrocast.blend.calibration import TercileCalibrator
+from agrocast.blend.blender import season_of
+from agrocast.blend.regime_clim import RegimeClimatology, SPECS, memory_z, tercile_grid
 from agrocast.models.nn_kernel import PooledNN
 from agrocast.ingest.registry import Registry
 from agrocast.store.zarrstore import ZarrStore
 from agrocast.agro.generator import WeatherGenerator
 from agrocast.agro.indices import daily_indices, ensemble_indices, spi_block
+from agrocast.blend.conformal import ConformalQuantileCalibrator
+from agrocast.models.builder import MODEL_NAMES
 
 TERCILE_KEYS = ["below", "normal", "above"]
+W_OSPR = 0.20
 
 
 def _r(x, nd=2):
     return round(float(x), nd)
+
+
+def _what_to_do(agro):
+    """Топ-3 простых действия для фермера: «что, почему, на сколько критично»."""
+    cards = []
+    for d in agro.get("decisions") or []:
+        if d["verdict"] == "действовать":
+            cards.append(
+                {
+                    "action": d["label"],
+                    "reason": f"вероятность события {round(d['prob'] * 100)}% выше порога окупаемости {round(d['ratio'] * 100)}%",
+                    "note": d.get("note"),
+                    "level": "high",
+                }
+            )
+        elif d["verdict"] == "на грани — решать вам":
+            cards.append(
+                {
+                    "action": d["label"],
+                    "reason": f"вероятность {round(d['prob'] * 100)}% около порога {round(d['ratio'] * 100)}%",
+                    "note": d.get("note"),
+                    "level": "mid",
+                }
+            )
+    ins = agro.get("insight") or {}
+    dr = ins.get("drought") or {}
+    if dr.get("irrigation_hint_m3_ha"):
+        cards.append(
+            {
+                "action": f"Запланировать полив ≈{dr['irrigation_hint_m3_ha']} м³/га",
+                "reason": f"ожидаемый дефицит влаги {dr.get('deficit_mm', '?')} мм · риск засухи: {dr.get('risk_level', '?')}",
+                "level": "high" if dr.get("risk_level") in ("высокий", "повышенный") else "mid",
+            }
+        )
+    ph = agro.get("phenology") or {}
+    for c in (ph.get("crops") or [])[:2]:
+        for s in c.get("stages") or []:
+            if s.get("prob", 0) >= 0.5 and s.get("action"):
+                cards.append(
+                    {
+                        "action": s["action"],
+                        "reason": f"{c.get('name', '')}: «{s.get('name', '')}» — вероятность события {round(s['prob'] * 100)}%",
+                        "level": "high",
+                    }
+                )
+    seen, out = set(), []
+    for c in cards:
+        if c["action"] in seen:
+            continue
+        seen.add(c["action"])
+        out.append(c)
+    order = {"high": 0, "mid": 1, "low": 2}
+    out.sort(key=lambda c: order.get(c.get("level"), 3))
+    return out[:3]
 
 
 def _confidence(rpss_val):
@@ -40,7 +100,7 @@ def _skill_lookup(smap, variable, target_month, lead):
     return float(g["rpss"].iloc[0])
 
 
-def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, issue, blender, smap, calib=None, mode="monthly", pcal=None, nstack=None):
+def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, issue, blender, smap, calib=None, mode="monthly", pcal=None, nstack=None, ccal=None, rcal=None, mz=None, terc_map=None, sctx=None, ospr=None):
     a = adaptive(series_raw, tgt.year, tgt.month, config.clim_window, config.clim_half_life)
     if a is None:
         return None
@@ -67,14 +127,42 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
     if not preds:
         return None
     P, Q = blender.combine(variable, tgt.month, preds)
-    if pcal is not None and pcal.usable():
-        P = pcal.transform(P.reshape(1, -1))[0]
     if nstack is not None:
         nn, a, pool = nstack
         Pn = nn.probs_for(pf, issue, pool, tgt.month, lead)
         if Pn is not None and a > 0:
             P = (1.0 - a) * P + a * Pn
             P = P / P.sum()
+    if pcal is not None and pcal.usable():
+        P = pcal.transform(P.reshape(1, -1))[0]
+    if rcal is not None:
+        group = season_of(tgt.month) if mode == "seasonal" else f"m{int(tgt.month)}"
+        if issue in pf.index:
+            iprev = issue - 3
+            x = rcal.feature_vector(
+                variable,
+                pf.loc[issue],
+                issue,
+                mz,
+                pf.loc[iprev] if iprev in pf.index else None,
+                (terc_map or {}).get(variable),
+            )
+            P = rcal.transform(P, variable, group, tgt.year, x)
+    if sctx is not None:
+        P = sctx.apply(P, tgt.month, tgt.year)
+    if ccal is not None and ccal.usable():
+        Q = ccal.transform(Q, variable, lead)
+    if ospr is not None and "series" in ospr:
+        _s = ospr["series"]
+        if issue in _s.index:
+            _sv = float(_s.loc[issue])
+            if np.isfinite(_sv):
+                _u = min(1.0, max(0.0, (_sv - ospr["min"]) / max(ospr["max"] - ospr["min"], 1e-9)))
+                _w = W_OSPR * _u
+                if _w > 0:
+                    P = (1.0 - _w) * P + _w * np.array([1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0])
+                    P = P / P.sum()
+                    Q = (1.0 - _w) * np.asarray(Q, float)
     phys = mu + sd * Q
     bias, ratio = 0.0, 1.0
     if calib is not None:
@@ -129,11 +217,52 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
             start = issue + 1
     blender = Blender.load(config.artifact_dir / blender_name(mode)) or Blender.default(variables)
     pcalib = {}
+    ccalib = {}
     for v in variables:
         pc = TercileCalibrator.load(config.artifact_dir / f"calib_{mode}_{v}.json")
         if pc is not None:
             pcalib[v] = pc
+        cc = ConformalQuantileCalibrator.load(config.artifact_dir / f"conformal_{mode}_{v}.json")
+        if cc is not None and cc.usable():
+            ccalib[v] = cc
+    rcalib = RegimeClimatology.load(config.artifact_dir / f"regimeclim_{mode}.json")
+    mz = {}
+    terc_map = {}
+    for v, spec in SPECS.get(mode, {}).items():
+        for k in spec["mems"]:
+            mz["z" + ("t" if v == "t2m" else "p") + str(k)] = memory_z(monthly, v, k)
+        for vx, k in spec.get("xmems", ()):
+            mz["z" + ("t" if vx == "t2m" else "p") + str(k)] = memory_z(monthly, vx, k)
+        if "h1" in spec["feats"]:
+            terc_map[v] = tercile_grid(point, v)
     smap = load_skill_map(config, mode)
+    sctx_map = {}
+    try:
+        from agrocast.blend.shrink import ShrinkContext, year_skills
+        from agrocast.skill.ledger import load_ledger
+
+        led_, _ = load_ledger(config, mode)
+        if led_ is not None and not led_.empty:
+            for v in variables:
+                g = led_[led_["variable"] == v]
+                if len(g) < 30:
+                    continue
+                sctx_map[v] = ShrinkContext(
+                    mode,
+                    point,
+                    v,
+                    year_skills(g[["p0", "p1", "p2"]].to_numpy(float), g["obs_tercile"].to_numpy(int), g["year"].to_numpy(int)),
+                )
+    except Exception:
+        sctx_map = {}
+    ospr_data = {}
+    if os.environ.get("AGROCAST_OSPR", "1") != "0":
+        try:
+            _spr = point.ocean_spread(lead=3)
+            if _spr is not None and len(_spr) >= 20:
+                ospr_data = {"series": _spr, "min": float(_spr.min()), "max": float(_spr.max())}
+        except Exception:
+            ospr_data = {}
     calib = None
     try:
         from agrocast.ingest.stations import calibration_for_point
@@ -183,7 +312,8 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
         for v in variables:
             pcal = pcalib.get(v)
             nstack = nnstack.get(v)
-            res = _fit_predict_target(config, pf, stds[v], raws[v], v, tgt, sm, lead, issue, blender, smap, apply_calib, mode=mode, pcal=pcal, nstack=nstack)
+            ccal = ccalib.get(v)
+            res = _fit_predict_target(config, pf, stds[v], raws[v], v, tgt, sm, lead, issue, blender, smap, apply_calib, mode=mode, pcal=pcal, nstack=nstack, ccal=ccal, rcal=rcalib, mz=mz, terc_map=terc_map, sctx=sctx_map.get(v), ospr=(ospr_data if v == "tp" else None))
             if res is None:
                 continue
             block, phys = res
@@ -268,6 +398,25 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                     agro["econ"] = econ_block(agro.get("phenology") or {}, drought_p, heat_p)
                 except Exception:
                     pass
+    # Реестр доверия: публичный счёт навыка (backtest-лет + живые выпуски)
+    try:
+        from agrocast.skill.ledger import live_summary, load_ledger
+
+        _, tl = load_ledger(config, mode)
+        if tl:
+            lv = live_summary(config)
+            if lv:
+                tl["live"] = lv
+            if agro is None:
+                agro = {}
+            agro["trust_ledger"] = tl
+    except Exception:
+        pass
+    if agro:
+        try:
+            agro["what_to_do"] = _what_to_do(agro)
+        except Exception:
+            pass
     payload = {
         "engine": "agrocast",
         "mode": mode,
@@ -280,7 +429,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
         "horizon": horizon,
         "issue_data_through": str(issue),
         "variables": list(variables),
-        "models": ["clim", "analog", "ridge", "gbm"],
+        "models": [m for m in MODEL_NAMES],
         "station_calibration": calib,
         "targets_station_calibrated": bool(point.fixed_calibration_active),
         "weights": {v: {s: {k: _r(w, 4) for k, w in dd.items()} for s, dd in d.items()} for v, d in blender.weights.items()},
@@ -314,4 +463,19 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
     if save:
         reg = Registry(config.registry_path)
         reg.save_forecast(lat, lon, start.year, start.month, horizon, payload)
+        # Живой реестр доверия: фиксируем выпуск с хэшем входов (подлинностно)
+        try:
+            from agrocast.skill.ledger import append_live
+
+            if mode == "seasonal" and out_items:
+                it0 = out_items[0]
+                tgt = f"{it0['year']}-{it0['month']:02d}"
+                for v in ("t2m", "tp"):
+                    blk = it0.get(v) or {}
+                    calc = blk.get("_calc") or {}
+                    P, qz = calc.get("P"), calc.get("qz")
+                    if P and qz:
+                        append_live(config, str(issue), lat, lon, v, P, qz, target=tgt)
+        except Exception:
+            pass
     return payload

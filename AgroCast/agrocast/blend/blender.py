@@ -4,10 +4,17 @@ import numpy as np
 import pandas as pd
 
 from agrocast.core.mathutils import softmax_w
-from agrocast.backtest.metrics import rps_mean, clim_rps
+from agrocast.backtest.metrics import rps_mean, clim_rps, weighted_rpss, year_weights
 
 MIN_N = 30
 SHRINK = 0.28
+
+
+def attach_obs(blend, rec, keys=("variable", "lead", "year", "target_month")):
+    """Подтянуть obs_z из исходных записей: наблюдение одно для всех моделей
+    в группе (variable, lead, year, target_month)."""
+    obs = rec.drop_duplicates(list(keys))[list(keys) + ["obs_z"]]
+    return blend.merge(obs, on=list(keys), how="left")
 SEASONS = {12: "DJF", 1: "DJF", 2: "DJF", 3: "MAM", 4: "MAM", 5: "MAM", 6: "JJA", 7: "JJA", 8: "JJA", 9: "SON", 10: "SON", 11: "SON"}
 
 
@@ -58,16 +65,17 @@ def _level_weights(g, k=15):
         sw = np.where(positive, sw, 0.0)
         sw = sw / sw.sum()
         return {n: float(wv) for n, wv in zip(names, sw)}
-    if not positive.any():
-        if (ns >= 15).all() or (r < -0.05).all():
-            return {n: 0.0 for n in names}
-    return {n: 1.0 / len(names) for n in names}
+    # Честный пол (skill floor): ни одна модель не показала навык —
+    # нулевые веса для всех => бленд деградирует до чистой климатологии,
+    # а значит система структурно не может быть хуже климатологии.
+    return {n: 0.0 for n in names}
 
 
 class Blender:
-    def __init__(self):
+    def __init__(self, half_life_years=0.0):
         self.weights = {}
         self.skill = None
+        self.half_life_years = float(half_life_years)
 
     def fit(self, records):
         rec = records.copy()
@@ -78,8 +86,8 @@ class Blender:
         for keys, g in rec.groupby(["variable", "season", "model"]):
             obs = g["obs_tercile"].to_numpy(int)
             probs = g[["p0", "p1", "p2"]].to_numpy(float)
-            base = clim_rps(obs)
-            rpss = 1.0 - rps_mean(probs, obs) / base if base > 1e-9 else 0.0
+            w = year_weights(g["year"], self.half_life_years)
+            rpss = weighted_rpss(probs, obs, w)
             rows.append({"variable": keys[0], "season": keys[1], "model": keys[2], "rpss": float(rpss), "n": len(g)})
         skill = pd.DataFrame(rows)
         self.skill = skill

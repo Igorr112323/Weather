@@ -1,3 +1,4 @@
+import os
 import re
 
 import numpy as np
@@ -9,7 +10,7 @@ from agrocast.core.config import Config
 from agrocast.core.geo import snap
 from agrocast.store.zarrstore import ZarrStore
 from agrocast.features.climatology import monthly_from_daily, standardize_monthly, month_z, past_monthly_anom, past_standardize, seasonal_series
-from agrocast.features.teleconnections import indices_from_store, IDX_COLS
+from agrocast.features.teleconnections import indices_from_store, IDX_COLS, _box_series
 
 
 def _prep_lon(ds):
@@ -33,6 +34,7 @@ class PointDataset:
         self._pf = None
         self._seas_raw = {}
         self._seas_std = {}
+        self._ospr = {}
         self.grid_lat = None
         self.grid_lon = None
 
@@ -188,6 +190,22 @@ class PointDataset:
         p = pd.PeriodIndex(df.index, freq="M")
         return df.groupby(p).mean()
 
+    def land_ocean_frame(self):
+        p = self.store.root.parent / "artifacts" / "land_ocean_features.parquet"
+        if not p.exists():
+            return None
+        df = pd.read_parquet(p)
+        df.index = pd.PeriodIndex(df.index, freq="M")
+        keep = [c for c in df.columns if float(np.nanstd(df[c].to_numpy(float))) > 1e-9]
+        preset = os.environ.get("PHYS_PRESET", "land")
+        if preset == "state":
+            keep = [c for c in keep if c.startswith("ls_")]
+        elif preset == "land_d6":
+            keep = [c for c in keep if c.startswith(("ls_", "lsf_", "lss_")) or (c.startswith("sstfc_") and c.endswith("_f6"))]
+        elif preset == "land":
+            keep = [c for c in keep if c.startswith(("ls_", "lsf_", "lss_"))]
+        return df[keep]
+
     def indices(self):
         if self._indices is None:
             self._indices = indices_from_store(self.config, self.store)
@@ -225,6 +243,21 @@ class PointDataset:
         self._pcs = df
         return df
 
+    def ocean_spread(self, lead=3, sigma=0.25, n_members=40):
+        key = (int(lead), float(sigma), int(n_members))
+        if key not in self._ospr:
+            from agrocast.features.lim import lim_ensemble_frame
+
+            pcs = self.sst_pcs()
+            idx = pcs.dropna().index
+            ens = lim_ensemble_frame(pcs, idx, horizons=(int(lead),), n_members=n_members, sigma=sigma)
+            cols = [f"pc{i}_sp_f{int(lead)}" for i in range(1, 4) if f"pc{i}_sp_f{int(lead)}" in ens.columns]
+            if cols:
+                self._ospr[key] = ens[cols].mean(axis=1).dropna()
+            else:
+                self._ospr[key] = pd.Series(dtype=float)
+        return self._ospr[key]
+
     def predictor_frame(self):
         if self._pf is not None:
             return self._pf
@@ -237,14 +270,18 @@ class PointDataset:
             if c not in idx.columns:
                 continue
             v = idx[c].to_numpy(float)
-            data[c + "_3m"] = pd.Series(v).rolling(3, min_periods=3).mean().to_numpy()
+            s3 = pd.Series(v).rolling(3, min_periods=3).mean()
+            data[c + "_3m"] = s3.to_numpy()
             data[c + "_1m"] = v
+            if c == "nino34":
+                # развитие/смена фазы ENSO (лечит «2016-й тип»: разворачивающаяся Ла-Нинья)
+                data["nino34_3m_s6"] = (s3 - s3.shift(6)).to_numpy()
+                data["nino34_3m_e"] = (s3 * np.abs(s3)).to_numpy()
         for i, c in enumerate(pcs.columns):
             data[c] = pcs[c].to_numpy(float)
         for src, dst in [("swvl", "swvl_a"), ("snow", "snow_a"), ("t2m", "t2m_a"), ("tp", "tp_a")]:
             if src in m.columns:
                 data[dst] = past_monthly_anom(m[src].reindex(idx.index)).reindex(idx.index).to_numpy(float)
-        pcs = self.sst_pcs()
         for c in ["pc1", "pc2", "pc3"]:
             if c not in pcs.columns:
                 continue
@@ -252,17 +289,19 @@ class PointDataset:
             for lag in (3, 6, 12, 24):
                 data[f"{c}_l{lag}"] = v.shift(lag).to_numpy(float)
             data[f"{c}_s3"] = (v - v.shift(3)).to_numpy(float)
+            data[f"{c}_s6"] = (v - v.shift(6)).to_numpy(float)
             data[f"{c}_s12"] = (v - v.shift(12)).to_numpy(float)
+            if c == "pc1":
+                data["pc1_e"] = (v * np.abs(v)).to_numpy(float)
         limf = lim_forecast_frame(pcs, idx.index)
         for c in limf.columns:
             data[c] = limf[c].to_numpy(float)
-        if self.store.exists("oisst_boxes"):
-            bdf = self.store.open("oisst_boxes").to_dataframe()
-            bp = pd.PeriodIndex(bdf.index, freq="M")
-            for src, name in [("med_sst", "med_a"), ("black_sst", "black_a")]:
-                if src not in bdf.columns:
+        if self.store.exists("sst"):
+            sstg = _prep_lon(self.store.open("sst"))["sst"]
+            for box, name in [((30, 45, 0, 40), "med_a"), ((41, 47, 27, 41), "black_a")]:
+                s = _box_series(sstg, *box)
+                if s is None:
                     continue
-                s = pd.Series(bdf[src].to_numpy("float32"), index=bp)
                 a = past_monthly_anom(s).reindex(idx.index)
                 data[name] = a.to_numpy(float)
                 data[name + "_s3"] = (a - a.shift(3)).to_numpy(float)
@@ -300,6 +339,10 @@ class PointDataset:
             for src, dst in [("swvl", "swvl_a"), ("snow", "snow_a")]:
                 if src in soil.columns and dst not in data:
                     data[dst] = past_monthly_anom(soil[src].reindex(idx.index)).reindex(idx.index).to_numpy(float)
+        lo = self.land_ocean_frame()
+        if lo is not None:
+            for c in lo.columns:
+                data[c] = lo[c].reindex(idx.index).to_numpy(float)
         raw = pd.DataFrame(data, index=idx.index).sort_index()
         pf = past_standardize(raw)
         pf = pf.dropna()

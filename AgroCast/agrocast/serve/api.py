@@ -12,6 +12,18 @@ from agrocast.ingest.registry import Registry
 app = FastAPI(title="AgroCast Engine", version="0.1.0")
 
 
+def _jsonable(o):
+    import math
+
+    if isinstance(o, dict):
+        return {k: _jsonable(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_jsonable(v) for v in o]
+    if isinstance(o, float) and not math.isfinite(o):
+        return None
+    return o
+
+
 class ForecastRequest(BaseModel):
     lat: float
     lon: float
@@ -40,10 +52,21 @@ def get_config():
     if data_dir:
         cfg_path = Path(data_dir) / "config.json"
         if cfg_path.exists():
-            return Config.load(cfg_path)
+            cfg = Config.load(cfg_path)
+            cfg.data_dir = str(Path(data_dir))
+            if not cfg.shared_zarr:
+                cfg.shared_zarr = str(Path(data_dir) / "zarr")
+            return cfg
         cfg = Config(data_dir=data_dir)
         return cfg
     return Config()
+
+
+@app.get("/")
+def root():
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/health")
@@ -63,7 +86,8 @@ def forecast(req: ForecastRequest):
     start = month_period(req.year, req.start_month) if req.year else next_occurrence(req.start_month)
     horizon = max(1, min(int(req.horizon), cfg.horizon_max))
     mode = req.mode if req.mode in ("monthly", "seasonal") else "monthly"
-    return forecast_point(cfg, req.lat, req.lon, start=start, horizon=horizon, variables=tuple(req.variables), mode=mode, season_len=req.season_len)
+    fc = forecast_point(cfg, req.lat, req.lon, start=start, horizon=horizon, variables=tuple(req.variables), mode=mode, season_len=req.season_len)
+    return _jsonable(fc)
 
 
 @app.post("/subscriptions")

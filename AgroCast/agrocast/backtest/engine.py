@@ -24,7 +24,7 @@ def skill_name(mode):
     return f"skill_map_{mode}.parquet"
 
 
-def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None, years=None, lat=None, lon=None, point=None, mode="monthly", season_len=3):
+def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None, years=None, lat=None, lon=None, point=None, mode="monthly", season_len=3, half_life_years=0.0):
     store = config.zarr_store()
     reg = Registry(config.registry_path)
     if point is None:
@@ -103,7 +103,7 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
         reg.log_event("backtest", f"no records mode={mode}")
         return records
     records.to_parquet(config.artifact_dir / records_name(mode))
-    blender = Blender().fit(records)
+    blender = Blender(half_life_years=half_life_years).fit(records)
     blender.save(config.artifact_dir / blender_name(mode))
     br = blended_records(records, blender.weights)
     smap = []
@@ -112,6 +112,14 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
         probs = g[["p0", "p1", "p2"]].to_numpy(float)
         smap.append({"variable": v, "target_month": int(tm), "lead": int(ld), "rpss": float(rpss(probs, obs)), "n": len(g)})
     pd.DataFrame(smap).to_parquet(config.artifact_dir / skill_name(mode))
+    try:
+        from agrocast.skill.ledger import build_ledger, save_ledger
+
+        s = save_ledger(build_ledger(records, mode=mode, config=config, half_life_years=half_life_years), config, mode)
+        if s:
+            reg.log_event("backtest", f"ledger mode={mode} n={s['overall']['n']} rpss={s['overall']['rpss']}")
+    except Exception as exc:
+        reg.log_event("backtest", f"ledger failed mode={mode}: {exc}")
     reg.log_event("backtest", f"mode={mode} rows={len(records)} years={years[0]}..{years[-1]}")
     return records
 

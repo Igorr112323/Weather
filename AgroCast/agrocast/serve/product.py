@@ -92,6 +92,23 @@ def subscribe(req: SubscribeRequest):
     return {"ok": True, "name": req.name}
 
 
+@app.get("/api/ledger")
+def ledger(mode: str = "seasonal"):
+    """Публичный счёт навыка: реестр доверия + живые выпуски."""
+    from agrocast.serve.pipeline import world_config
+    from agrocast.skill.ledger import live_summary, load_ledger
+
+    cfg = world_config(WORLD)
+    _, s = load_ledger(cfg, mode if mode in ("monthly", "seasonal") else "seasonal")
+    lv = live_summary(cfg)
+    if s is None:
+        return {"ok": True, "ledger": None, "live": lv}
+    out = dict(s)
+    if lv:
+        out["live"] = lv
+    return {"ok": True, "ledger": out, "live": lv}
+
+
 @app.get("/api/health")
 def health():
     from agrocast.serve.pipeline import world_config

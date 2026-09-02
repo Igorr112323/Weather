@@ -20,9 +20,9 @@ def _quantile_model(alpha, seed):
         return LGBMRegressor(
             objective="quantile",
             alpha=alpha,
-            n_estimators=50,
-            learning_rate=0.05,
-            num_leaves=5,
+            n_estimators=120,
+            learning_rate=0.03,
+            num_leaves=7,
             min_child_samples=10,
             subsample=0.8,
             subsample_freq=1,
@@ -45,9 +45,9 @@ def _quantile_model(alpha, seed):
 def _classifier(seed):
     if HAS_LGBM:
         return LGBMClassifier(
-            n_estimators=50,
-            learning_rate=0.05,
-            num_leaves=5,
+            n_estimators=120,
+            learning_rate=0.03,
+            num_leaves=7,
             min_child_samples=10,
             subsample=0.8,
             subsample_freq=1,
@@ -111,5 +111,5 @@ class GBMModel(ForecastModel):
         for i, c in enumerate(classes):
             p[int(c)] = proba[i]
         p = clip_probs(p)
-        p = 0.5 * p + 0.5 * np.full(3, 1.0 / 3.0)
+        p = 0.7 * p + 0.3 * np.full(3, 1.0 / 3.0)
         return clip_probs(p), q

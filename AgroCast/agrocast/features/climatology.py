@@ -80,12 +80,12 @@ def past_monthly_anom(series):
     for i in range(len(s)):
         hist = vals[(months == months[i]) & (years < years[i])]
         hist = hist[np.isfinite(hist)]
-        if len(hist) >= 8:
+        if len(hist) >= 5:
             out[i] = vals[i] - hist.mean()
     return pd.Series(out, index=s.index)
 
 
-def past_standardize(df, min_hist=36):
+def past_standardize(df, min_hist=24):
     a = df.to_numpy(float)
     out = np.full_like(a, np.nan)
     for j in range(a.shape[1]):

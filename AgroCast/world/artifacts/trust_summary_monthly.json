@@ -1,0 +1,234 @@
+{
+ "overall": {
+  "n": 3012,
+  "rpss": 0.083,
+  "hit": 0.453,
+  "hit_conf": 0.526,
+  "coverage_conf": 0.535,
+  "ece": 0.013
+ },
+ "t2m": {
+  "n": 1506,
+  "rpss": 0.154,
+  "hit": 0.535,
+  "hit_conf": 0.536,
+  "coverage_conf": 0.995,
+  "ece": 0.019
+ },
+ "tp": {
+  "n": 1506,
+  "rpss": 0.01,
+  "hit": 0.371,
+  "hit_conf": 0.393,
+  "coverage_conf": 0.074,
+  "ece": 0.016
+ },
+ "by_lead": {
+  "1": {
+   "n": 502,
+   "rpss": 0.09,
+   "hit": 0.458,
+   "hit_conf": 0.526,
+   "coverage_conf": 0.538,
+   "ece": 0.014
+  },
+  "2-3": {
+   "n": 1004,
+   "rpss": 0.086,
+   "hit": 0.451,
+   "hit_conf": 0.524,
+   "coverage_conf": 0.536,
+   "ece": 0.011
+  },
+  "4-6": {
+   "n": 1506,
+   "rpss": 0.078,
+   "hit": 0.452,
+   "hit_conf": 0.527,
+   "coverage_conf": 0.533,
+   "ece": 0.024
+  }
+ },
+ "by_season": {
+  "DJF": {
+   "n": 752,
+   "rpss": 0.087,
+   "hit": 0.5,
+   "hit_conf": 0.543,
+   "coverage_conf": 0.5,
+   "ece": 0.059
+  },
+  "JJA": {
+   "n": 754,
+   "rpss": 0.133,
+   "hit": 0.466,
+   "hit_conf": 0.603,
+   "coverage_conf": 0.504,
+   "ece": 0.064
+  },
+  "MAM": {
+   "n": 750,
+   "rpss": 0.031,
+   "hit": 0.395,
+   "hit_conf": 0.435,
+   "coverage_conf": 0.503,
+   "ece": 0.048
+  },
+  "SON": {
+   "n": 756,
+   "rpss": 0.078,
+   "hit": 0.45,
+   "hit_conf": 0.523,
+   "coverage_conf": 0.632,
+   "ece": 0.029
+  }
+ },
+ "p80_coverage": 0.798,
+ "median_abs_median_err": 0.711,
+ "recent": [
+  {
+   "issue": "2023-12",
+   "variable": "tp",
+   "target": "06/2024",
+   "lead": 6,
+   "p": [
+    0.29,
+    0.33,
+    0.38
+   ],
+   "hit": false
+  },
+  {
+   "issue": "2024-01",
+   "variable": "tp",
+   "target": "07/2024",
+   "lead": 6,
+   "p": [
+    0.28,
+    0.34,
+    0.38
+   ],
+   "hit": false
+  },
+  {
+   "issue": "2024-02",
+   "variable": "tp",
+   "target": "08/2024",
+   "lead": 6,
+   "p": [
+    0.29,
+    0.34,
+    0.37
+   ],
+   "hit": false
+  },
+  {
+   "issue": "2024-03",
+   "variable": "tp",
+   "target": "09/2024",
+   "lead": 6,
+   "p": [
+    0.3,
+    0.34,
+    0.37
+   ],
+   "hit": false
+  },
+  {
+   "issue": "2024-04",
+   "variable": "tp",
+   "target": "10/2024",
+   "lead": 6,
+   "p": [
+    0.28,
+    0.34,
+    0.38
+   ],
+   "hit": false
+  },
+  {
+   "issue": "2024-05",
+   "variable": "tp",
+   "target": "11/2024",
+   "lead": 6,
+   "p": [
+    0.38,
+    0.15,
+    0.47
+   ],
+   "hit": true
+  },
+  {
+   "issue": "2024-06",
+   "variable": "tp",
+   "target": "12/2024",
+   "lead": 6,
+   "p": [
+    0.29,
+    0.34,
+    0.37
+   ],
+   "hit": true
+  },
+  {
+   "issue": "2024-07",
+   "variable": "tp",
+   "target": "12/2024",
+   "lead": 5,
+   "p": [
+    0.29,
+    0.34,
+    0.37
+   ],
+   "hit": true
+  },
+  {
+   "issue": "2024-08",
+   "variable": "tp",
+   "target": "12/2024",
+   "lead": 4,
+   "p": [
+    0.29,
+    0.34,
+    0.37
+   ],
+   "hit": true
+  },
+  {
+   "issue": "2024-09",
+   "variable": "tp",
+   "target": "12/2024",
+   "lead": 3,
+   "p": [
+    0.29,
+    0.34,
+    0.37
+   ],
+   "hit": true
+  },
+  {
+   "issue": "2024-10",
+   "variable": "tp",
+   "target": "12/2024",
+   "lead": 2,
+   "p": [
+    0.29,
+    0.34,
+    0.37
+   ],
+   "hit": true
+  },
+  {
+   "issue": "2024-11",
+   "variable": "tp",
+   "target": "12/2024",
+   "lead": 1,
+   "p": [
+    0.29,
+    0.34,
+    0.37
+   ],
+   "hit": true
+  }
+ ]
+}

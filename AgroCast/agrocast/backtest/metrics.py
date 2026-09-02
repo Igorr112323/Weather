@@ -40,6 +40,33 @@ def rpss(probs, obs):
     return 1.0 - rps_mean(probs, obs) / base if base > 1e-9 else 0.0
 
 
+def year_weights(years, half_life_years):
+    """Экспоненциальные веса «свежести» наблюдений (полупериод в годах)."""
+    years = np.asarray(years, float)
+    hl = float(half_life_years)
+    if hl <= 0 or len(years) == 0:
+        return np.ones(len(years))
+    y_max = years.max()
+    w = 0.5 ** ((y_max - years) / hl)
+    s = w.sum()
+    return w / s if s > 0 else np.ones(len(years)) / len(years)
+
+
+def weighted_rps_mean(probs, obs, w):
+    r = rps_rows(probs, obs)
+    w = np.asarray(w, float)
+    s = w.sum()
+    if s <= 0:
+        return float(r.mean())
+    return float((r * w).sum() / s)
+
+
+def weighted_rpss(probs, obs, w):
+    base = clim_rps(obs)
+    val = weighted_rps_mean(probs, obs, w)
+    return 1.0 - val / base if base > 1e-9 else 0.0
+
+
 def brier(probs, obs, k):
     obs = np.asarray(obs, int)
     p = np.asarray(probs, float)[:, k]

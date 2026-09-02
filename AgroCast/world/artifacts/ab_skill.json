@@ -1,0 +1,122 @@
+{
+ "seasonal": {
+  "old_system_6models_uniform": {
+   "t2m": {
+    "n": 168,
+    "rpss": 0.25,
+    "hit": 0.655,
+    "hit_conf": 0.679,
+    "coverage80": 0.839
+   },
+   "tp": {
+    "n": 168,
+    "rpss": 0.007,
+    "hit": 0.315,
+    "hit_conf": null,
+    "coverage80": 0.696
+   }
+  },
+  "new_system_9models_fresh": {
+   "t2m": {
+    "n": 168,
+    "rpss": 0.326,
+    "hit": 0.673,
+    "hit_conf": 0.677,
+    "coverage_conf": 0.994,
+    "ece": 0.047
+   },
+   "tp": {
+    "n": 168,
+    "rpss": 0.035,
+    "hit": 0.369,
+    "hit_conf": 0.4,
+    "coverage_conf": 0.089,
+    "ece": 0.102
+   },
+   "overall": {
+    "n": 336,
+    "rpss": 0.185,
+    "hit": 0.521,
+    "hit_conf": 0.654,
+    "coverage_conf": 0.542,
+    "ece": 0.07
+   },
+   "p80_coverage": 0.798
+  },
+  "new_system_coverage_before_conformal": {
+   "t2m": 0.845,
+   "tp": 0.696
+  },
+  "per_model_rpss": {
+   "analog": -0.085,
+   "clim": -0.037,
+   "deep_analog": -0.049,
+   "gbm": -0.033,
+   "ridge": -0.053,
+   "ridge_land": -0.03,
+   "ridge_ocean": -0.073,
+   "ridge_strat": -0.044,
+   "ssw": 0.177
+  }
+ },
+ "monthly": {
+  "old_system_6models_uniform": {
+   "t2m": {
+    "n": 1008,
+    "rpss": 0.118,
+    "hit": 0.538,
+    "hit_conf": 0.531,
+    "coverage80": 0.818
+   },
+   "tp": {
+    "n": 1008,
+    "rpss": -0.014,
+    "hit": 0.272,
+    "hit_conf": 0.265,
+    "coverage80": 0.795
+   }
+  },
+  "new_system_9models_fresh": {
+   "t2m": {
+    "n": 1008,
+    "rpss": 0.182,
+    "hit": 0.55,
+    "hit_conf": 0.55,
+    "coverage_conf": 1.0,
+    "ece": 0.021
+   },
+   "tp": {
+    "n": 1008,
+    "rpss": 0.014,
+    "hit": 0.377,
+    "hit_conf": 0.597,
+    "coverage_conf": 0.071,
+    "ece": 0.027
+   },
+   "overall": {
+    "n": 2016,
+    "rpss": 0.099,
+    "hit": 0.463,
+    "hit_conf": 0.553,
+    "coverage_conf": 0.536,
+    "ece": 0.017
+   },
+   "p80_coverage": 0.798
+  },
+  "new_system_coverage_before_conformal": {
+   "t2m": 0.816,
+   "tp": 0.79
+  },
+  "per_model_rpss": {
+   "analog": -0.057,
+   "clim": -0.039,
+   "deep_analog": -0.062,
+   "gbm": -0.034,
+   "ridge": -0.037,
+   "ridge_land": -0.037,
+   "ridge_ocean": -0.047,
+   "ridge_strat": -0.038,
+   "ssw": 0.076
+  }
+ }
+}

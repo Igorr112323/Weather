@@ -5,7 +5,7 @@ from agrocast.models.ridge import RidgeModel
 
 LAND_PATTERN = r"^(swvl_a|snow_a|t2m_a|tp_a|swvl|snow)$"
 STRAT_PATTERN = r"^(u10|z50)_a(_l[0-9]+|_s[0-9]+)?$"
-OCEAN_PATTERN = r"^(pc[123](_l[0-9]+|_s[0-9]+|_f[0-9]+)?|med_a(_s3)?|black_a(_s3)?)$"
+OCEAN_PATTERN = r"^(pc[123](_l[0-9]+|_s[0-9]+|_f[0-9]+|_e)?|med_a(_s3)?|black_a(_s3)?)$"
 
 
 class WindowedRidge(ForecastModel):

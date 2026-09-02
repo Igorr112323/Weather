@@ -45,6 +45,27 @@ def _metrics(blend):
     return out
 
 
+def _clim_metrics(rec):
+    from agrocast.backtest.metrics import rps_rows
+
+    out = {}
+    clim_rows = rec[rec.model == "clim"]
+    for v, g in clim_rows.groupby("variable"):
+        obs = g["obs_tercile"].to_numpy(int)
+        P = g[["p0", "p1", "p2"]].to_numpy(float)
+        rps = rps_rows(P, obs)
+        rps_clim = rps_rows(np.tile([1 / 3.0] * 3, (len(obs), 1)), obs)
+        q = g[["q10", "q90"]].to_numpy(float)
+        o = g["obs_z"].to_numpy(float)
+        out[v] = {
+            "n": int(len(g)),
+            "rpss": round(1.0 - float(rps.mean()) / float(rps_clim.mean()), 3),
+            "hit": round(float((P.argmax(axis=1) == obs).mean()), 3),
+            "coverage80": round(float(np.mean((q[:, 0] - 1e-9 <= o) & (o <= q[:, 1] + 1e-9))), 3),
+        }
+    return out
+
+
 def loy_blend(rec, models, half_life):
     from agrocast.blend.blender import Blender, blended_records, attach_obs
 
@@ -72,6 +93,7 @@ def main(world_dir=None):
         old = loy_blend(rec, OLD_MODELS, 0.0)
         led, summary = load_ledger(wc, mode)
         row = {
+            "climatology_baseline": _clim_metrics(rec),
             "old_system_6models_uniform": _metrics(old),
             "new_system_9models_fresh": {
                 k: summary[k] for k in ("t2m", "tp", "overall", "p80_coverage") if k in summary
@@ -92,6 +114,7 @@ def main(world_dir=None):
     for mode, row in out.items():
         print(f"\n[{mode}]")
         for label, key in (
+            ("БАЗЛАЙН: адаптивная климатология", "climatology_baseline"),
             ("СТАРЫЕ 6 моделей (равн. веса)", "old_system_6models_uniform"),
             ("НОВЫЕ 9 моделей + калибровки", "new_system_9models_fresh"),
         ):
@@ -104,9 +127,10 @@ def main(world_dir=None):
                         cov = d.get("p80_coverage")
                     else:
                         cov = m.get("coverage80")
+                    hc = m.get("hit_conf")
                     print(
                         f"  {label:34s} {v:4s} RPSS {m['rpss']:+.3f} | попадание {m['hit']*100:.0f}% | "
-                        f"уверенные {str(round((m['hit_conf'] or 0)*100))+'%':>4s} | P10-90 покрытие {(cov if cov is not None else 0)*100:.0f}%"
+                        f"уверенные {str(round((hc or 0)*100))+'%':>4s} | P10-90 покрытие {(cov if cov is not None else 0)*100:.0f}%"
                     )
 
 

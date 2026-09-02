@@ -4,6 +4,7 @@ import numpy as np
 
 GRID = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
 SEL0, SEL1 = 2004, 2014
+VAL0, VAL1 = 2015, 2024
 
 
 def stack_path(config, mode, variable):
@@ -77,18 +78,20 @@ def select_alpha(pt, v, mode, blend, grid=GRID, nnmap=None):
     Prows = g[["p0", "p1", "p2"]].to_numpy(float)
     obs = g["obs_tercile"].to_numpy(int)
     yrows = g["year"].to_numpy(int)
-    years_arr = np.array(sorted(set(yrows.tolist())))
-    clim = np.tile([1 / 3.0] * 3, (len(obs), 1))
-    best_a, best_key = None, None
+    sel_mask = (yrows >= SEL0) & (yrows <= SEL1)
+    val_mask = (yrows >= VAL0) & (yrows <= VAL1)
+    if not sel_mask.any() or not val_mask.any():
+        return 0.0
+    sel_rps = {}
+    val_rps = {}
     for a in grid:
         Pm = mix(Prows, keys, nnmap, a)
-        cal = TercileCalibrator().fit(Pm, obs)
-        Pc = cal.transform(Pm) if cal.usable() else Pm
-        rps_p = rps_rows(Pc, obs)
-        rps_c = rps_rows(clim, obs)
-        year_rpss = np.array([1.0 - float(rps_p[yrows == y].mean()) / float(rps_c[yrows == y].mean()) for y in years_arr])
-        sel = year_rpss[(years_arr >= SEL0) & (years_arr <= SEL1)]
-        key = (int((sel <= 0).sum()), int((year_rpss <= 0).sum()), float(-sel.min()), float(-sel.mean()))
-        if best_key is None or key < best_key:
-            best_key, best_a = key, float(a)
-    return best_a
+        cal = TercileCalibrator().fit(Pm[sel_mask], obs[sel_mask])
+        if cal.usable():
+            sel_rps[a] = float(rps_rows(cal.transform(Pm[sel_mask]), obs[sel_mask]).mean())
+            val_rps[a] = float(rps_rows(cal.transform(Pm[val_mask]), obs[val_mask]).mean())
+        else:
+            sel_rps[a] = float(rps_rows(Pm[sel_mask], obs[sel_mask]).mean())
+            val_rps[a] = float(rps_rows(Pm[val_mask], obs[val_mask]).mean())
+    candidates = [0.0] + [a for a in grid if a != 0.0 and val_rps[a] < val_rps[0.0]]
+    return float(min(candidates, key=lambda a: sel_rps[a]))

@@ -1,122 +1,150 @@
 {
  "seasonal": {
-  "old_system_6models_uniform": {
+  "climatology_baseline": {
    "t2m": {
-    "n": 168,
-    "rpss": 0.25,
-    "hit": 0.655,
-    "hit_conf": 0.679,
-    "coverage80": 0.839
+    "n": 251,
+    "rpss": 0.209,
+    "hit": 0.625,
+    "coverage80": 0.773
    },
    "tp": {
-    "n": 168,
-    "rpss": 0.007,
-    "hit": 0.315,
+    "n": 251,
+    "rpss": -0.036,
+    "hit": 0.303,
+    "coverage80": 0.773
+   }
+  },
+  "old_system_6models_uniform": {
+   "t2m": {
+    "n": 251,
+    "rpss": 0.193,
+    "hit": 0.594,
+    "hit_conf": 0.695,
+    "coverage80": 0.765
+   },
+   "tp": {
+    "n": 251,
+    "rpss": 0.003,
+    "hit": 0.331,
     "hit_conf": null,
-    "coverage80": 0.696
+    "coverage80": 0.773
    }
   },
   "new_system_9models_fresh": {
    "t2m": {
-    "n": 168,
-    "rpss": 0.326,
-    "hit": 0.673,
-    "hit_conf": 0.677,
-    "coverage_conf": 0.994,
-    "ece": 0.047
+    "n": 251,
+    "rpss": 0.269,
+    "hit": 0.649,
+    "hit_conf": 0.688,
+    "coverage_conf": 0.741,
+    "ece": 0.126
    },
    "tp": {
-    "n": 168,
-    "rpss": 0.035,
-    "hit": 0.369,
-    "hit_conf": 0.4,
-    "coverage_conf": 0.089,
-    "ece": 0.102
+    "n": 251,
+    "rpss": 0.01,
+    "hit": 0.371,
+    "hit_conf": null,
+    "coverage_conf": 0.032,
+    "ece": 0.002
    },
    "overall": {
-    "n": 336,
-    "rpss": 0.185,
-    "hit": 0.521,
-    "hit_conf": 0.654,
-    "coverage_conf": 0.542,
-    "ece": 0.07
+    "n": 502,
+    "rpss": 0.145,
+    "hit": 0.51,
+    "hit_conf": 0.68,
+    "coverage_conf": 0.386,
+    "ece": 0.062
    },
-   "p80_coverage": 0.798
+   "p80_coverage": 0.801
   },
   "new_system_coverage_before_conformal": {
-   "t2m": 0.845,
-   "tp": 0.696
+   "t2m": 0.789,
+   "tp": 0.753
   },
   "per_model_rpss": {
-   "analog": -0.085,
-   "clim": -0.037,
-   "deep_analog": -0.049,
+   "analog": -0.1,
+   "clim": -0.036,
+   "deep_analog": -0.074,
    "gbm": -0.033,
-   "ridge": -0.053,
-   "ridge_land": -0.03,
-   "ridge_ocean": -0.073,
-   "ridge_strat": -0.044,
-   "ssw": 0.177
+   "ridge": -0.104,
+   "ridge_land": -0.057,
+   "ridge_ocean": -0.078,
+   "ridge_strat": -0.072,
+   "ssw": 0.136
   }
  },
  "monthly": {
-  "old_system_6models_uniform": {
+  "climatology_baseline": {
    "t2m": {
-    "n": 1008,
-    "rpss": 0.118,
-    "hit": 0.538,
-    "hit_conf": 0.531,
-    "coverage80": 0.818
+    "n": 1506,
+    "rpss": 0.078,
+    "hit": 0.486,
+    "coverage80": 0.769
    },
    "tp": {
-    "n": 1008,
-    "rpss": -0.014,
-    "hit": 0.272,
-    "hit_conf": 0.265,
-    "coverage80": 0.795
+    "n": 1506,
+    "rpss": -0.033,
+    "hit": 0.309,
+    "coverage80": 0.797
+   }
+  },
+  "old_system_6models_uniform": {
+   "t2m": {
+    "n": 1506,
+    "rpss": 0.088,
+    "hit": 0.489,
+    "hit_conf": 0.555,
+    "coverage80": 0.749
+   },
+   "tp": {
+    "n": 1506,
+    "rpss": 0.0,
+    "hit": 0.291,
+    "hit_conf": null,
+    "coverage80": 0.797
    }
   },
   "new_system_9models_fresh": {
    "t2m": {
-    "n": 1008,
-    "rpss": 0.182,
-    "hit": 0.55,
-    "hit_conf": 0.55,
-    "coverage_conf": 1.0,
-    "ece": 0.021
+    "n": 1506,
+    "rpss": 0.154,
+    "hit": 0.535,
+    "hit_conf": 0.536,
+    "coverage_conf": 0.995,
+    "ece": 0.019
    },
    "tp": {
-    "n": 1008,
-    "rpss": 0.014,
-    "hit": 0.377,
-    "hit_conf": 0.597,
-    "coverage_conf": 0.071,
-    "ece": 0.027
+    "n": 1506,
+    "rpss": 0.01,
+    "hit": 0.371,
+    "hit_conf": 0.292,
+    "coverage_conf": 0.059,
+    "ece": 0.01
    },
    "overall": {
-    "n": 2016,
-    "rpss": 0.099,
-    "hit": 0.463,
-    "hit_conf": 0.553,
-    "coverage_conf": 0.536,
-    "ece": 0.017
+    "n": 3012,
+    "rpss": 0.083,
+    "hit": 0.453,
+    "hit_conf": 0.522,
+    "coverage_conf": 0.527,
+    "ece": 0.006
    },
    "p80_coverage": 0.798
   },
   "new_system_coverage_before_conformal": {
-   "t2m": 0.816,
-   "tp": 0.79
+   "t2m": 0.756,
+   "tp": 0.808
   },
   "per_model_rpss": {
-   "analog": -0.057,
-   "clim": -0.039,
-   "deep_analog": -0.062,
-   "gbm": -0.034,
-   "ridge": -0.037,
-   "ridge_land": -0.037,
-   "ridge_ocean": -0.047,
-   "ridge_strat": -0.038,
-   "ssw": 0.076
+   "analog": -0.087,
+   "clim": -0.033,
+   "deep_analog": -0.057,
+   "gbm": -0.031,
+   "ridge": -0.073,
+   "ridge_land": -0.043,
+   "ridge_ocean": -0.053,
+   "ridge_strat": -0.04,
+   "ssw": 0.047
   }
  }
 }

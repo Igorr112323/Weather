@@ -93,6 +93,7 @@ function fcBlock(b,name,u){
     kv('Диапазон P10–P90',(u==='°C'?q.p10.toFixed(1):Math.round(q.p10))+' … '+(u==='°C'?q.p90.toFixed(1):Math.round(q.p90))+' '+u)+
     kv('Норма 1991–2020',(u==='°C'?n.toFixed(1):Math.round(n))+' '+u)+
     kv('Уверенность прогноза',conf(b.confidence));
+ if(b.confidence&&b.confidence.no_skill)h+='<div style="margin:6px 0;padding:6px 9px;background:#f6efe3;border-left:3px solid #c9a227;font-size:12px">⚠ Навык по этой переменной не подтверждён (RPSS ≤ 0 за 20 лет): значения уровня климатологии. Для решений использовать с осторожностью.</div>';
  if(b.analog_years&&b.analog_years.length)h+=kv('Года-аналоги',b.analog_years.slice(0,4).map(a=>a.year).join(', '));
  return h}
 function decLabel(l){const p=l.split('-');return MNS[+p[1]]+' · декада '+p[2]}
@@ -133,8 +134,8 @@ fetch('/api/job/'+job).then(r=>r.json()).then(st=>{
   const irrTxt=irr==null?'—':(irr>0?irr+' м³/га':'0 · покрывается запасом почвы');
   h+='<div class="block"><h2>Главное за первый период</h2><div class="dash">'+
   (tAnom!=null?chip3('температура к норме',tAnomTxt,'медиана P50'):'')+
-  (pPct!=null?chip3('осадки от нормы',pPct+'%','медиана P50'):'')+
-  chip3('оросительная норма',irrTxt,'медиана; сухой сценарий '+(wtr.irrigation_m3_ha||{}).p10+' м³/га')+
+  (pPct!=null?chip3('осадки от нормы',pPct+'%','медиана P50'+((s0.tp&&s0.tp.confidence&&s0.tp.confidence.no_skill)?' · уровень климатологии':'')):'')+
+  chip3('оросительная норма',irrTxt,'медиана; сухой сценарий '+(wtr.irrigation_m3_ha||{}).p10+' м³/га'+((s0.tp&&s0.tp.confidence&&s0.tp.confidence.no_skill)?' · осадки: климатология, навык не подтверждён':''))+
   '</div>';
   const lights=[];
   const adv=(s0.advice||{});

@@ -4,6 +4,8 @@ from pathlib import Path
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
 
+from agrocast.backtest.metrics import rps_rows
+
 MIN_CAL_N = 120
 
 
@@ -58,3 +60,26 @@ class TercileCalibrator:
         c.n = data["n"]
         c.curves = [MonoCurve(np.asarray(d["x"], float), np.asarray(d["y"], float)) for d in data["curves"]]
         return c
+
+
+def rps_of(p, obs):
+    return float(rps_rows(np.asarray(p, float), np.asarray(obs, int)).mean())
+
+
+def gated_calibrator(p, obs, years=None, hold_years=5, min_hold=48):
+    p = np.asarray(p, float)
+    obs = np.asarray(obs, int)
+    if years is None:
+        return TercileCalibrator().fit(p, obs)
+    years = np.asarray(years, int)
+    cut = int(years.max()) - hold_years
+    m_hold = years >= cut
+    m_fit = ~m_hold
+    if int(m_hold.sum()) < min_hold or int(m_fit.sum()) < MIN_CAL_N:
+        return TercileCalibrator().fit(p, obs)
+    cal = TercileCalibrator().fit(p[m_fit], obs[m_fit])
+    if not cal.usable():
+        return cal
+    if rps_of(cal.transform(p[m_hold]), obs[m_hold]) < rps_of(p[m_hold], obs[m_hold]):
+        return cal
+    return TercileCalibrator()

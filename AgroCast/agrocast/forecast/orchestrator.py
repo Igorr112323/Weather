@@ -86,9 +86,9 @@ def _what_to_do(agro):
 
 def _confidence(rpss_val):
     if rpss_val is None or not np.isfinite(rpss_val):
-        return {"rpss": None, "level": "unknown"}
+        return {"rpss": None, "level": "unknown", "no_skill": False}
     level = "low" if rpss_val < 0.02 else ("medium" if rpss_val < 0.06 else "high")
-    return {"rpss": _r(rpss_val, 4), "level": level}
+    return {"rpss": _r(rpss_val, 4), "level": level, "no_skill": bool(rpss_val <= 0.0)}
 
 
 def _skill_lookup(smap, variable, target_month, lead):

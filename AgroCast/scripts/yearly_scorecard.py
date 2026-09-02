@@ -91,6 +91,7 @@ def main():
 
     for mode in ("seasonal", "monthly"):
         d = out[mode]
+        led, _ = load_ledger(wc, mode)
         print(f"\n================= {mode.upper()} =================")
         print(f"{'год':>5} | {'T нов':>7} {'T стар':>7} | {'P нов':>7} {'P стар':>7} | {'T pop':>6} {'P pop':>6}")
         for y in YEARS:

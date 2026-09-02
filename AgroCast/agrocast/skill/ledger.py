@@ -11,6 +11,7 @@ SHA-256-хэшем входов. Хэш делает запись подлинн
 """
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -20,6 +21,29 @@ from agrocast.backtest.metrics import rps_rows, rpss
 
 SEASON_OF = {12: "DJF", 1: "DJF", 2: "DJF", 3: "MAM", 4: "MAM", 5: "MAM",
              6: "JJA", 7: "JJA", 8: "JJA", 9: "SON", 10: "SON", 11: "SON"}
+
+
+def _ospr_shrink(P, blend, pt, lead=3):
+    W = float(os.environ.get("AGROCAST_OSPR_W", "0.20"))
+    spr = pt.ocean_spread(lead=lead)
+    if spr is None or len(spr) < 20:
+        return P
+    smin, smax = float(spr.min()), float(spr.max())
+    rng = max(smax - smin, 1e-9)
+    issues = [
+        pd.Period(f"{int(y)}-{int(m):02d}", "M") - int(l)
+        for y, m, l in zip(blend["year"], blend["target_month"], blend["lead"])
+    ]
+    vals = np.array([float(spr.loc[i]) if i in spr.index else np.nan for i in issues])
+    u = np.clip((vals - smin) / rng, 0.0, 1.0)
+    w = W * u
+    w = np.where(np.isfinite(w), w, 0.0)
+    P = np.asarray(P, float)
+    for i in range(len(P)):
+        if w[i] > 0:
+            P[i] = (1.0 - w[i]) * P[i] + w[i] * np.array([1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0])
+            P[i] = P[i] / P[i].sum()
+    return P
 
 
 def record_hash(issue, lat, lon, variable, p, q):
@@ -154,6 +178,8 @@ def build_ledger(records, mode="monthly", config=None, half_life_years=5.0):
                 mode,
                 blend["target_month"].to_numpy(int),
             )
+        if pt is not None and len(P) > 0 and v == "tp" and os.environ.get("AGROCAST_OSPR", "1") != "0":
+            P = _ospr_shrink(P, blend, pt)
         blend = blend.assign(p0=P[:, 0], p1=P[:, 1], p2=P[:, 2])
         ccal = ConformalQuantileCalibrator().fit(blend)
         qs = np.array([

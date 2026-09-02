@@ -1,4 +1,5 @@
 import datetime as dt
+import os
 import numpy as np
 import pandas as pd
 
@@ -22,6 +23,7 @@ from agrocast.blend.conformal import ConformalQuantileCalibrator
 from agrocast.models.builder import MODEL_NAMES
 
 TERCILE_KEYS = ["below", "normal", "above"]
+W_OSPR = 0.20
 
 
 def _r(x, nd=2):
@@ -98,7 +100,7 @@ def _skill_lookup(smap, variable, target_month, lead):
     return float(g["rpss"].iloc[0])
 
 
-def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, issue, blender, smap, calib=None, mode="monthly", pcal=None, nstack=None, ccal=None, rcal=None, mz=None, terc_map=None, sctx=None):
+def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, issue, blender, smap, calib=None, mode="monthly", pcal=None, nstack=None, ccal=None, rcal=None, mz=None, terc_map=None, sctx=None, ospr=None):
     a = adaptive(series_raw, tgt.year, tgt.month, config.clim_window, config.clim_half_life)
     if a is None:
         return None
@@ -150,6 +152,17 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
         P = sctx.apply(P, tgt.month, tgt.year)
     if ccal is not None and ccal.usable():
         Q = ccal.transform(Q, variable, lead)
+    if ospr is not None and "series" in ospr:
+        _s = ospr["series"]
+        if issue in _s.index:
+            _sv = float(_s.loc[issue])
+            if np.isfinite(_sv):
+                _u = min(1.0, max(0.0, (_sv - ospr["min"]) / max(ospr["max"] - ospr["min"], 1e-9)))
+                _w = W_OSPR * _u
+                if _w > 0:
+                    P = (1.0 - _w) * P + _w * np.array([1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0])
+                    P = P / P.sum()
+                    Q = (1.0 - _w) * np.asarray(Q, float)
     phys = mu + sd * Q
     bias, ratio = 0.0, 1.0
     if calib is not None:
@@ -242,6 +255,14 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                 )
     except Exception:
         sctx_map = {}
+    ospr_data = {}
+    if os.environ.get("AGROCAST_OSPR", "1") != "0":
+        try:
+            _spr = point.ocean_spread(lead=3)
+            if _spr is not None and len(_spr) >= 20:
+                ospr_data = {"series": _spr, "min": float(_spr.min()), "max": float(_spr.max())}
+        except Exception:
+            ospr_data = {}
     calib = None
     try:
         from agrocast.ingest.stations import calibration_for_point
@@ -292,7 +313,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
             pcal = pcalib.get(v)
             nstack = nnstack.get(v)
             ccal = ccalib.get(v)
-            res = _fit_predict_target(config, pf, stds[v], raws[v], v, tgt, sm, lead, issue, blender, smap, apply_calib, mode=mode, pcal=pcal, nstack=nstack, ccal=ccal, rcal=rcalib, mz=mz, terc_map=terc_map, sctx=sctx_map.get(v))
+            res = _fit_predict_target(config, pf, stds[v], raws[v], v, tgt, sm, lead, issue, blender, smap, apply_calib, mode=mode, pcal=pcal, nstack=nstack, ccal=ccal, rcal=rcalib, mz=mz, terc_map=terc_map, sctx=sctx_map.get(v), ospr=(ospr_data if v == "tp" else None))
             if res is None:
                 continue
             block, phys = res

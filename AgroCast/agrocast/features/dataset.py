@@ -34,6 +34,7 @@ class PointDataset:
         self._pf = None
         self._seas_raw = {}
         self._seas_std = {}
+        self._ospr = {}
         self.grid_lat = None
         self.grid_lon = None
 
@@ -241,6 +242,21 @@ class PointDataset:
             df[c] = df[c] / (sd if np.isfinite(sd) and sd > 1e-9 else 1.0)
         self._pcs = df
         return df
+
+    def ocean_spread(self, lead=3, sigma=0.25, n_members=40):
+        key = (int(lead), float(sigma), int(n_members))
+        if key not in self._ospr:
+            from agrocast.features.lim import lim_ensemble_frame
+
+            pcs = self.sst_pcs()
+            idx = pcs.dropna().index
+            ens = lim_ensemble_frame(pcs, idx, horizons=(int(lead),), n_members=n_members, sigma=sigma)
+            cols = [f"pc{i}_sp_f{int(lead)}" for i in range(1, 4) if f"pc{i}_sp_f{int(lead)}" in ens.columns]
+            if cols:
+                self._ospr[key] = ens[cols].mean(axis=1).dropna()
+            else:
+                self._ospr[key] = pd.Series(dtype=float)
+        return self._ospr[key]
 
     def predictor_frame(self):
         if self._pf is not None:

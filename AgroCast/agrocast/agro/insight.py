@@ -57,7 +57,7 @@ def _climate_norm(monthly, var, months, y0=1991, y1=2020):
     return {m: float(s[s.index.month == m].mean()) for m in months if (s.index.month == m).any()}
 
 
-def season_insight(members, lat, monthly, swvl_last):
+def season_insight(members, lat, monthly, swvl_last, sat_crop=None):
     if not members:
         return None
     df0 = members[0]
@@ -128,7 +128,15 @@ def season_insight(members, lat, monthly, swvl_last):
         return {"p10": round(float(np.quantile(x, 0.1))), "p50": round(float(np.quantile(x, 0.5))), "p90": round(float(np.quantile(x, 0.9)))}
 
     sat = {"b5": q(sat5), "b10": q(sat10), "crops": []}
-    for c in CROPS:
+    sat_list = list(CROPS)
+    if sat_crop and sat_crop.get("need"):
+        sat_list = [
+            dict(c, name=sat_crop["name"], need=int(sat_crop["need"]), note=sat_crop.get("note") or c["note"])
+            if c["key"] == "maize"
+            else c
+            for c in sat_list
+        ]
+    for c in sat_list:
         overlap = len(set(c["months"]) & set(months))
         if overlap == 0:
             continue

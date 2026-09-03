@@ -290,6 +290,7 @@ def run_job(job, world_dir, data_root):
                 mode=job.params.get("mode", "seasonal"),
                 season_len=int(job.params.get("season_len", 3)),
                 save=True,
+                variety=job.params.get("variety", ""),
             )
         job.status = "done"
         job.add("готово")

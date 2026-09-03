@@ -23,21 +23,23 @@ def _verdict(loss, cost):
     return "не окупается"
 
 
-def _source_line(p):
+def _source_line(p, yield_t_ha=None, variety_name=None):
     stale = " ВНИМАНИЕ: цена устарела — обновите данные." if p.get("stale") else ""
+    var = f" Урожайность — по сорту «{variety_name}» из справочника ({yield_t_ha} т/га)." if variety_name else ""
     return (
-        f"Цена кукурузы: {p.get('source', '—')} (дата цены: {p.get('as_of', '—')}){stale} "
-        f"Параметры культуры (заморозки, САТ, окно сева) — по источникам: kccc.ru, rosgibrid.ru, "
-        f"rosagrochim.ru. Доли потерь от засухи/жары — типовые отраслевые оценки, уточните под свои затраты."
+        f"Цена кукурузы: {p.get('source', '—')} (дата цены: {p.get('as_of', '—')}){stale}"
+        f"{var} Параметры культуры (заморозки, САТ, окно сева) — по источникам: kccc.ru, rosgibrid.ru, "
+        f"rosagrochim.ru и справочнику сортов. Доли потерь от засухи/жары — типовые отраслевые оценки, уточните под свои затраты."
     )
 
 
-def econ_block(ph, drought_p=None, heat_p=None, price=None):
+def econ_block(ph, drought_p=None, heat_p=None, price=None, yield_t_ha=None, variety_name=None):
     p = price if price else dict(FALLBACK_PRICE)
     price_rub_t = float(p.get("rub_per_t") or FALLBACK_PRICE["rub_per_t"])
     rows = []
     ph_crops = {c.get("key"): c for c in ph.get("crops", []) if c.get("key")} if ph else {}
     for key, e in ECON.items():
+        yield_v = float(yield_t_ha) if yield_t_ha else e["yield"]
         c = ph_crops.get(key)
         dr = None
         ht = None
@@ -51,12 +53,13 @@ def econ_block(ph, drought_p=None, heat_p=None, price=None):
             dr = float(drought_p or 0.0)
         if ht is None:
             ht = float(heat_p or 0.0)
-        loss_dr = dr * e["loss_drought"] * e["yield"] * price_rub_t
-        loss_ht = ht * e["loss_heat"] * e["yield"] * price_rub_t
+        loss_dr = dr * e["loss_drought"] * yield_v * price_rub_t
+        loss_ht = ht * e["loss_heat"] * yield_v * price_rub_t
         rows.append(
             {
                 "key": key,
                 "name": NAMES[key],
+                "variety": variety_name,
                 "price_rub_t": round(price_rub_t),
                 "price_usd_per_t": p.get("usd_per_t"),
                 "price_usd_cents_bushel": p.get("usd_cents_bushel"),
@@ -64,7 +67,7 @@ def econ_block(ph, drought_p=None, heat_p=None, price=None):
                 "price_as_of": p.get("as_of"),
                 "price_contract": p.get("contract"),
                 "price_stale": bool(p.get("stale")),
-                "yield_t_ha": e["yield"],
+                "yield_t_ha": yield_v,
                 "drought_p": round(dr, 2),
                 "heat_p": round(ht, 2),
                 "loss_drought_rub": round(loss_dr / 10) * 10,
@@ -76,4 +79,4 @@ def econ_block(ph, drought_p=None, heat_p=None, price=None):
                 "risk_rub_ha": round(max(loss_dr, loss_ht) / 10) * 10,
             }
         )
-    return {"crops": rows, "source": _source_line(p)}
+    return {"crops": rows, "source": _source_line(p, yield_t_ha, variety_name)}

@@ -207,11 +207,35 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
     return block, phys
 
 
-def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "tp"), save=True, point=None, mode="monthly", season_len=3):
+def _sat_crop(v):
+    if not v or not v.get("gdd"):
+        return None
+    return {
+        "name": v["name"],
+        "need": int(v["gdd"]),
+        "note": f"сорт из справочника: ФАО {v.get('fao') or '—'}, САТ {int(v['gdd'])}° (параметры заполнены пользователем)",
+    }
+
+
+def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "tp"), save=True, point=None, mode="monthly", season_len=3, variety=None):
     store = config.zarr_store()
     point = point or PointDataset(config, lat, lon, store)
     pf = point.predictor_frame()
     monthly = point.monthly()
+    vcrop = None
+    if variety:
+        import os as _vos
+
+        from agrocast.crops.db import CropDB
+
+        _vdroot = _vos.environ.get("AGROCAST_DATA", str(Path(__file__).resolve().parent.parent.parent / "data"))
+        try:
+            vcrop = CropDB(
+                Path(_vdroot) / "crops.db",
+                str(Path(config.artifact_dir) / "crop_seed.json"),
+            ).get(variety)
+        except Exception:
+            vcrop = None
     horizon = int(min(max(int(horizon), 1), config.horizon_max))
     explicit = start is not None
     if start is None:
@@ -364,7 +388,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                         s = soil["swvl"].dropna()
                         if len(s):
                             swvl = float(s.iloc[-1])
-                    agro["insight"] = season_insight(ens, float(lat), monthly, swvl)
+                    agro["insight"] = season_insight(ens, float(lat), monthly, swvl, sat_crop=_sat_crop(vcrop))
                     from agrocast.agro.phenology import phenology_block
                     from agrocast.agro.drivers import top_drivers
                     from agrocast.agro.decide import decision_table
@@ -413,7 +437,14 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                         mprice = corn_price(_droot, str(Path(config.artifact_dir).parent), timeout=10)
                     except Exception:
                         mprice = None
-                    agro["econ"] = econ_block(agro.get("phenology") or {}, drought_p, heat_p, price=mprice)
+                    agro["econ"] = econ_block(
+                        agro.get("phenology") or {},
+                        drought_p,
+                        heat_p,
+                        price=mprice,
+                        yield_t_ha=vcrop.get("yield_t_ha") if vcrop else None,
+                        variety_name=vcrop.get("name") if vcrop else None,
+                    )
                 except Exception:
                     pass
     # Реестр доверия: публичный счёт навыка (backtest-лет + живые выпуски)

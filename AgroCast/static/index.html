@@ -22,6 +22,8 @@ h1 span{color:#6f8f57}
 .btn.ghost{background:#2a4030;margin-top:8px}
 .btn.ghost:hover{background:#365238}
 input[type=month]{width:100%;background:#0e1a12;border:1px solid #3a5a44;color:#e8f0e4;border-radius:8px;padding:9px 11px;font-size:15px}
+#side input[type=text],#side input[type=number]{background:#0e1a12;border:1px solid #3a5a44;color:#e8f0e4;border-radius:8px;padding:8px 10px;font-size:13px}
+#side select{width:100%;background:#0e1a12;border:1px solid #3a5a44;color:#e8f0e4;border-radius:8px;padding:9px 11px;font-size:13px}
 label{font-size:12.5px;color:#9dbd90;display:block;margin:10px 0 5px}
 .opt{display:flex;align-items:center;gap:10px;background:#0e1a12;border:1px solid #3a5a44;border-radius:10px;padding:9px 12px;margin-top:8px;cursor:pointer}
 .opt:hover{border-color:#6fae3f}
@@ -58,6 +60,9 @@ label{font-size:12.5px;color:#9dbd90;display:block;margin:10px 0 5px}
 <h3 style="margin-top:14px">3 · Период</h3>
 <div id="opts"></div>
 
+<h3 style="margin-top:14px">4 · Сорт (для САТ и расчёта денег)</h3>
+<select id="cropsel"></select>
+
 <button class="btn" id="go" style="margin-top:16px">Пуск</button>
 <div class="err" id="goerr"></div>
 </div>
@@ -79,6 +84,37 @@ label{font-size:12.5px;color:#9dbd90;display:block;margin:10px 0 5px}
 <input type="number" id="farea" placeholder="га" min="1" style="flex:1;min-width:70px">
 </div>
 <button class="btn ghost" id="fadd" style="margin-top:8px">+ Добавить поле</button>
+</div>
+
+<div class="card">
+<h3>Справочник сортов кукурузы</h3>
+<div class="sub" style="margin-top:0">Ваша база — вносите свои гибриды (название, ФАО, САТ, урожайность, сроки сева). Прогноз и расчёт денег берут параметры выбранного сорта. Хранится на сервере постоянно.</div>
+<div id="cropsbox" style="margin-top:8px"></div>
+<div style="margin-top:10px">
+<input type="text" id="c_name" placeholder="Название гибрида *" style="width:100%">
+<div style="display:flex;gap:8px;margin-top:8px">
+<input type="number" id="c_fao" placeholder="ФАО (200)">
+<input type="number" id="c_gdd" placeholder="САТ, °C (2400)">
+<input type="number" id="c_vp" placeholder="Вегетация, дн (110)">
+</div>
+<div style="display:flex;gap:8px;margin-top:8px">
+<input type="number" id="c_yield" placeholder="Урожайность, т/га">
+<input type="number" id="c_area" placeholder="Площадь, га">
+<input type="text" id="c_breeder" placeholder="Селекционер">
+</div>
+<div style="display:flex;gap:8px;margin-top:8px">
+<input type="text" id="c_sowf" placeholder="Сев с (04-20)">
+<input type="text" id="c_sowt" placeholder="Сев по (05-15)">
+<input type="number" id="c_ftol" placeholder="Мороз, до (−2)">
+<input type="number" id="c_ffat" placeholder="Гибель при (−3)">
+</div>
+<input type="text" id="c_notes" placeholder="Заметки (особенности, опыт)" style="width:100%;margin-top:8px">
+<div style="display:flex;gap:8px;margin-top:8px">
+<button class="btn ghost" id="c_save" style="flex:1">Сохранить сорт</button>
+<button class="btn ghost" id="c_clear" style="flex:1">Очистить</button>
+</div>
+<div class="err" id="cerr"></div>
+</div>
 </div>
 
 <div class="card warn" id="outwarn" style="display:none">
@@ -156,7 +192,7 @@ el('go').onclick=async()=>{
  const k=modeOf();
  if(k==='na'){el('goerr').textContent='Прошлая дата: проверка на истории доступна за 2008–2024. Выберите год из диапазона или будущий месяц.';return}
  const body=k==='fc'
-  ?{lat:pt.lat,lon:pt.lon,kind:'forecast',start:start,horizon:per.horizon,mode:per.mode,season_len:3}
+  ?{lat:pt.lat,lon:pt.lon,kind:'forecast',start:start,horizon:per.horizon,mode:per.mode,season_len:3,variety:el('cropsel').value}
   :{lat:pt.lat,lon:pt.lon,kind:'hindcast',start:start,horizon:per.horizon,mode:per.mode,season_len:3};
  el('ptitle').textContent=(k==='fc'?'Прогноз · ':'Проверка на истории · ')+start;
  el('go').disabled=true;
@@ -176,7 +212,7 @@ el('go').onclick=async()=>{
  },1800);
 };
 el('back').onclick=()=>{el('prog').style.display='none';el('dlg').style.display='block'};
-const CROPS_JS=[['winter_wheat','Озимая пшеница'],['winter_barley','Озимый ячмень'],['sunflower','Подсолнечник'],['maize','Кукуруза'],['soy','Соя'],['rapeseed','Озимый рапс'],['sugar_beet','Сахарная свёкла']];
+const CROPS_JS=[['maize','Кукуруза на зерно']];
 el('fcrop').innerHTML=CROPS_JS.map(c=>'<option value="'+c[0]+'">'+c[1]+'</option>').join('');
 const fldKey='agrocast_fields';
 const fldLoad=()=>{try{return JSON.parse(localStorage.getItem(fldKey)||'[]')}catch(e){return[]}};
@@ -195,6 +231,53 @@ el('fadd').onclick=()=>{
  el('fname').value='';el('farea').value='';fldRender();
 };
 fldRender();
+
+let CROPVAR=[];
+async function cropLoad(){
+ try{
+ const r=await(await fetch('/api/crops')).json();
+ CROPVAR=r.crops||[];
+ el('cropsel').innerHTML='<option value="">Стандартный (параметры по источникам)</option>'+CROPVAR.map(c=>'<option value="'+c.name+'">'+c.name+'</option>').join('');
+ cropsRender();
+ }catch(e){}
+}
+function cropsRender(){
+ const box=el('cropsbox');
+ if(!CROPVAR.length){box.innerHTML='<div class="sub">База пуста — добавьте сорт ниже.</div>';return}
+ box.innerHTML='<table style="width:100%;font-size:12px;border-collapse:collapse">'+
+ '<tr style="color:#8fae86"><th style="text-align:left;padding:4px 2px">Сорт</th><th>ФАО</th><th>САТ</th><th>Урож., т/га</th><th style="width:56px"></th></tr>'+
+ CROPVAR.map(c=>'<tr style="border-top:1px solid #2e4a36"><td style="padding:5px 2px"><b>'+c.name+'</b>'+(c.breeder?'<div style="font-size:10px;color:#8fae86">'+c.breeder+'</div>':'')+'</td><td class="num" style="text-align:center">'+(c.fao||'—')+'</td><td class="num" style="text-align:center">'+(c.gdd||'—')+'</td><td class="num" style="text-align:center">'+(c.yield_t_ha==null?'—':c.yield_t_ha)+'</td><td style="text-align:right;white-space:nowrap"><button data-e="'+c.id+'" title="изменить" style="background:none;border:none;color:#a4d65e;cursor:pointer;font-size:13px">✎</button> <button data-x="'+c.id+'" title="удалить" style="background:none;border:none;color:#c4554d;cursor:pointer;font-size:13px">✕</button></td></tr>').join('')+'</table>';
+ box.querySelectorAll('[data-e]').forEach(b=>b.onclick=()=>cropEdit(b.dataset.e));
+ box.querySelectorAll('[data-x]').forEach(b=>b.onclick=async()=>{
+ const c=CROPVAR.find(x=>String(x.id)===b.dataset.x);
+ if(!c||!confirm('Удалить сорт «'+c.name+'»?'))return;
+ await fetch('/api/crops/'+encodeURIComponent(c.name),{method:'DELETE'});
+ cropLoad();
+ });
+}
+function cropEdit(id){
+ const c=CROPVAR.find(x=>String(x.id)===id);if(!c)return;
+ el('c_name').value=c.name;el('c_fao').value=c.fao||'';el('c_gdd').value=c.gdd||'';el('c_vp').value=c.vp_days||'';
+ el('c_yield').value=c.yield_t_ha==null?'':c.yield_t_ha;el('c_area').value=c.area_ha==null?'':c.area_ha;
+ el('c_breeder').value=c.breeder||'';el('c_sowf').value=c.sow_from||'';el('c_sowt').value=c.sow_to||'';
+ el('c_ftol').value=c.frost_tol_c==null?'':c.frost_tol_c;el('c_ffat').value=c.frost_fatal_c==null?'':c.frost_fatal_c;
+ el('c_notes').value=c.notes||'';
+ el('c_name').focus();
+}
+el('c_save').onclick=async()=>{
+ const body={name:el('c_name').value,fao:el('c_fao').value||null,gdd:el('c_gdd').value||null,vp_days:el('c_vp').value||null,
+ yield_t_ha:el('c_yield').value||null,area_ha:el('c_area').value||null,breeder:el('c_breeder').value,
+ sow_from:el('c_sowf').value,sow_to:el('c_sowt').value,frost_tol_c:el('c_ftol').value||null,frost_fatal_c:el('c_ffat').value||null,
+ notes:el('c_notes').value};
+ el('cerr').textContent='';
+ if(!body.name){el('cerr').textContent='Укажите название сорта';return}
+ const r=await(await fetch('/api/crops',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();
+ if(r.error){el('cerr').textContent=r.error;return}
+ ['c_name','c_fao','c_gdd','c_vp','c_yield','c_area','c_breeder','c_sowf','c_sowt','c_ftol','c_ffat','c_notes'].forEach(i=>el(i).value='');
+ cropLoad();
+};
+el('c_clear').onclick=()=>{['c_name','c_fao','c_gdd','c_vp','c_yield','c_area','c_breeder','c_sowf','c_sowt','c_ftol','c_ffat','c_notes'].forEach(i=>el(i).value='');el('cerr').textContent=''};
+cropLoad();
 </script>
 </body>
 </html>

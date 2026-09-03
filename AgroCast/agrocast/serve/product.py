@@ -50,6 +50,19 @@ log.info("AgroCast стартовал: world=%s data=%s", WORLD, DATA_ROOT)
 app = FastAPI(title="AgroCast Россия")
 
 JOBS = {}
+_CROPS = None
+
+
+def _cropdb():
+    global _CROPS
+    if _CROPS is None:
+        from agrocast.crops.db import CropDB
+
+        _CROPS = CropDB(
+            Path(DATA_ROOT) / "crops.db",
+            str(Path(WORLD) / "artifacts" / "crop_seed.json"),
+        )
+    return _CROPS
 
 
 @app.middleware("http")
@@ -74,6 +87,7 @@ class PrepareRequest(BaseModel):
     season_len: int = 3
     kind: str = "forecast"
     year: int = 2020
+    variety: str = ""
 
 
 class SubscribeRequest(BaseModel):
@@ -154,6 +168,30 @@ def subscribe(req: SubscribeRequest):
     reg.add_subscription(req.name, req.lat, req.lon, req.horizon, ("t2m", "tp"), req.mode)
     log.info("подписка: name=%s (%.2f, %.2f) mode=%s horizon=%d", req.name, req.lat, req.lon, req.mode, req.horizon)
     return {"ok": True, "name": req.name}
+
+
+@app.get("/api/crops")
+def crops_list():
+    return {"ok": True, "crops": _cropdb().all()}
+
+
+@app.post("/api/crops")
+def crops_add(d: dict):
+    try:
+        row = _cropdb().upsert(d)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    log.info("справочник: сорт «%s» сохранён", row["name"])
+    return {"ok": True, "crop": row}
+
+
+@app.delete("/api/crops/{name}")
+def crops_del(name: str):
+    ok = _cropdb().remove(name)
+    if not ok:
+        return JSONResponse({"error": "сорт не найден"}, status_code=404)
+    log.info("справочник: сорт «%s» удалён", name)
+    return {"ok": True}
 
 
 @app.get("/api/ledger")

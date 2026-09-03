@@ -213,6 +213,35 @@ fetch('/api/job/'+job).then(r=>r.json()).then(st=>{
    kv('Оросительная норма (сухой сценарий P10)',((wtr.irrigation_m3_ha||{}).p10||0)+' м³/га')+
    '<div class="foot">Норма = ETc − осадки − доступный запас (40% от запаса разрешено расходовать). 1 мм = 10 м³/га. Медиана 0 означает: дефицит покрывается почвенным запасом; планируйте полив по сухому сценарию.</div></div>';
   }
+  const fr=ins.frost||{};
+  if(fr.span){
+   const MNr=['','янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+   let hh='<div class="block"><h2>Сев и заморозки</h2><div class="dash">'+
+    chip3('P(хотя бы 1 заморозок за период)',Math.round((fr.p_frost_any||0)*100)+'%',(fr.p_frost_spring!=null?'из них весенних (апр–июн) '+Math.round(fr.p_frost_spring*100)+'%':'по ансамблю'))+
+    (fr.last_frost?chip3('последний заморозок',fr.last_frost.median,'с вероятностью 90% — не позже '+fr.last_frost.p90):'')+
+    '</div>';
+   const bym=fr.p_frost_day_by_month||{};
+   if(Object.keys(bym).length){
+    const spr=[3,4,5,6].some(m=>bym[''+m]!=null);
+    hh+='<div class="foot" style="margin-top:6px">Риск дня с tmin<0°C по месяцам периода: '+Object.keys(bym).map(m=>MNr[m]+' — '+Math.round(bym[m]*100)+'%').join(' · ')+(spr?'':' (весенних месяцев в периоде нет)')+'</div>';
+   }
+   if(fr.crop){
+    const c=fr.crop;
+    hh+='<table style="margin-top:10px"><tr><th>Параметр</th><th>Значение</th></tr>'+
+    '<tr><td>Сорт (из справочника)</td><td><b>'+c.name+'</b>'+(c.fao?' · ФАО '+c.fao:'')+'</td></tr>'+
+    '<tr><td>Мороз: гибель всходов при</td><td class="num">'+c.fatal_c+'°C (переносит до '+c.tol_c+'°C)</td></tr>'+
+    '<tr><td>Окно сева из справочника</td><td class="num">'+c.sow_from+' – '+c.sow_to+'</td></tr>'+
+    (c.rule?'<tr><td>Критерий «безопасно»</td><td style="font-size:11.5px">'+c.rule+'</td></tr>':'')+
+    (c.danger_at_sow_from!=null?'<tr><td>Риск опасного мороза в 30 суток с начала окна</td><td><span class="pill '+(c.danger_at_sow_from>0.1?'bad':'ok')+'">'+Math.round(c.danger_at_sow_from*100)+'%</span></td></tr>':'')+
+    (c.safe_date?'<tr><td>Безопасная дата сева (прогноз)</td><td><b>'+c.safe_date+'</b> · рекомендуем: '+c.recommended+'</td></tr>':'')+
+    '</table>'+
+    '<div class="verdict" style="margin-top:8px">'+c.verdict+'</div>';
+   } else {
+    hh+='<div class="foot" style="margin-top:8px">Выберите сорт в настройках расчёта — тогда покажем безопасную дату сева для его морозостойкости.</div>';
+   }
+   hh+='<div class="foot">«Опасный мороз» — ниже порога гибели всходов сорта из справочника (по умолчанию −3°C; по makosh-group.com.ua: всходы погибают при −3°C, 2–3 листа выдерживают −2°C). 30 суток = от сева до устойчивых всходов. Даты — по ансамблю прогноза, не по климатологии.</div></div>';
+   h+=hh;
+  }
   const sat=ins.sat||{};
   if(sat.b10){
    h+='<div class="block"><h2>Сумма активных температур (САТ) за период</h2><div class="dash">'+
@@ -226,6 +255,14 @@ fetch('/api/job/'+job).then(r=>r.json()).then(st=>{
      h+='<tr><td>'+c.name+'<div style="font-size:10.5px;color:#8a9a82">'+c.note+'</div></td><td>&gt;'+c.base+'°C</td><td class="num">'+c.need+'</td><td><div style="display:flex;align-items:center;gap:8px"><div class="meter"><i class="'+cls+'" style="width:'+w+'%"></i></div><span class="num">'+c.coverage+'%</span></div></td><td style="font-size:11.5px">'+c.verdict+'</td></tr>';
     });
     h+='</table>';
+   }
+   if(sat.gdd&&sat.gdd.crops&&sat.gdd.crops.length){
+    h+='<h3 style="margin-top:14px">Успеет ли сорт: вероятность набрать САТ к уборке</h3><table><tr><th>Сорт</th><th>ФАО</th><th>САТ,°</th><th>Вегет., дн</th><th>Уборка ~</th><th>САТ к дате,° (P10–P90)</th><th>Вероятность набрать</th></tr>';
+    sat.gdd.crops.forEach(g=>{
+     const w=g.p_ok==null?'':(g.p_ok>=0.8?'ok':(g.p_ok>=0.6?'warn':'bad'));
+     h+='<tr><td>'+g.name+(g.fao?'<div style="font-size:10px;color:#8a9a82">ФАО '+g.fao+'</div>':'')+'</td><td class="num">'+(g.fao||'—')+'</td><td class="num">'+g.need+'</td><td class="num">'+g.vp_days+'</td><td class="num">'+(g.harvest||'—')+'</td><td class="num">'+(g.gdd?g.gdd.p10+'–'+g.gdd.p90+'<div style="font-size:10px;color:#8a9a82">медиана '+g.gdd.p50+'</div>':'—')+'</td><td><span class="pill '+w+'">'+(g.p_ok==null?'—':Math.round(g.p_ok*100)+'%')+'</span><div style="font-size:10px;color:#8a9a82">'+(g.note||'')+'</div></td></tr>';
+    });
+    h+='</table><div class="foot">'+sat.gdd.note+'; «—» = сев или уборка за пределами горизонта прогноза (1–6 месяцев).</div>';
    }
    h+='<div class="foot">САТ — накопление температуры выше биологического порога за период прогноза. Полную потребность культура набирает за весь цикл — при частичном покрытии периода показан рост за период.</div></div>';
   }
@@ -266,7 +303,7 @@ fetch('/api/job/'+job).then(r=>r.json()).then(st=>{
    ec.crops.forEach(c=>{
     const pi=c.irrigation==='окупается'?'ok':(c.irrigation==='на грани'?'warn':'');
     const pa=c.antistress==='окупается'?'ok':(c.antistress==='на грани'?'warn':'');
-    h+='<tr><td><b>'+c.name+'</b>'+(c.variety?'<div style="font-size:10.5px;color:#8a9a82">сорт: '+c.variety+'</div>':'')+'<div style="font-size:10.5px;color:#8a9a82">урожайность '+String(c.yield_t_ha).replace('.',',')+' т/га</div></td><td class="num">'+c.price_rub_t.toLocaleString('ru-RU')+' ₽<div style="font-size:10.5px;color:#8a9a82">'+(c.price_as_of||'')+(c.price_usd_per_t!=null?' · '+String(c.price_usd_per_t).replace('.',',')+' $/т':'')+(c.price_stale?' · <span style="color:#c4554d">цена устарела</span>':'')+'</div></td><td class="num">'+Math.round(c.drought_p*100)+'%</td><td class="num">'+c.loss_drought_rub.toLocaleString('ru-RU')+' ₽</td><td><span class="pill '+pi+'">'+c.irrigation+'</span><div style="font-size:10.5px;color:#8a9a82">'+c.cost_irr_rub.toLocaleString('ru-RU')+' ₽/га</div></td><td class="num">'+(c.heat_p!=null?Math.round(c.heat_p*100)+'%':'—')+'</td><td class="num">'+c.loss_heat_rub.toLocaleString('ru-RU')+' ₽</td><td><span class="pill '+pa+'">'+c.antistress+'</span><div style="font-size:10.5px;color:#8a9a82">'+c.cost_anti_rub.toLocaleString('ru-RU')+' ₽/га</div></td></tr>';
+    h+='<tr><td><b>'+c.name+'</b>'+(c.variety?'<div style="font-size:10.5px;color:#8a9a82">сорт: '+c.variety+'</div>':'')+'<div style="font-size:10.5px;color:#8a9a82">урожайность '+String(c.yield_t_ha).replace('.',',')+' т/га</div></td><td class="num">'+c.price_rub_t.toLocaleString('ru-RU')+' ₽<div style="font-size:10.5px;color:#8a9a82">'+(c.price_as_of||'')+(c.price_usd_per_t!=null?' · '+String(c.price_usd_per_t).replace('.',',')+' $/т':'')+(c.price_stale?' · <span style="color:#c4554d">цена устарела</span>':'')+'</div></td><td class="num">'+Math.round(c.drought_p*100)+'%</td><td class="num">'+c.loss_drought_rub.toLocaleString('ru-RU')+' ₽</td><td><span class="pill '+pi+'">'+c.irrigation+'</span><div style="font-size:10.5px;color:#8a9a82">'+(c.irr_m3_ha!=null?(c.irr_m3_ha.toLocaleString('ru-RU')+' м³/га ≈ '+c.irr_cost_rub.toLocaleString('ru-RU')+' ₽ · сухой '+(c.irr_m3_ha_p10||0).toLocaleString('ru-RU')+' м³/га'):(c.cost_irr_rub.toLocaleString('ru-RU')+' ₽/га по отрасли'))+'</div></td><td class="num">'+(c.heat_p!=null?Math.round(c.heat_p*100)+'%':'—')+'</td><td class="num">'+c.loss_heat_rub.toLocaleString('ru-RU')+' ₽</td><td><span class="pill '+pa+'">'+c.antistress+'</span><div style="font-size:10.5px;color:#8a9a82">'+c.cost_anti_rub.toLocaleString('ru-RU')+' ₽/га</div></td></tr>';
    });
    h+='</table><div class="foot">Ожидаемый убыток = вероятность × доля потерь × типовая урожайность × цена. '+ec.source+'</div></div>';
   }

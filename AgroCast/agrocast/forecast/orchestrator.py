@@ -54,6 +54,16 @@ def _what_to_do(agro):
                     "level": "mid",
                 }
             )
+    fr = (agro.get("insight") or {}).get("frost") or {}
+    fc = fr.get("crop") or {}
+    if fc.get("safe_date"):
+        cards.append(
+            {
+                "action": f"Сев {fc.get('name') or 'сорта'} — не раньше ~{fc['safe_date']}",
+                "reason": fc.get("verdict", ""),
+                "level": "high" if (fc.get("danger_at_sow_from") or 0) > 0.10 else "mid",
+            }
+        )
     ins = agro.get("insight") or {}
     dr = ins.get("drought") or {}
     if dr.get("irrigation_hint_m3_ha"):
@@ -223,19 +233,19 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
     pf = point.predictor_frame()
     monthly = point.monthly()
     vcrop = None
-    if variety:
-        import os as _vos
+    all_crops = []
+    import os as _vos
 
-        from agrocast.crops.db import CropDB
+    from agrocast.crops.db import CropDB
 
-        _vdroot = _vos.environ.get("AGROCAST_DATA", str(Path(__file__).resolve().parent.parent.parent / "data"))
-        try:
-            vcrop = CropDB(
-                Path(_vdroot) / "crops.db",
-                str(Path(config.artifact_dir) / "crop_seed.json"),
-            ).get(variety)
-        except Exception:
-            vcrop = None
+    _vdroot = _vos.environ.get("AGROCAST_DATA", str(Path(__file__).resolve().parent.parent.parent / "data"))
+    try:
+        _cdb = CropDB(Path(_vdroot) / "crops.db", str(Path(config.artifact_dir) / "crop_seed.json"))
+        all_crops = _cdb.all()
+        if variety:
+            vcrop = _cdb.get(variety)
+    except Exception:
+        vcrop = None
     horizon = int(min(max(int(horizon), 1), config.horizon_max))
     explicit = start is not None
     if start is None:
@@ -388,7 +398,10 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                         s = soil["swvl"].dropna()
                         if len(s):
                             swvl = float(s.iloc[-1])
-                    agro["insight"] = season_insight(ens, float(lat), monthly, swvl, sat_crop=_sat_crop(vcrop))
+                    agro["insight"] = season_insight(ens, float(lat), monthly, swvl, sat_crop=_sat_crop(vcrop), sat_crops=all_crops)
+                    from agrocast.agro.frost import frost_block
+
+                    agro["insight"]["frost"] = frost_block(ens, vcrop)
                     from agrocast.agro.phenology import phenology_block
                     from agrocast.agro.drivers import top_drivers
                     from agrocast.agro.decide import decision_table
@@ -444,6 +457,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                         price=mprice,
                         yield_t_ha=vcrop.get("yield_t_ha") if vcrop else None,
                         variety_name=vcrop.get("name") if vcrop else None,
+                        water=(agro.get("insight") or {}).get("water"),
                     )
                 except Exception:
                     pass

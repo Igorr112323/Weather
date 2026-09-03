@@ -23,19 +23,27 @@ def _verdict(loss, cost):
     return "не окупается"
 
 
+RUB_PER_M3 = 3.0
+
+
 def _source_line(p, yield_t_ha=None, variety_name=None):
     stale = " ВНИМАНИЕ: цена устарела — обновите данные." if p.get("stale") else ""
     var = f" Урожайность — по сорту «{variety_name}» из справочника ({yield_t_ha} т/га)." if variety_name else ""
     return (
         f"Цена кукурузы: {p.get('source', '—')} (дата цены: {p.get('as_of', '—')}){stale}"
         f"{var} Параметры культуры (заморозки, САТ, окно сева) — по источникам: kccc.ru, rosgibrid.ru, "
-        f"rosagrochim.ru и справочнику сортов. Доли потерь от засухи/жары — типовые отраслевые оценки, уточните под свои затраты."
+        f"rosagrochim.ru и справочнику сортов. Стоимость полива ≈{RUB_PER_M3:g} ₽/м³ "
+        f"(≈{int(4500 / RUB_PER_M3)} м³/га за полив 150 мм — типовая отраслевая оценка). "
+        f"Доли потерь от засухи/жары — типовые отраслевые оценки, уточните под свои затраты."
     )
 
 
-def econ_block(ph, drought_p=None, heat_p=None, price=None, yield_t_ha=None, variety_name=None):
+def econ_block(ph, drought_p=None, heat_p=None, price=None, yield_t_ha=None, variety_name=None, water=None):
     p = price if price else dict(FALLBACK_PRICE)
     price_rub_t = float(p.get("rub_per_t") or FALLBACK_PRICE["rub_per_t"])
+    w_irr = (water or {}).get("irrigation_m3_ha") or {}
+    irr_m3 = w_irr.get("p50")
+    irr_m3_dry = w_irr.get("p10")
     rows = []
     ph_crops = {c.get("key"): c for c in ph.get("crops", []) if c.get("key")} if ph else {}
     for key, e in ECON.items():
@@ -74,6 +82,10 @@ def econ_block(ph, drought_p=None, heat_p=None, price=None, yield_t_ha=None, var
                 "loss_heat_rub": round(loss_ht / 10) * 10,
                 "cost_irr_rub": e["cost_irr"],
                 "cost_anti_rub": e["cost_anti"],
+                "irr_m3_ha": irr_m3,
+                "irr_m3_ha_p10": irr_m3_dry,
+                "irr_cost_rub": round(irr_m3 * RUB_PER_M3) if irr_m3 else None,
+                "rub_per_m3": RUB_PER_M3,
                 "irrigation": _verdict(loss_dr, e["cost_irr"]),
                 "antistress": _verdict(loss_ht, e["cost_anti"]),
                 "risk_rub_ha": round(max(loss_dr, loss_ht) / 10) * 10,

@@ -1,3 +1,6 @@
+import bisect
+from datetime import timedelta
+
 import numpy as np
 import pandas as pd
 
@@ -57,7 +60,7 @@ def _climate_norm(monthly, var, months, y0=1991, y1=2020):
     return {m: float(s[s.index.month == m].mean()) for m in months if (s.index.month == m).any()}
 
 
-def season_insight(members, lat, monthly, swvl_last, sat_crop=None):
+def season_insight(members, lat, monthly, swvl_last, sat_crop=None, sat_crops=None):
     if not members:
         return None
     df0 = members[0]
@@ -147,6 +150,64 @@ def season_insight(members, lat, monthly, swvl_last, sat_crop=None):
         else:
             verdict = f"период покрывает {overlap} из {len(c['months'])} мес цикла — это САТ только за период прогноза"
         sat["crops"].append({"name": c["name"], "base": c["base"], "need": c["need"], "coverage": round(cov), "verdict": verdict, "note": c["note"]})
+
+    if sat_crops:
+        t0d, t1d = df0.index[0].date(), df0.index[-1].date()
+        cum = []
+        for df in members:
+            t = df["t2m"].to_numpy(float)
+            cum.append(([d.date() for d in df.index], np.cumsum(np.clip(t - 10.0, 0.0, None))))
+        gdd_rows = []
+        for v in sat_crops:
+            need = v.get("gdd")
+            if not need:
+                continue
+            vp = v.get("vp_days") or 110
+            try:
+                sm, sd = [int(x) for x in str(v.get("sow_from") or "04-20").split("-")]
+            except Exception:
+                sm, sd = 4, 20
+            sow_d = None
+            for yr in sorted({t0d.year, t1d.year}):
+                try:
+                    cand = pd.Timestamp(year=yr, month=sm, day=sd).date()
+                except Exception:
+                    continue
+                if t0d <= cand <= t1d:
+                    sow_d = cand
+                    break
+            rowv = {"name": v.get("name"), "fao": v.get("fao"), "need": int(need), "vp_days": int(vp), "sow_from": f"{sm:02d}-{sd:02d}"}
+            if sow_d is None:
+                rowv["p_ok"] = None
+                rowv["note"] = "сев вне периода прогноза"
+                gdd_rows.append(rowv)
+                continue
+            harvest_d = sow_d + timedelta(days=int(vp))
+            rowv["harvest"] = harvest_d.strftime("%d.%m.%Y")
+            if harvest_d > t1d:
+                rowv["note"] = "до конца периода прогноза (уборка за его пределами)"
+                eval_d = t1d
+            else:
+                rowv["note"] = "к уборке"
+                eval_d = harvest_d
+            vals = []
+            for dts, cs in cum:
+                pos = bisect.bisect_right(dts, eval_d) - 1
+                if pos >= 0:
+                    vals.append(float(cs[pos]))
+            if len(vals) < max(1, len(cum) // 2):
+                rowv["p_ok"] = None
+                rowv["note"] = "недостаточно дней прогноза для оценки"
+            else:
+                arr = np.array(vals)
+                rowv["p_ok"] = round(float(np.mean(arr >= need)), 2)
+                rowv["gdd"] = {"p10": int(np.quantile(arr, 0.1)), "p50": int(np.quantile(arr, 0.5)), "p90": int(np.quantile(arr, 0.9))}
+            gdd_rows.append(rowv)
+        gdd_rows.sort(key=lambda r: (r.get("p_ok") is None, -(r.get("p_ok") or 0)))
+        sat["gdd"] = {
+            "note": "накопление °C>10 от сева (дата из окна справочника) до уборки (сев + вегетационный период)",
+            "crops": gdd_rows,
+        }
 
     reserve_mm = None
     if swvl_last is not None and np.isfinite(swvl_last):

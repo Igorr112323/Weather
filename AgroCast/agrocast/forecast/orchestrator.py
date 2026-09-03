@@ -127,9 +127,23 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
     x_test = make_test_row(pf, issue, lead, tgt, use_cols=use_cols)
     preds = {}
     analogs = []
-    for m in build_models(config):
+    for m in build_models(config, variable=variable, mode=mode):
         try:
-            m.fit(X, yv, w=w, edges=meta[["e1", "e2"]].to_numpy(), years=meta["year"].to_numpy())
+            Xf, yf, metaf, wf = X, yv, meta, w
+            if mode == "seasonal" and getattr(m, "season_months", None) and len(m.season_months) > 1:
+                Xparts, yparts, mparts = [], [], []
+                for s2 in m.season_months:
+                    Xs, ys, ms = training_data(pf, std, variable, s2, lead, until=issue, use_cols=use_cols)
+                    if len(Xs):
+                        Xparts.append(Xs)
+                        yparts.append(ys)
+                        mparts.append(ms)
+                if Xparts:
+                    Xf = pd.concat(Xparts, ignore_index=True)
+                    yf = np.concatenate(yparts)
+                    metaf = pd.concat(mparts, ignore_index=True)
+                    wf = exp_weights(len(Xf), config.clim_half_life)
+            m.fit(Xf, yf, w=wf, edges=metaf[["e1", "e2"]].to_numpy(), years=metaf["year"].to_numpy())
             p, q = m.predict(x_test, e1, e2)
         except Exception:
             continue
@@ -248,7 +262,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
         vcrop = None
     horizon = int(min(max(int(horizon), 1), config.horizon_max))
     explicit = start is not None
-    if start is None:
+    if start is None or not str(start).strip():
         start = now_period() + 1
     else:
         start = pd.Period(str(start), "M") if not isinstance(start, pd.Period) else start

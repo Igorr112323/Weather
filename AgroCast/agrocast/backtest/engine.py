@@ -71,10 +71,24 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
                     trow = std.loc[tgt]
                     e1, e2 = float(trow["e1"]), float(trow["e2"])
                     x_test = make_test_row(pf, issue, lead, tgt, use_cols=use_cols)
-                    models = build_models(config)
+                    models = build_models(config, variable=v, mode=mode)
                     for m in models:
                         try:
-                            m.fit(X, yv, w=w, edges=meta[["e1", "e2"]].to_numpy(), years=meta["year"].to_numpy())
+                            Xf, yf, metaf, wf = X, yv, meta, w
+                            if mode == "seasonal" and getattr(m, "season_months", None) and len(m.season_months) > 1:
+                                Xparts, yparts, mparts = [], [], []
+                                for s2 in m.season_months:
+                                    Xs, ys, ms = training_data(pf, std, v, s2, lead, until=issue, use_cols=use_cols)
+                                    if len(Xs):
+                                        Xparts.append(Xs)
+                                        yparts.append(ys)
+                                        mparts.append(ms)
+                                if Xparts:
+                                    Xf = pd.concat(Xparts, ignore_index=True)
+                                    yf = np.concatenate(yparts)
+                                    metaf = pd.concat(mparts, ignore_index=True)
+                                    wf = exp_weights(len(Xf), config.clim_half_life)
+                            m.fit(Xf, yf, w=wf, edges=metaf[["e1", "e2"]].to_numpy(), years=metaf["year"].to_numpy())
                             p, q = m.predict(x_test, e1, e2)
                         except Exception:
                             continue

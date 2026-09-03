@@ -12,6 +12,8 @@ def stack_path(config, mode, variable):
 
 
 def load_alpha(config, mode, variable):
+    if variable == "tp":
+        return 0.0
     p = stack_path(config, mode, variable)
     if not p.exists():
         return 0.0
@@ -65,6 +67,8 @@ def mix(P, keys, nnmap, alpha):
 
 
 def select_alpha(pt, v, mode, blend, grid=GRID, nnmap=None):
+    if v == "tp":
+        return 0.0
     from agrocast.backtest.metrics import rps_rows
     from agrocast.blend.calibration import TercileCalibrator
 

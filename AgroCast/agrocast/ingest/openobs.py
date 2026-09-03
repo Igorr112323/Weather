@@ -228,6 +228,11 @@ def fetch_cpc_daily(config, start_year=1979, end_year=None, workers=4):
                 frames.append((y, ds))
         frames.sort(key=lambda t: t[0])
         print("chunk years ok:", [y for y, _ in frames], flush=True)
+        if not frames:
+            raise RuntimeError(
+                "CPC: ни один год не скачался — нет доступа к интернету "
+                "(data.rcc-acis.org) или сервис недоступен"
+            )
         daily = xr.concat([f for _, f in frames], dim="time").sortby("time")
     daily["t2m"].attrs["units"] = "degC"
     daily["tp"].attrs["units"] = "mm"

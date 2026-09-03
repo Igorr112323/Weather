@@ -135,6 +135,8 @@ def phenology_block(members):
     years = sorted({d.year for d in idx0})
     crops = []
     for key, stages in STAGES.items():
+        if key != "maize":
+            continue
         rows = []
         probs = []
         for st in stages:

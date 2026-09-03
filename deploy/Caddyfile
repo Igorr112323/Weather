@@ -1,0 +1,10 @@
+{$AGROCAST_DOMAIN:agrocast.local} {
+	encode gzip
+
+	reverse_proxy app:8501
+
+	log {
+		output /var/log/caddy/access.log
+		format json
+	}
+}

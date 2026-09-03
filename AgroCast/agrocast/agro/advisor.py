@@ -1,8 +1,6 @@
 import numpy as np
 
 CROPS = [
-    {"key": "winter_wheat", "name": "Озимая пшеница", "sow_months": (9, 10), "t_window": (11.0, 18.0)},
-    {"key": "sunflower", "name": "Подсолнечник", "sow_months": (4, 5), "t_window": (8.0, 14.0)},
     {"key": "maize", "name": "Кукуруза на зерно", "sow_months": (4, 5), "t_window": (10.0, 15.0)},
 ]
 

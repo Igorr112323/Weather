@@ -5,6 +5,7 @@ from agrocast.models.ridge import RidgeModel
 from agrocast.models.gbm import GBMModel
 from agrocast.models.deep_analog import DeepAnalogModel
 from agrocast.models.ssw import SSWModel
+from agrocast.models.season_ridge import SeasonRidge, SEASON_SPEC
 
 MODEL_NAMES = [
     "clim",
@@ -16,11 +17,12 @@ MODEL_NAMES = [
     "ridge_strat",
     "deep_analog",
     "ssw",
+    "phys_djf",
+    "phys_mam",
 ]
 
-
-def build_models(config):
-    return [
+def build_models(config, variable="t2m", mode="seasonal"):
+    models = [
         ClimModel(),
         AnalogModel(k=config.analog_k),
         RidgeModel(),
@@ -31,3 +33,9 @@ def build_models(config):
         DeepAnalogModel(k=getattr(config, "deep_analog_k", 12), n_pcs=getattr(config, "deep_analog_pcs", 5)),
         SSWModel(),
     ]
+    if variable == "tp" and mode == "seasonal":
+        models = models + [
+            SeasonRidge("phys_djf", *SEASON_SPEC["DJF"]),
+            SeasonRidge("phys_mam", *SEASON_SPEC["MAM"]),
+        ]
+    return models

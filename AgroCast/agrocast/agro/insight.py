@@ -1,3 +1,6 @@
+import bisect
+from datetime import timedelta
+
 import numpy as np
 import pandas as pd
 
@@ -6,21 +9,9 @@ SOIL_DEPTH_MM = 2000.0
 KC_GENERIC = 0.85
 
 CROPS = [
-    {"key": "winter_wheat", "name": "Озимая пшеница", "base": 5, "need": 1600, "months": [4, 5, 6, 7],
-     "kc": {3: 0.4, 4: 0.8, 5: 1.15, 6: 1.0, 7: 0.6},
-     "note": "от возобновления вегетации до уборки"},
-    {"key": "winter_barley", "name": "Озимый ячмень", "base": 5, "need": 1400, "months": [4, 5, 6],
-     "kc": {3: 0.4, 4: 0.85, 5: 1.1, 6: 0.7}, "note": "уборка раньше пшеницы на 10-14 дней"},
-    {"key": "sunflower", "name": "Подсолнечник", "base": 10, "need": 2200, "months": [5, 6, 7, 8, 9],
-     "kc": {5: 0.5, 6: 0.8, 7: 1.1, 8: 1.0, 9: 0.6}, "note": "вегетация от всходов до уборки"},
     {"key": "maize", "name": "Кукуруза на зерно", "base": 10, "need": 2500, "months": [5, 6, 7, 8, 9],
-     "kc": {5: 0.5, 6: 0.9, 7: 1.2, 8: 1.0, 9: 0.6}, "note": "раннеспелые гибриды от 2200"},
-    {"key": "soy", "name": "Соя", "base": 10, "need": 2300, "months": [6, 7, 8, 9],
-     "kc": {6: 0.7, 7: 1.1, 8: 1.1, 9: 0.7}, "note": "культура короткого дня"},
-    {"key": "rapeseed", "name": "Озимый рапс", "base": 5, "need": 1700, "months": [4, 5, 6],
-     "kc": {4: 0.7, 5: 1.0, 6: 0.7}, "note": "уборка в конце июня – июле"},
-    {"key": "sugar_beet", "name": "Сахарная свёкла", "base": 10, "need": 2700, "months": [5, 6, 7, 8, 9],
-     "kc": {5: 0.5, 6: 0.8, 7: 1.15, 8: 1.15, 9: 0.9}, "note": "максимальная потребность во влаге летом"},
+     "kc": {5: 0.5, 6: 0.9, 7: 1.2, 8: 1.0, 9: 0.6},
+     "note": "САТ (порог 10°C) от всходов до спелости: раннеспелые 2200°, среднеранние 2400°, среднеспелые 2600° (kccc.ru, rosgibrid.ru)"},
 ]
 
 NOTABLE_YEARS = {
@@ -69,7 +60,7 @@ def _climate_norm(monthly, var, months, y0=1991, y1=2020):
     return {m: float(s[s.index.month == m].mean()) for m in months if (s.index.month == m).any()}
 
 
-def season_insight(members, lat, monthly, swvl_last):
+def season_insight(members, lat, monthly, swvl_last, sat_crop=None, sat_crops=None):
     if not members:
         return None
     df0 = members[0]
@@ -140,7 +131,15 @@ def season_insight(members, lat, monthly, swvl_last):
         return {"p10": round(float(np.quantile(x, 0.1))), "p50": round(float(np.quantile(x, 0.5))), "p90": round(float(np.quantile(x, 0.9)))}
 
     sat = {"b5": q(sat5), "b10": q(sat10), "crops": []}
-    for c in CROPS:
+    sat_list = list(CROPS)
+    if sat_crop and sat_crop.get("need"):
+        sat_list = [
+            dict(c, name=sat_crop["name"], need=int(sat_crop["need"]), note=sat_crop.get("note") or c["note"])
+            if c["key"] == "maize"
+            else c
+            for c in sat_list
+        ]
+    for c in sat_list:
         overlap = len(set(c["months"]) & set(months))
         if overlap == 0:
             continue
@@ -151,6 +150,64 @@ def season_insight(members, lat, monthly, swvl_last):
         else:
             verdict = f"период покрывает {overlap} из {len(c['months'])} мес цикла — это САТ только за период прогноза"
         sat["crops"].append({"name": c["name"], "base": c["base"], "need": c["need"], "coverage": round(cov), "verdict": verdict, "note": c["note"]})
+
+    if sat_crops:
+        t0d, t1d = df0.index[0].date(), df0.index[-1].date()
+        cum = []
+        for df in members:
+            t = df["t2m"].to_numpy(float)
+            cum.append(([d.date() for d in df.index], np.cumsum(np.clip(t - 10.0, 0.0, None))))
+        gdd_rows = []
+        for v in sat_crops:
+            need = v.get("gdd")
+            if not need:
+                continue
+            vp = v.get("vp_days") or 110
+            try:
+                sm, sd = [int(x) for x in str(v.get("sow_from") or "04-20").split("-")]
+            except Exception:
+                sm, sd = 4, 20
+            sow_d = None
+            for yr in sorted({t0d.year, t1d.year}):
+                try:
+                    cand = pd.Timestamp(year=yr, month=sm, day=sd).date()
+                except Exception:
+                    continue
+                if t0d <= cand <= t1d:
+                    sow_d = cand
+                    break
+            rowv = {"name": v.get("name"), "fao": v.get("fao"), "need": int(need), "vp_days": int(vp), "sow_from": f"{sm:02d}-{sd:02d}"}
+            if sow_d is None:
+                rowv["p_ok"] = None
+                rowv["note"] = "сев вне периода прогноза"
+                gdd_rows.append(rowv)
+                continue
+            harvest_d = sow_d + timedelta(days=int(vp))
+            rowv["harvest"] = harvest_d.strftime("%d.%m.%Y")
+            if harvest_d > t1d:
+                rowv["note"] = "до конца периода прогноза (уборка за его пределами)"
+                eval_d = t1d
+            else:
+                rowv["note"] = "к уборке"
+                eval_d = harvest_d
+            vals = []
+            for dts, cs in cum:
+                pos = bisect.bisect_right(dts, eval_d) - 1
+                if pos >= 0:
+                    vals.append(float(cs[pos]))
+            if len(vals) < max(1, len(cum) // 2):
+                rowv["p_ok"] = None
+                rowv["note"] = "недостаточно дней прогноза для оценки"
+            else:
+                arr = np.array(vals)
+                rowv["p_ok"] = round(float(np.mean(arr >= need)), 2)
+                rowv["gdd"] = {"p10": int(np.quantile(arr, 0.1)), "p50": int(np.quantile(arr, 0.5)), "p90": int(np.quantile(arr, 0.9))}
+            gdd_rows.append(rowv)
+        gdd_rows.sort(key=lambda r: (r.get("p_ok") is None, -(r.get("p_ok") or 0)))
+        sat["gdd"] = {
+            "note": "накопление °C>10 от сева (дата из окна справочника) до уборки (сев + вегетационный период)",
+            "crops": gdd_rows,
+        }
 
     reserve_mm = None
     if swvl_last is not None and np.isfinite(swvl_last):

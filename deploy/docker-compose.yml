@@ -1,0 +1,33 @@
+services:
+  app:
+    build:
+      context: ..
+    container_name: agrocast-app
+    restart: unless-stopped
+    environment:
+      AGROCAST_LOG_LEVEL: INFO
+    volumes:
+      agrocast-data: /app/data
+    expose:
+      - "8501"
+  caddy:
+    image: caddy:2
+    container_name: agrocast-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      AGROCAST_DOMAIN: ${AGROCAST_DOMAIN:-agrocast.local}
+    volumes:
+      - ./Caddyfile: /etc/caddy/Caddyfile:ro
+      - caddy-data: /data
+      - caddy-config: /config
+      - caddy-logs: /var/log/caddy
+    depends_on:
+      - app
+volumes:
+  agrocast-data:
+  caddy-data:
+  caddy-config:
+  caddy-logs:

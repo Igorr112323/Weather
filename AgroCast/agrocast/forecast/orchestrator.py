@@ -1,5 +1,7 @@
 import datetime as dt
 import os
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -52,6 +54,16 @@ def _what_to_do(agro):
                     "level": "mid",
                 }
             )
+    fr = (agro.get("insight") or {}).get("frost") or {}
+    fc = fr.get("crop") or {}
+    if fc.get("safe_date"):
+        cards.append(
+            {
+                "action": f"Сев {fc.get('name') or 'сорта'} — не раньше ~{fc['safe_date']}",
+                "reason": fc.get("verdict", ""),
+                "level": "high" if (fc.get("danger_at_sow_from") or 0) > 0.10 else "mid",
+            }
+        )
     ins = agro.get("insight") or {}
     dr = ins.get("drought") or {}
     if dr.get("irrigation_hint_m3_ha"):
@@ -86,9 +98,9 @@ def _what_to_do(agro):
 
 def _confidence(rpss_val):
     if rpss_val is None or not np.isfinite(rpss_val):
-        return {"rpss": None, "level": "unknown"}
+        return {"rpss": None, "level": "unknown", "no_skill": False}
     level = "low" if rpss_val < 0.02 else ("medium" if rpss_val < 0.06 else "high")
-    return {"rpss": _r(rpss_val, 4), "level": level}
+    return {"rpss": _r(rpss_val, 4), "level": level, "no_skill": bool(rpss_val <= 0.0)}
 
 
 def _skill_lookup(smap, variable, target_month, lead):
@@ -100,7 +112,7 @@ def _skill_lookup(smap, variable, target_month, lead):
     return float(g["rpss"].iloc[0])
 
 
-def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, issue, blender, smap, calib=None, mode="monthly", pcal=None, nstack=None, ccal=None, rcal=None, mz=None, terc_map=None, sctx=None, ospr=None):
+def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, issue, blender, smap, calib=None, mode="monthly", pcal=None, nstack=None, ccal=None, rcal=None, mz=None, terc_map=None, sctx=None, ospr=None, mon=None):
     a = adaptive(series_raw, tgt.year, tgt.month, config.clim_window, config.clim_half_life)
     if a is None:
         return None
@@ -115,9 +127,23 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
     x_test = make_test_row(pf, issue, lead, tgt, use_cols=use_cols)
     preds = {}
     analogs = []
-    for m in build_models(config):
+    for m in build_models(config, variable=variable, mode=mode):
         try:
-            m.fit(X, yv, w=w, edges=meta[["e1", "e2"]].to_numpy(), years=meta["year"].to_numpy())
+            Xf, yf, metaf, wf = X, yv, meta, w
+            if mode == "seasonal" and getattr(m, "season_months", None) and len(m.season_months) > 1:
+                Xparts, yparts, mparts = [], [], []
+                for s2 in m.season_months:
+                    Xs, ys, ms = training_data(pf, std, variable, s2, lead, until=issue, use_cols=use_cols)
+                    if len(Xs):
+                        Xparts.append(Xs)
+                        yparts.append(ys)
+                        mparts.append(ms)
+                if Xparts:
+                    Xf = pd.concat(Xparts, ignore_index=True)
+                    yf = np.concatenate(yparts)
+                    metaf = pd.concat(mparts, ignore_index=True)
+                    wf = exp_weights(len(Xf), config.clim_half_life)
+            m.fit(Xf, yf, w=wf, edges=metaf[["e1", "e2"]].to_numpy(), years=metaf["year"].to_numpy())
             p, q = m.predict(x_test, e1, e2)
         except Exception:
             continue
@@ -133,8 +159,14 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
         if Pn is not None and a > 0:
             P = (1.0 - a) * P + a * Pn
             P = P / P.sum()
+    P_unc = P
     if pcal is not None and pcal.usable():
         P = pcal.transform(P.reshape(1, -1))[0]
+    if mon is not None:
+        from agrocast.blend import regime_guard
+
+        if regime_guard.shifted(mon, std, variable, mode, issue, tgt if mode == "seasonal" else None):
+            P = P_unc
     if rcal is not None:
         group = season_of(tgt.month) if mode == "seasonal" else f"m{int(tgt.month)}"
         if issue in pf.index:
@@ -199,14 +231,38 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
     return block, phys
 
 
-def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "tp"), save=True, point=None, mode="monthly", season_len=3):
+def _sat_crop(v):
+    if not v or not v.get("gdd"):
+        return None
+    return {
+        "name": v["name"],
+        "need": int(v["gdd"]),
+        "note": f"сорт из справочника: ФАО {v.get('fao') or '—'}, САТ {int(v['gdd'])}° (параметры заполнены пользователем)",
+    }
+
+
+def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "tp"), save=True, point=None, mode="monthly", season_len=3, variety=None):
     store = config.zarr_store()
     point = point or PointDataset(config, lat, lon, store)
     pf = point.predictor_frame()
     monthly = point.monthly()
+    vcrop = None
+    all_crops = []
+    import os as _vos
+
+    from agrocast.crops.db import CropDB
+
+    _vdroot = _vos.environ.get("AGROCAST_DATA", str(Path(__file__).resolve().parent.parent.parent / "data"))
+    try:
+        _cdb = CropDB(Path(_vdroot) / "crops.db", str(Path(config.artifact_dir) / "crop_seed.json"))
+        all_crops = _cdb.all()
+        if variety:
+            vcrop = _cdb.get(variety)
+    except Exception:
+        vcrop = None
     horizon = int(min(max(int(horizon), 1), config.horizon_max))
     explicit = start is not None
-    if start is None:
+    if start is None or not str(start).strip():
         start = now_period() + 1
     else:
         start = pd.Period(str(start), "M") if not isinstance(start, pd.Period) else start
@@ -313,7 +369,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
             pcal = pcalib.get(v)
             nstack = nnstack.get(v)
             ccal = ccalib.get(v)
-            res = _fit_predict_target(config, pf, stds[v], raws[v], v, tgt, sm, lead, issue, blender, smap, apply_calib, mode=mode, pcal=pcal, nstack=nstack, ccal=ccal, rcal=rcalib, mz=mz, terc_map=terc_map, sctx=sctx_map.get(v), ospr=(ospr_data if v == "tp" else None))
+            res = _fit_predict_target(config, pf, stds[v], raws[v], v, tgt, sm, lead, issue, blender, smap, apply_calib, mode=mode, pcal=pcal, nstack=nstack, ccal=ccal, rcal=rcalib, mz=mz, terc_map=terc_map, sctx=sctx_map.get(v), ospr=(ospr_data if v == "tp" else None), mon=monthly[v])
             if res is None:
                 continue
             block, phys = res
@@ -356,7 +412,10 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                         s = soil["swvl"].dropna()
                         if len(s):
                             swvl = float(s.iloc[-1])
-                    agro["insight"] = season_insight(ens, float(lat), monthly, swvl)
+                    agro["insight"] = season_insight(ens, float(lat), monthly, swvl, sat_crop=_sat_crop(vcrop), sat_crops=all_crops)
+                    from agrocast.agro.frost import frost_block
+
+                    agro["insight"]["frost"] = frost_block(ens, vcrop)
                     from agrocast.agro.phenology import phenology_block
                     from agrocast.agro.drivers import top_drivers
                     from agrocast.agro.decide import decision_table
@@ -394,8 +453,26 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                     pass
                 try:
                     from agrocast.agro.prices import econ_block
+                    from agrocast.market.source import corn_price
 
-                    agro["econ"] = econ_block(agro.get("phenology") or {}, drought_p, heat_p)
+                    try:
+                        import os as _os
+
+                        _droot = _os.environ.get(
+                            "AGROCAST_DATA", str(Path(__file__).resolve().parent.parent.parent / "data")
+                        )
+                        mprice = corn_price(_droot, str(Path(config.artifact_dir).parent), timeout=10)
+                    except Exception:
+                        mprice = None
+                    agro["econ"] = econ_block(
+                        agro.get("phenology") or {},
+                        drought_p,
+                        heat_p,
+                        price=mprice,
+                        yield_t_ha=vcrop.get("yield_t_ha") if vcrop else None,
+                        variety_name=vcrop.get("name") if vcrop else None,
+                        water=(agro.get("insight") or {}).get("water"),
+                    )
                 except Exception:
                     pass
     # Реестр доверия: публичный счёт навыка (backtest-лет + живые выпуски)

@@ -24,7 +24,7 @@ def skill_name(mode):
     return f"skill_map_{mode}.parquet"
 
 
-def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None, years=None, lat=None, lon=None, point=None, mode="monthly", season_len=3, half_life_years=0.0):
+def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None, years=None, lat=None, lon=None, point=None, mode="monthly", season_len=3, half_life_years=0.0, save_artifacts=True):
     store = config.zarr_store()
     reg = Registry(config.registry_path)
     if point is None:
@@ -71,10 +71,24 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
                     trow = std.loc[tgt]
                     e1, e2 = float(trow["e1"]), float(trow["e2"])
                     x_test = make_test_row(pf, issue, lead, tgt, use_cols=use_cols)
-                    models = build_models(config)
+                    models = build_models(config, variable=v, mode=mode)
                     for m in models:
                         try:
-                            m.fit(X, yv, w=w, edges=meta[["e1", "e2"]].to_numpy(), years=meta["year"].to_numpy())
+                            Xf, yf, metaf, wf = X, yv, meta, w
+                            if mode == "seasonal" and getattr(m, "season_months", None) and len(m.season_months) > 1:
+                                Xparts, yparts, mparts = [], [], []
+                                for s2 in m.season_months:
+                                    Xs, ys, ms = training_data(pf, std, v, s2, lead, until=issue, use_cols=use_cols)
+                                    if len(Xs):
+                                        Xparts.append(Xs)
+                                        yparts.append(ys)
+                                        mparts.append(ms)
+                                if Xparts:
+                                    Xf = pd.concat(Xparts, ignore_index=True)
+                                    yf = np.concatenate(yparts)
+                                    metaf = pd.concat(mparts, ignore_index=True)
+                                    wf = exp_weights(len(Xf), config.clim_half_life)
+                            m.fit(Xf, yf, w=wf, edges=metaf[["e1", "e2"]].to_numpy(), years=metaf["year"].to_numpy())
                             p, q = m.predict(x_test, e1, e2)
                         except Exception:
                             continue
@@ -102,24 +116,25 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
     if records.empty:
         reg.log_event("backtest", f"no records mode={mode}")
         return records
-    records.to_parquet(config.artifact_dir / records_name(mode))
-    blender = Blender(half_life_years=half_life_years).fit(records)
-    blender.save(config.artifact_dir / blender_name(mode))
-    br = blended_records(records, blender.weights)
-    smap = []
-    for (v, tm, ld), g in br.groupby(["variable", "target_month", "lead"]):
-        obs = g["obs_tercile"].to_numpy(int)
-        probs = g[["p0", "p1", "p2"]].to_numpy(float)
-        smap.append({"variable": v, "target_month": int(tm), "lead": int(ld), "rpss": float(rpss(probs, obs)), "n": len(g)})
-    pd.DataFrame(smap).to_parquet(config.artifact_dir / skill_name(mode))
-    try:
-        from agrocast.skill.ledger import build_ledger, save_ledger
+    if save_artifacts:
+        records.to_parquet(config.artifact_dir / records_name(mode))
+        blender = Blender(half_life_years=half_life_years).fit(records)
+        blender.save(config.artifact_dir / blender_name(mode))
+        br = blended_records(records, blender.weights)
+        smap = []
+        for (v, tm, ld), g in br.groupby(["variable", "target_month", "lead"]):
+            obs = g["obs_tercile"].to_numpy(int)
+            probs = g[["p0", "p1", "p2"]].to_numpy(float)
+            smap.append({"variable": v, "target_month": int(tm), "lead": int(ld), "rpss": float(rpss(probs, obs)), "n": len(g)})
+        pd.DataFrame(smap).to_parquet(config.artifact_dir / skill_name(mode))
+        try:
+            from agrocast.skill.ledger import build_ledger, save_ledger
 
-        s = save_ledger(build_ledger(records, mode=mode, config=config, half_life_years=half_life_years), config, mode)
-        if s:
-            reg.log_event("backtest", f"ledger mode={mode} n={s['overall']['n']} rpss={s['overall']['rpss']}")
-    except Exception as exc:
-        reg.log_event("backtest", f"ledger failed mode={mode}: {exc}")
+            s = save_ledger(build_ledger(records, mode=mode, config=config, half_life_years=half_life_years), config, mode)
+            if s:
+                reg.log_event("backtest", f"ledger mode={mode} n={s['overall']['n']} rpss={s['overall']['rpss']}")
+        except Exception as exc:
+            reg.log_event("backtest", f"ledger failed mode={mode}: {exc}")
     reg.log_event("backtest", f"mode={mode} rows={len(records)} years={years[0]}..{years[-1]}")
     return records
 

@@ -1,0 +1,9 @@
+.git
+.venv
+.arena
+**/__pycache__
+**/*.pyc
+AgroCast/data
+AgroCast/tests
+deploy
+*.md

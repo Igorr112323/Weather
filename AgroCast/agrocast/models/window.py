@@ -3,9 +3,9 @@ import re
 from agrocast.models.base import ForecastModel
 from agrocast.models.ridge import RidgeModel
 
-LAND_PATTERN = r"^(swvl_a|snow_a|t2m_a|tp_a|swvl|snow)$"
+LAND_PATTERN = r"^(swvl_a|snow_a|t2m_a|tp_a|swvl|snow|ls_(swe|melt_idx|snowcov|frozen_cm|laifrac|w[1-4]|t[1-4])|lsf_(swe|w1|t1)_f[12]|lss_sp_(swe|w1|t1)_f3)$"
 STRAT_PATTERN = r"^(u10|z50)_a(_l[0-9]+|_s[0-9]+)?$"
-OCEAN_PATTERN = r"^(pc[123](_l[0-9]+|_s[0-9]+|_f[0-9]+|_e)?|med_a(_s3)?|black_a(_s3)?)$"
+OCEAN_PATTERN = r"^(pc[123](_l[0-9]+|_s[0-9]+|_f[0-9]+|_e)?|med_a(_s3)?|black_a(_s3)?|nino34(_1m|_3m|_3m_s6|_3m_e)?|nao(_1m|_3m)?|soi(_1m|_3m)?|amo(_1m|_3m)?|pdo(_1m|_3m)?|scand(_1m|_3m)?|sstfc_(nino34|iod|amo|nao|pdo)_f[13])$"
 
 
 class WindowedRidge(ForecastModel):

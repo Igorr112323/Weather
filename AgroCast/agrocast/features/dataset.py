@@ -202,8 +202,8 @@ class PointDataset:
             keep = [c for c in keep if c.startswith("ls_")]
         elif preset == "land_d6":
             keep = [c for c in keep if c.startswith(("ls_", "lsf_", "lss_")) or (c.startswith("sstfc_") and c.endswith("_f6"))]
-        elif preset == "land":
-            keep = [c for c in keep if c.startswith(("ls_", "lsf_", "lss_"))]
+        else:
+            keep = [c for c in keep if c.startswith(("ls_", "lsf_", "lss_")) or c.startswith("sstfc_")]
         return df[keep]
 
     def indices(self):
@@ -374,15 +374,11 @@ def feature_columns_for(pf, variable, mode="seasonal"):
     cols = list(pf.columns)
     if variable == "tp":
         pats = [
-            re.compile(r"^pc[123]_(l[0-9]+|s[0-9]+|f[0-9]+)$"),
-            re.compile(r"^(u10|z50)_a(_l[0-9]+|_s[0-9]+)?$"),
             re.compile(r"^zpc[34]_a$"),
             re.compile(r"^zpc[12]_a_l[0-9]+$"),
             re.compile(r"^reg[0-9](_f3)?$"),
         ]
-        cols = [c for c in cols if c in _REGIME_CORE or not any(p.match(c) for p in pats)]
-        return [c for c in cols if not re.match(r"^reg[0-9](_f3)?$", c)]
-        cols = [c for c in cols if not any(p.match(c) for p in pats)]
+        return [c for c in cols if not any(p.match(c) for p in pats)]
     elif mode == "monthly":
         pats = [re.compile(r"^pc[123]_f[0-9]+$"), re.compile(r"^zpc[0-9]_a(_l[0-9]+)?$")]
         cols = [c for c in cols if not any(p.match(c) for p in pats)]
@@ -393,8 +389,9 @@ def feature_columns_for(pf, variable, mode="seasonal"):
 def make_test_row(pf, issue, lead, target_period, use_cols=None):
     base = pf.loc[issue]
     cols = list(pf.columns) if use_cols is None else list(use_cols)
-    vals = list(np.asarray(base[cols].to_numpy(), float)) + [lead / 12.0]
-    return pd.Series(vals, index=cols + ["lead"])
+    tmonth = (target_period - (lead - 1)).month
+    vals = list(np.asarray(base[cols].to_numpy(), float)) + [lead / 12.0, float(tmonth)]
+    return pd.Series(vals, index=cols + ["lead", "tmonth"])
 
 
 def training_data(pf, std_df, variable, start_month, lead, until, use_cols=None):
@@ -423,7 +420,7 @@ def training_data(pf, std_df, variable, start_month, lead, until, use_cols=None)
         if not np.isfinite(z):
             continue
         meta = std_df.loc[tgt]
-        X.append(list(row.to_numpy(float)) + [lead / 12.0])
+        X.append(list(row.to_numpy(float)) + [lead / 12.0, float(start_month)])
         y.append(z)
         years.append(tgt.year)
         periods.append(tgt)
@@ -431,7 +428,7 @@ def training_data(pf, std_df, variable, start_month, lead, until, use_cols=None)
         e2s.append(float(meta["e2"]))
         mus.append(float(meta["mu"]))
         sds.append(float(meta["sd"]))
-    Xdf = pd.DataFrame(X, columns=cols)
+    Xdf = pd.DataFrame(X, columns=cols + ["tmonth"])
     meta_df = pd.DataFrame(
         {"year": years, "period": periods, "e1": e1s, "e2": e2s, "mu": mus, "sd": sds}
     )

@@ -184,7 +184,7 @@ const fldSave=a=>localStorage.setItem(fldKey,JSON.stringify(a));
 function fldRender(){
  const a=fldLoad();const box=el('fields');
  if(!a.length){box.innerHTML='<div class="sub" style="margin-top:0">Полей пока нет — добавьте, и отчёт посчитает воду в м³ на каждое поле.</div>';return}
- box.innerHTML='<table style="width:100%;font-size:12.5px">'+a.map((f,i)=>'<tr><td>'+f.name+'</td><td style="color:#9dbd90">'+CROPS_JS.find(c=>c[0]===f.crop)[1]+'</td><td style="text-align:right">'+f.area+' га</td><td style="width:30px;text-align:right"><button data-i="'+i+'" class="fx" style="background:none;border:none;color:#c4554d;cursor:pointer;font-size:14px">✕</button></td></tr>').join('')+'</table>';
+ box.innerHTML='<table style="width:100%;font-size:12.5px">'+a.map((f,i)=>'<tr><td>'+f.name+'</td><td style="color:#9dbd90">'+(CROPS_JS.find(c=>c[0]===f.crop)||["", "?"])[1]+'</td><td style="text-align:right">'+f.area+' га</td><td style="width:30px;text-align:right"><button data-i="'+i+'" class="fx" style="background:none;border:none;color:#c4554d;cursor:pointer;font-size:14px">✕</button></td></tr>').join('')+'</table>';
  box.querySelectorAll('.fx').forEach(b=>b.onclick=()=>{const arr=fldLoad();arr.splice(+b.dataset.i,1);fldSave(arr);fldRender()});
 }
 el('fadd').onclick=()=>{

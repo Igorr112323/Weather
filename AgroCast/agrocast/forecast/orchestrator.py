@@ -1,5 +1,7 @@
 import datetime as dt
 import os
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -400,8 +402,18 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                     pass
                 try:
                     from agrocast.agro.prices import econ_block
+                    from agrocast.market.source import corn_price
 
-                    agro["econ"] = econ_block(agro.get("phenology") or {}, drought_p, heat_p)
+                    try:
+                        import os as _os
+
+                        _droot = _os.environ.get(
+                            "AGROCAST_DATA", str(Path(__file__).resolve().parent.parent.parent / "data")
+                        )
+                        mprice = corn_price(_droot, str(Path(config.artifact_dir).parent), timeout=10)
+                    except Exception:
+                        mprice = None
+                    agro["econ"] = econ_block(agro.get("phenology") or {}, drought_p, heat_p, price=mprice)
                 except Exception:
                     pass
     # Реестр доверия: публичный счёт навыка (backtest-лет + живые выпуски)

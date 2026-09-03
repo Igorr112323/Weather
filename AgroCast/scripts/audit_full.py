@@ -248,8 +248,15 @@ def process_point(pid, lat, lon):
                 Pb = gb[["p0", "p1", "p2"]].to_numpy(float)
                 P = _normalize(_mix(Pb.copy(), keysb, nnmaps[v], a))
                 cal = cals.get(v)
+                P_unc = P
                 if cal is not None and cal.usable():
                     P = _normalize(cal.transform(P))
+                from agrocast.blend import regime_guard
+
+                mask = regime_guard.shifted_rows(pt.monthly()[v], std, v, mode, gb)
+                if mask.any():
+                    P = P.copy()
+                    P[mask] = P_unc[mask]
                 obs = gb["obs_tercile"].to_numpy(int)
                 obs_z = gb["obs_z"].to_numpy(float)
                 rps_p = rps_rows(P, obs)

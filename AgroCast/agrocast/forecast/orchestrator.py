@@ -100,7 +100,7 @@ def _skill_lookup(smap, variable, target_month, lead):
     return float(g["rpss"].iloc[0])
 
 
-def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, issue, blender, smap, calib=None, mode="monthly", pcal=None, nstack=None, ccal=None, rcal=None, mz=None, terc_map=None, sctx=None, ospr=None):
+def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, issue, blender, smap, calib=None, mode="monthly", pcal=None, nstack=None, ccal=None, rcal=None, mz=None, terc_map=None, sctx=None, ospr=None, mon=None):
     a = adaptive(series_raw, tgt.year, tgt.month, config.clim_window, config.clim_half_life)
     if a is None:
         return None
@@ -133,8 +133,14 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
         if Pn is not None and a > 0:
             P = (1.0 - a) * P + a * Pn
             P = P / P.sum()
+    P_unc = P
     if pcal is not None and pcal.usable():
         P = pcal.transform(P.reshape(1, -1))[0]
+    if mon is not None:
+        from agrocast.blend import regime_guard
+
+        if regime_guard.shifted(mon, std, variable, mode, issue, tgt if mode == "seasonal" else None):
+            P = P_unc
     if rcal is not None:
         group = season_of(tgt.month) if mode == "seasonal" else f"m{int(tgt.month)}"
         if issue in pf.index:
@@ -313,7 +319,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
             pcal = pcalib.get(v)
             nstack = nnstack.get(v)
             ccal = ccalib.get(v)
-            res = _fit_predict_target(config, pf, stds[v], raws[v], v, tgt, sm, lead, issue, blender, smap, apply_calib, mode=mode, pcal=pcal, nstack=nstack, ccal=ccal, rcal=rcalib, mz=mz, terc_map=terc_map, sctx=sctx_map.get(v), ospr=(ospr_data if v == "tp" else None))
+            res = _fit_predict_target(config, pf, stds[v], raws[v], v, tgt, sm, lead, issue, blender, smap, apply_calib, mode=mode, pcal=pcal, nstack=nstack, ccal=ccal, rcal=rcalib, mz=mz, terc_map=terc_map, sctx=sctx_map.get(v), ospr=(ospr_data if v == "tp" else None), mon=monthly[v])
             if res is None:
                 continue
             block, phys = res

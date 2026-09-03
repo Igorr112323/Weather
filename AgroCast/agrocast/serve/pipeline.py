@@ -168,6 +168,9 @@ def run_hindcast(cfg, lat, lon, start, mode, horizon, log):
     stds = {}
     for v in ("t2m", "tp"):
         stds[v] = pt.seasonal_std(v, 3) if mode == "seasonal" else pt.standardized(v)
+    from agrocast.blend import regime_guard
+
+    mon = pt.monthly()
     alphas = {}
     nnmaps = {}
     for v in ("t2m", "tp"):
@@ -208,8 +211,11 @@ def run_hindcast(cfg, lat, lon, start, mode, horizon, log):
                 if k in nnmaps[v]:
                     P = (1 - alphas[v]) * P + alphas[v] * nnmaps[v][k]
                     P = P / P.sum()
+            P_unc = P
             if cals.get(v) is not None and cals[v].usable():
                 P = cals[v].transform(P.reshape(1, -1))[0]
+            if regime_guard.shifted(mon[v], stds[v], v, mode, t - 1, t if mode == "seasonal" else None):
+                P = P_unc
             std = stds[v]
             if t not in std.index:
                 continue

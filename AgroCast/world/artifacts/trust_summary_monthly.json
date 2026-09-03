@@ -1,131 +1,95 @@
 {
  "overall": {
-  "n": 3012,
-  "rpss": 0.083,
-  "hit": 0.453,
-  "hit_conf": 0.522,
-  "coverage_conf": 0.527,
-  "ece": 0.006
+  "n": 3192,
+  "rpss": 0.072,
+  "hit": 0.44,
+  "hit_conf": 0.514,
+  "coverage_conf": 0.52,
+  "ece": 0.015
  },
  "t2m": {
-  "n": 1506,
-  "rpss": 0.154,
-  "hit": 0.535,
-  "hit_conf": 0.536,
-  "coverage_conf": 0.995,
-  "ece": 0.019
+  "n": 1596,
+  "rpss": 0.133,
+  "hit": 0.522,
+  "hit_conf": 0.522,
+  "coverage_conf": 0.981,
+  "ece": 0.041
  },
  "tp": {
-  "n": 1506,
+  "n": 1596,
   "rpss": 0.01,
-  "hit": 0.371,
-  "hit_conf": 0.292,
-  "coverage_conf": 0.059,
-  "ece": 0.01
+  "hit": 0.358,
+  "hit_conf": 0.385,
+  "coverage_conf": 0.06,
+  "ece": 0.016
  },
  "by_lead": {
   "1": {
-   "n": 502,
-   "rpss": 0.09,
-   "hit": 0.458,
-   "hit_conf": 0.519,
-   "coverage_conf": 0.53,
-   "ece": 0.028
+   "n": 532,
+   "rpss": 0.08,
+   "hit": 0.449,
+   "hit_conf": 0.52,
+   "coverage_conf": 0.528,
+   "ece": 0.022
   },
   "2-3": {
-   "n": 1004,
-   "rpss": 0.086,
-   "hit": 0.451,
-   "hit_conf": 0.521,
-   "coverage_conf": 0.528,
-   "ece": 0.004
+   "n": 1064,
+   "rpss": 0.074,
+   "hit": 0.441,
+   "hit_conf": 0.518,
+   "coverage_conf": 0.521,
+   "ece": 0.014
   },
   "4-6": {
-   "n": 1506,
-   "rpss": 0.078,
-   "hit": 0.452,
-   "hit_conf": 0.524,
-   "coverage_conf": 0.526,
-   "ece": 0.011
+   "n": 1596,
+   "rpss": 0.068,
+   "hit": 0.436,
+   "hit_conf": 0.51,
+   "coverage_conf": 0.518,
+   "ece": 0.023
   }
  },
  "by_season": {
   "DJF": {
-   "n": 752,
-   "rpss": 0.086,
-   "hit": 0.5,
-   "hit_conf": 0.543,
-   "coverage_conf": 0.5,
-   "ece": 0.061
+   "n": 794,
+   "rpss": 0.077,
+   "hit": 0.494,
+   "hit_conf": 0.516,
+   "coverage_conf": 0.559,
+   "ece": 0.081
   },
   "JJA": {
-   "n": 754,
-   "rpss": 0.133,
-   "hit": 0.466,
-   "hit_conf": 0.603,
-   "coverage_conf": 0.504,
-   "ece": 0.062
+   "n": 802,
+   "rpss": 0.118,
+   "hit": 0.449,
+   "hit_conf": 0.589,
+   "coverage_conf": 0.495,
+   "ece": 0.079
   },
   "MAM": {
-   "n": 750,
-   "rpss": 0.031,
-   "hit": 0.395,
+   "n": 804,
+   "rpss": 0.03,
+   "hit": 0.382,
    "hit_conf": 0.435,
-   "coverage_conf": 0.503,
-   "ece": 0.046
+   "coverage_conf": 0.471,
+   "ece": 0.044
   },
   "SON": {
-   "n": 756,
-   "rpss": 0.079,
-   "hit": 0.45,
-   "hit_conf": 0.51,
-   "coverage_conf": 0.602,
-   "ece": 0.041
+   "n": 792,
+   "rpss": 0.065,
+   "hit": 0.436,
+   "hit_conf": 0.512,
+   "coverage_conf": 0.557,
+   "ece": 0.035
   }
  },
- "p80_coverage": 0.798,
- "median_abs_median_err": 0.711,
+ "p80_coverage": 0.799,
+ "median_abs_median_err": 0.709,
  "recent": [
   {
-   "issue": "2023-12",
+   "issue": "2025-03",
    "variable": "tp",
-   "target": "06/2024",
-   "lead": 6,
-   "p": [
-    0.29,
-    0.33,
-    0.38
-   ],
-   "hit": false
-  },
-  {
-   "issue": "2024-01",
-   "variable": "tp",
-   "target": "07/2024",
-   "lead": 6,
-   "p": [
-    0.29,
-    0.34,
-    0.37
-   ],
-   "hit": false
-  },
-  {
-   "issue": "2024-02",
-   "variable": "tp",
-   "target": "08/2024",
-   "lead": 6,
-   "p": [
-    0.3,
-    0.34,
-    0.37
-   ],
-   "hit": false
-  },
-  {
-   "issue": "2024-03",
-   "variable": "tp",
-   "target": "09/2024",
+   "target": "09/2025",
    "lead": 6,
    "p": [
     0.3,
@@ -135,98 +99,134 @@
    "hit": false
   },
   {
-   "issue": "2024-04",
+   "issue": "2025-04",
    "variable": "tp",
-   "target": "10/2024",
+   "target": "10/2025",
    "lead": 6,
    "p": [
     0.29,
     0.34,
     0.37
    ],
+   "hit": true
+  },
+  {
+   "issue": "2025-05",
+   "variable": "tp",
+   "target": "11/2025",
+   "lead": 6,
+   "p": [
+    0.38,
+    0.16,
+    0.46
+   ],
    "hit": false
   },
   {
-   "issue": "2024-05",
+   "issue": "2025-06",
    "variable": "tp",
-   "target": "11/2024",
+   "target": "12/2025",
    "lead": 6,
    "p": [
-    0.37,
-    0.18,
-    0.45
+    0.29,
+    0.35,
+    0.36
    ],
-   "hit": true
+   "hit": false
   },
   {
-   "issue": "2024-06",
+   "issue": "2025-07",
    "variable": "tp",
-   "target": "12/2024",
-   "lead": 6,
-   "p": [
-    0.3,
-    0.34,
-    0.37
-   ],
-   "hit": true
-  },
-  {
-   "issue": "2024-07",
-   "variable": "tp",
-   "target": "12/2024",
+   "target": "12/2025",
    "lead": 5,
    "p": [
-    0.3,
-    0.34,
-    0.37
+    0.29,
+    0.35,
+    0.36
    ],
-   "hit": true
+   "hit": false
   },
   {
-   "issue": "2024-08",
+   "issue": "2025-08",
    "variable": "tp",
-   "target": "12/2024",
+   "target": "12/2025",
    "lead": 4,
    "p": [
-    0.3,
-    0.34,
-    0.37
+    0.29,
+    0.35,
+    0.36
    ],
-   "hit": true
+   "hit": false
   },
   {
-   "issue": "2024-09",
+   "issue": "2025-09",
    "variable": "tp",
-   "target": "12/2024",
+   "target": "12/2025",
    "lead": 3,
    "p": [
-    0.3,
-    0.34,
-    0.37
+    0.29,
+    0.35,
+    0.36
    ],
-   "hit": true
+   "hit": false
   },
   {
-   "issue": "2024-10",
+   "issue": "2025-10",
    "variable": "tp",
-   "target": "12/2024",
+   "target": "12/2025",
    "lead": 2,
    "p": [
-    0.3,
-    0.34,
-    0.37
+    0.29,
+    0.35,
+    0.36
+   ],
+   "hit": false
+  },
+  {
+   "issue": "2025-11",
+   "variable": "tp",
+   "target": "12/2025",
+   "lead": 1,
+   "p": [
+    0.29,
+    0.35,
+    0.36
+   ],
+   "hit": false
+  },
+  {
+   "issue": "2025-12",
+   "variable": "tp",
+   "target": "06/2026",
+   "lead": 6,
+   "p": [
+    0.29,
+    0.35,
+    0.36
    ],
    "hit": true
   },
   {
-   "issue": "2024-11",
+   "issue": "2026-01",
    "variable": "tp",
-   "target": "12/2024",
-   "lead": 1,
+   "target": "07/2026",
+   "lead": 6,
    "p": [
-    0.3,
-    0.34,
-    0.37
+    0.29,
+    0.35,
+    0.36
+   ],
+   "hit": false
+  },
+  {
+   "issue": "2026-02",
+   "variable": "tp",
+   "target": "08/2026",
+   "lead": 6,
+   "p": [
+    0.29,
+    0.35,
+    0.35
    ],
    "hit": true
   }

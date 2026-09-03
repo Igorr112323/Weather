@@ -98,8 +98,15 @@ def main():
                 nnmap = nn_map(pt, v, mode, sorted(int(y) for y in sub["year"].unique()))
                 P = mix(P, row_keys(sub), nnmap, a)
             cal = TercileCalibrator.load(wc.artifact_dir / f"calib_{mode}_{v}.json")
+            P_unc = P
             if cal is not None and cal.usable():
                 P = cal.transform(P)
+            from agrocast.blend import regime_guard
+
+            mask = regime_guard.shifted_rows(pt.monthly()[v], stds[v], v, mode, sub)
+            if mask.any():
+                P = P.copy()
+                P[mask] = P_unc[mask]
             cc = ConformalQuantileCalibrator.load(wc.artifact_dir / f"conformal_{mode}_{v}.json")
             if cc is not None and cc.usable():
                 Q = np.array([cc.transform(q, v, int(l)) for q, l in zip(Q, sub["lead"].to_numpy(int))])

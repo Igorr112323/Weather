@@ -54,9 +54,42 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
 .venv/bin/python -m pytest tests -q
 ```
 
+## CI, деплой, мониторинг
+
+- **CI (GitHub Actions):** на каждый push/PR — `pytest` + **мини-аудит на 5
+  точках** (реальный recompute: precompute → 5 точек × 960 верификаций →
+  отчёт → контроль: конформальное покрытие P10–P90 72–85%, RPSS/ECE/hit
+  сезонного t2m в пределах нормы). Падение любого чек-а — красный билд.
+  Воркфлоу: `.github/workflows/ci.yml`.
+- **Монитор свежести zarr:** еженедельный scheduled-run
+  (`.github/workflows/freshness.yml`) + вручную (`workflow_dispatch`).
+  `AgroCast/scripts/zarr_freshness.py` проверяет последний день данных в
+  каждом zarr-сторе против норматива с учётом латентности источника:
+  daily_region 14 дней (требование «>2 недель»), почва/снег 60, SST 120
+  (OISST приходит с 2–3-месячной задержкой), сезонные 90, режимы 365.
+  Превышение — **АЛЕРТ** (exit 1, красный чек → уведомление GitHub).
+  Локально: `cd AgroCast && python -m scripts.zarr_freshness`.
+- **Docker:** `Dockerfile` в корне (python 3.11-slim, uvicorn, healthcheck
+  по `/api/health`, логи в том `agrocast-data`).
+  Сборка: `docker build -t agrocast .`
+- **HTTPS:** `deploy/docker-compose.yml` + `deploy/Caddyfile` — Caddy
+  ставит Let's Encrypt-сертификат автоматически на домен
+  `AGROCAST_DOMAIN` (переменная окружения), TLS терминируется на Caddy,
+  приложение слушает 8501 внутри сети:
+  `cd deploy && AGROCAST_DOMAIN=agrocast.example.com docker compose up -d`.
+  Локальный запуск без домена: `python app.py` (http://127.0.0.1:8501).
+- **Логи:** приложение пишет в stdout (в Docker — в лог-драйвер) и в
+  `AgroCast/data/logs/app.log` (ротация 5 МБ × 3). Уровень —
+  `AGROCAST_LOG_LEVEL` (INFO по умолчанию). Логгируется: старт, каждый
+  запрос (метод, путь, статус, время ответа), запуск/ошибки расчётных
+  джобов, подписки.
+
 ## Структура
 
 ```
+.github/workflows/    # ci.yml (pytest + мини-аудит 5 точек), freshness.yml (свежесть zarr)
+Dockerfile            # образ приложения
+deploy/               # docker-compose.yml + Caddyfile (авто-HTTPS)
 AgroCast/
 ├── app.py                 # лаунчер: ставит deps, поднимает сервер, открывает карту
 ├── static/                # карта + отчёт (Leaflet)

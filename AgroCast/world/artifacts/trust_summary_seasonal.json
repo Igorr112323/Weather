@@ -31,22 +31,6 @@
    "hit_conf": 0.678,
    "coverage_conf": 0.38,
    "ece": 0.055
-  },
-  "2-3": {
-   "n": 0,
-   "rpss": 0.0,
-   "hit": NaN,
-   "hit_conf": null,
-   "coverage_conf": NaN,
-   "ece": null
-  },
-  "4-6": {
-   "n": 0,
-   "rpss": 0.0,
-   "hit": NaN,
-   "hit_conf": null,
-   "coverage_conf": NaN,
-   "ece": null
   }
  },
  "by_season": {

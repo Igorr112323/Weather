@@ -309,10 +309,10 @@ def process_point(pid, lat, lon):
     return out_path
 
 
-def phase_points(workers=2):
+def phase_points(workers=2, jobs=None):
     from concurrent.futures import ProcessPoolExecutor
 
-    jobs = [(pid, lat, lon) for pid, lat, lon in POINTS]
+    jobs = list(jobs) if jobs else [tuple(p) for p in POINTS]
     done, fail = [], []
     with ProcessPoolExecutor(max_workers=workers) as ex:
         futs = {ex.submit(process_point, *j): j for j in jobs}
@@ -328,6 +328,44 @@ def phase_points(workers=2):
     if fail:
         log(f"не удалось: {fail}")
         raise SystemExit(1)
+
+
+MINI_POINTS = [
+    ("P01", 46.75, 38.75),
+    ("P12", 45.75, 37.75),
+    ("P26", 44.75, 37.75),
+    ("P39", 43.75, 39.75),
+    ("P50", 42.75, 42.25),
+]
+
+
+def phase_mini5(workers=2):
+    if not (CACHE / "alphas.json").exists() or not (CACHE / "precompute_monthly.parquet").exists():
+        phase_precompute()
+    for f in PTDIR.glob("P*.parquet"):
+        f.unlink()
+    phase_points(workers=workers, jobs=MINI_POINTS)
+    phase_report()
+    s = json.loads((OUT / "audit_summary.json").read_text())
+    o = s["overall"][0]
+    st2m = s["seasonal_t2m"][0]
+    cov = o.get("p10_90_coverage_conformal")
+    errors = []
+    if o["n"] != len(MINI_POINTS) * 960:
+        errors.append(f"n={o['n']}")
+    if cov is None or not (0.72 <= cov <= 0.85):
+        errors.append(f"конформальное покрытие {cov}")
+    if st2m["rpss"] is None or st2m["rpss"] <= 0.05:
+        errors.append(f"сезонный t2m RPSS {st2m['rpss']}")
+    if st2m["hit"] <= 0.44:
+        errors.append(f"сезонный t2m hit {st2m['hit']}")
+    if o["ece"] > 0.10:
+        errors.append(f"ECE {o['ece']}")
+    if errors:
+        log("мини-аудит: ОТКАЗ — " + "; ".join(errors))
+        raise SystemExit(1)
+    log(f"мини-аудит: ОК — n={o['n']}, конформальное покрытие {cov:.1%}, "
+        f"сезонный t2m RPSS {st2m['rpss']:+.3f}, hit {st2m['hit']:.1%}")
 
 
 # -------------------------------------------------------------------- report
@@ -779,7 +817,7 @@ def write_markdown(df, summary, by_point_df, by_year_df, stable, share):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("phase", choices=["precompute", "points", "report", "all"])
+    ap.add_argument("phase", choices=["precompute", "points", "report", "mini5", "all"])
     ap.add_argument("--workers", type=int, default=2)
     args = ap.parse_args()
     if args.phase in ("precompute", "all"):
@@ -788,3 +826,5 @@ if __name__ == "__main__":
         phase_points(args.workers)
     if args.phase in ("report", "all"):
         phase_report()
+    if args.phase == "mini5":
+        phase_mini5(args.workers)

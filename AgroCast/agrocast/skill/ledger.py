@@ -75,6 +75,8 @@ def ece(probs, obs, bins=10):
 
 
 def _block(g, qcov80=None):
+    if len(g) == 0:
+        return None
     probs = g[["p0", "p1", "p2"]].to_numpy(float)
     obs = g["obs_tercile"].to_numpy(int)
     dom = probs.argmax(axis=1)
@@ -212,9 +214,13 @@ def ledger_summary(led):
         s[v] = _block(g)
     by_lead, by_season = {}, {}
     for lk, g in led.groupby(pd.cut(led["lead"], bins=[0, 1, 3, 99], labels=["1", "2-3", "4-6"])):
-        by_lead[str(lk)] = _block(g)
+        b = _block(g)
+        if b is not None:
+            by_lead[str(lk)] = b
     for se, g in led.groupby("season"):
-        by_season[str(se)] = _block(g)
+        b = _block(g)
+        if b is not None:
+            by_season[str(se)] = b
     s["by_lead"] = by_lead
     s["by_season"] = by_season
     # покрытие P10–P90 после конформной калибровки (финальные q в реестре)

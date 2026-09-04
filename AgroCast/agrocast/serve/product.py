@@ -3,6 +3,7 @@ import logging
 import logging.handlers
 import math
 import os
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -192,6 +193,64 @@ def crops_del(name: str):
         return JSONResponse({"error": "сорт не найден"}, status_code=404)
     log.info("справочник: сорт «%s» удалён", name)
     return {"ok": True}
+
+
+class RegionRefreshRequest(BaseModel):
+    start: str = "2026-10"
+
+
+@app.get("/api/region/grid")
+def region_grid():
+    from agrocast.serve import region as region_mod
+
+    return region_mod.grid_payload(WORLD)
+
+
+@app.get("/api/region/skill")
+def region_skill():
+    from agrocast.serve import region as region_mod
+
+    return region_mod.skill_payload(WORLD)
+
+
+@app.get("/api/region/field")
+def region_field():
+    from agrocast.serve import region as region_mod
+
+    return _clean(region_mod.field_payload(DATA_ROOT))
+
+
+def _start_region_job(job, world_dir, data_root, start):
+    def run():
+        try:
+            from agrocast.serve import region as region_mod
+
+            fp = region_mod.build_field(start, world_dir, data_root, workers=2, log=job.add)
+            job.result = {"field": str(fp)}
+            job.status = "done"
+            job.add("готово")
+        except Exception as exc:
+            job.status = "error"
+            job.error = f"{type(exc).__name__}: {exc}"
+            job.add("ошибка: " + job.error)
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+@app.post("/api/region/refresh")
+def region_refresh(req: RegionRefreshRequest):
+    from agrocast.serve import region as region_mod
+    from agrocast.serve.pipeline import Job
+
+    p = region_mod.field_path(DATA_ROOT)
+    if p.exists() and time.time() - p.stat().st_mtime < 600:
+        return {"ok": True, "fresh": True, "job": None}
+    job_id = uuid.uuid4().hex[:10]
+    job = Job(job_id, {"kind": "region_field", "start": req.start})
+    JOBS[job_id] = job
+    log.info("region job %s: поле КРА, старт %s", job_id, req.start)
+    _start_region_job(job, WORLD, DATA_ROOT, req.start)
+    return {"ok": True, "fresh": False, "job": job_id}
 
 
 @app.get("/api/ledger")

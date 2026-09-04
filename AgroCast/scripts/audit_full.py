@@ -368,13 +368,13 @@ def phase_mini5(workers=2):
         f"сезонный t2m RPSS {st2m['rpss']:+.3f}, hit {st2m['hit']:.1%}")
 
 
-def phase_grid(workers=2, max_points=30):
-    from agrocast.region.grid import krai_cells, save_grid
+def phase_grid(workers=2, max_points=30, region="krai"):
+    from agrocast.region.regions import region_cells, save_region_grid
     from agrocast.store.zarrstore import ZarrStore
 
     store = ZarrStore(str(Path(WORLD) / "zarr"))
-    cells = krai_cells(store)
-    save_grid(cells)
+    cells = region_cells(store, region=region)
+    save_region_grid(cells, WORLD, region=region)
     idx = np.arange(len(cells))
     if len(cells) > int(max_points):
         idx = np.unique(np.linspace(0, len(cells) - 1, int(max_points)).round().astype(int))
@@ -385,17 +385,17 @@ def phase_grid(workers=2, max_points=30):
         f.unlink()
     phase_points(workers=workers, jobs=jobs)
     phase_report()
-    export_skill_artifact()
+    export_skill_artifact(region=region)
 
 
-def export_skill_artifact(path=None):
-    from agrocast.region.grid import DEFAULT_ARTIFACT
+def export_skill_artifact(path=None, region="krai"):
+    from agrocast.region.regions import REGIONS, grid_artifact_path, skill_artifact_path
 
     s = json.loads((OUT / "audit_summary.json").read_text())
     bp = pd.read_csv(OUT / "by_point.csv")
     sd = pd.read_csv(OUT / "season_detail.csv")
     sd = sd[sd.system == "product"]
-    grid = json.loads(DEFAULT_ARTIFACT.read_text(encoding="utf-8"))
+    grid = json.loads(grid_artifact_path(WORLD, region).read_text(encoding="utf-8"))
     cells = {c["id"]: c for c in grid.get("cells", [])}
     by_point = []
     for _, r in bp.iterrows():
@@ -427,7 +427,9 @@ def export_skill_artifact(path=None):
         return out
 
     out = {
-        "source": "audit_full grid: точки КРА × 20 лет × 2 режима",
+        "source": f"audit_full grid: точки {REGIONS[region]['name']} × 20 лет × 2 режима",
+        "region": region,
+        "region_name": REGIONS[region]["name"],
         "generated_at": time.strftime("%Y-%m-%d"),
         "n_points": int(len(bp)),
         "verifications": int(s["overall"][0]["n"]),
@@ -439,7 +441,7 @@ def export_skill_artifact(path=None):
         "monthly_tp": _block("monthly_tp"),
         "by_point": by_point,
     }
-    path = Path(path) if path else Path(WORLD) / "artifacts" / "krai_grid_skill.json"
+    path = Path(path) if path else skill_artifact_path(WORLD, region)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(out, ensure_ascii=False, indent=1))
     log(f"артефакт навыка сетки: {path}")
@@ -895,10 +897,13 @@ def write_markdown(df, summary, by_point_df, by_year_df, stable, share):
 
 
 if __name__ == "__main__":
+    from agrocast.region.regions import REGIONS
+
     ap = argparse.ArgumentParser()
     ap.add_argument("phase", choices=["precompute", "points", "report", "mini5", "all", "grid"])
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--max-points", type=int, default=30)
+    ap.add_argument("--region", choices=sorted(REGIONS), default="krai")
     args = ap.parse_args()
     if args.phase in ("precompute", "all"):
         phase_precompute()
@@ -909,4 +914,4 @@ if __name__ == "__main__":
     if args.phase == "mini5":
         phase_mini5(args.workers)
     if args.phase == "grid":
-        phase_grid(args.workers, args.max_points)
+        phase_grid(args.workers, args.max_points, region=args.region)

@@ -1,0 +1,151 @@
+{
+ "name": "rostov_grid",
+ "cell_deg": 0.5,
+ "bounds": {
+  "lat_min": 46.0,
+  "lat_max": 47.5,
+  "lon_min": 38.0,
+  "lon_max": 43.0
+ },
+ "min_coverage": 0.9,
+ "n_candidates": 30,
+ "n_cells": 17,
+ "cells": [
+  {
+   "lat": 46.75,
+   "lon": 38.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P01"
+  },
+  {
+   "lat": 46.75,
+   "lon": 39.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P02"
+  },
+  {
+   "lat": 46.75,
+   "lon": 39.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P03"
+  },
+  {
+   "lat": 46.75,
+   "lon": 40.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P04"
+  },
+  {
+   "lat": 46.75,
+   "lon": 40.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P05"
+  },
+  {
+   "lat": 46.75,
+   "lon": 41.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P06"
+  },
+  {
+   "lat": 46.75,
+   "lon": 41.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P07"
+  },
+  {
+   "lat": 46.75,
+   "lon": 42.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P08"
+  },
+  {
+   "lat": 46.25,
+   "lon": 38.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P09"
+  },
+  {
+   "lat": 46.25,
+   "lon": 38.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P10"
+  },
+  {
+   "lat": 46.25,
+   "lon": 39.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P11"
+  },
+  {
+   "lat": 46.25,
+   "lon": 39.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P12"
+  },
+  {
+   "lat": 46.25,
+   "lon": 40.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P13"
+  },
+  {
+   "lat": 46.25,
+   "lon": 40.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P14"
+  },
+  {
+   "lat": 46.25,
+   "lon": 41.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P15"
+  },
+  {
+   "lat": 46.25,
+   "lon": 41.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P16"
+  },
+  {
+   "lat": 46.25,
+   "lon": 42.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P17"
+  }
+ ]
+}

@@ -14,8 +14,12 @@ DEFAULT_ARTIFACT = Path(__file__).resolve().parents[2] / "world" / "artifacts" /
 
 def cell_centers(bounds=KRA_BOUNDS, cell=CELL_DEG):
     lat_min, lat_max, lon_min, lon_max = (float(b) for b in bounds)
-    lats = np.arange(lat_min + cell / 2.0, lat_max, cell)
-    lons = np.arange(lon_min + cell / 2.0, lon_max, cell)
+    la0 = np.floor(lat_min / cell) * cell + cell / 2.0
+    lo0 = np.floor(lon_min / cell) * cell + cell / 2.0
+    lats = np.arange(la0, lat_max, cell)
+    lons = np.arange(lo0, lon_max, cell)
+    lats = lats[lats > lat_min]
+    lons = lons[lons > lon_min]
     return lats, lons
 
 
@@ -32,10 +36,16 @@ def krai_cells(store, min_coverage=MIN_COVERAGE, cell=CELL_DEG, bounds=KRA_BOUND
     ds = store.open("daily_region")
     lats, lons = cell_centers(bounds, cell)
     t = pd.to_datetime(ds.time.values)
+    store_lats = np.asarray(ds.lat.values, dtype=float)
+    store_lons = np.asarray(ds.lon.values, dtype=float)
     cells = []
     for la in sorted(lats, reverse=True):
         for lo in lons:
-            sub = ds[["t2m", "tp"]].sel(lat=float(la), lon=float(lo))
+            sla = _match_coord(store_lats, la)
+            slo = _match_coord(store_lons, lo)
+            if sla is None or slo is None:
+                continue
+            sub = ds[["t2m", "tp"]].sel(lat=sla, lon=slo)
             df = pd.DataFrame({"t2m": sub["t2m"].values, "tp": sub["tp"].values}, index=t)
             cov = coverage_from_daily(df)
             if cov["coverage"] >= float(min_coverage):
@@ -51,11 +61,17 @@ def krai_cells(store, min_coverage=MIN_COVERAGE, cell=CELL_DEG, bounds=KRA_BOUND
     return cells
 
 
-def save_grid(cells, path=DEFAULT_ARTIFACT, bounds=KRA_BOUNDS, cell=CELL_DEG, min_coverage=MIN_COVERAGE):
+def _match_coord(vals, x):
+    i = int(np.argmin(np.abs(vals - float(x))))
+    v = vals[i]
+    return float(v) if np.isclose(v, float(x), atol=1e-6) else None
+
+
+def save_grid(cells, path=DEFAULT_ARTIFACT, bounds=KRA_BOUNDS, cell=CELL_DEG, min_coverage=MIN_COVERAGE, name="krai_grid"):
     lat_min, lat_max, lon_min, lon_max = (float(b) for b in bounds)
     cl, co = cell_centers(bounds, cell)
     grid = {
-        "name": "krai_grid",
+        "name": name,
         "cell_deg": cell,
         "bounds": {"lat_min": lat_min, "lat_max": lat_max, "lon_min": lon_min, "lon_max": lon_max},
         "min_coverage": float(min_coverage),

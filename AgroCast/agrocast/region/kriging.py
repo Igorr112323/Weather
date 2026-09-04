@@ -1,17 +1,3 @@
-# -*- coding: utf-8 -*-
-"""Обыкновенный кринг (ordinary kriging) для полей терцилей по сетке КРА.
-
-Модель:
-- экспоненциальная вариограмма γ(h) = nugget + psill·(1 − exp(−h/range)),
-  γ(0) = 0; параметры подбираются по эмпирической вариограмме данных
-  (наименьшие квадраты, scipy.curve_fit);
-- расстояния — гаверсинусовы, км (agrocast.core.geo.haversine);
-- детрендинг плоскостью: перед крингом снимается линейный тренд
-  z ~ a + b·lat + c·lon (крингятся остатки, тренд возвращается в прогнозе);
-- обыкновенный кринг: система с множителем Лагранжа, Σw = 1;
-- IDW-фолбэк: если точек < 3 или ковариационная матрица вырождена
-  (дубли точек и т.п.) — обратные взвешенные расстояния.
-"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,17 +6,15 @@ import numpy as np
 
 from agrocast.core.geo import haversine
 
-MIN_POINTS = 3          # меньше точек — сразу IDW
-COND_LIMIT = 1e10       # предел числа обусловленности ковариационной матрицы
+MIN_POINTS = 3
+COND_LIMIT = 1e10
 IDW_POWER = 2.0
 
 
 @dataclass
 class Variogram:
-    """Параметры экспоненциальной вариограммы (расстояния в км)."""
-
     nugget: float
-    psill: float   # частичный нагор (total sill = nugget + psill)
+    psill: float
     range_km: float
 
     @property
@@ -41,13 +25,11 @@ class Variogram:
         return exponential_variogram(h, self.nugget, self.psill, self.range_km)
 
     def cov(self, h):
-        """Ковариация C(h) = sill − γ(h); C(0) = sill (эффект самородка)."""
         out = np.asarray(self.sill - self.gamma(h), dtype=float)
         return float(out) if out.ndim == 0 else out
 
 
 def exponential_variogram(h, nugget, psill, range_km):
-    """γ(h) = nugget + psill·(1 − exp(−h/range)); γ(0) = 0. Векторизовано."""
     h = np.asarray(h, float)
     out = float(nugget) + float(psill) * (1.0 - np.exp(-h / float(range_km)))
     out = np.where(h <= 0, 0.0, out)
@@ -55,7 +37,6 @@ def exponential_variogram(h, nugget, psill, range_km):
 
 
 def pairwise_km(pts):
-    """Матрица попарных расстояний (км) для массива точек (N, 2) lat/lon."""
     pts = np.asarray(pts, float)
     lat = pts[:, 0][:, None]
     lon = pts[:, 1][:, None]
@@ -63,7 +44,6 @@ def pairwise_km(pts):
 
 
 def cross_km(pts, targets):
-    """Матрица расстояний (км) между точками данных (N,) и целями (M,)."""
     pts = np.asarray(pts, float)
     targets = np.atleast_2d(np.asarray(targets, float))
     return haversine(pts[:, 0][:, None], pts[:, 1][:, None],
@@ -71,10 +51,6 @@ def cross_km(pts, targets):
 
 
 def empirical_variogram(pts, vals, n_lags=8, max_dist=None):
-    """Эмпирическая вариограмма: бины по расстоянию, γ = 0.5·mean(diff²).
-
-    Возвращает (lag_centers, semivars, counts); пустые бины отбрасываются.
-    """
     pts = np.asarray(pts, float)
     vals = np.asarray(vals, float)
     ok = np.isfinite(vals)
@@ -84,7 +60,7 @@ def empirical_variogram(pts, vals, n_lags=8, max_dist=None):
     d_iu = d[iu]
     g = 0.5 * (vals[iu[0]] - vals[iu[1]]) ** 2
     if max_dist is None:
-        max_dist = float(d_iu.max()) / 2.0  # классическое правило — половина диагонали
+        max_dist = float(d_iu.max()) / 2.0
     edges = np.linspace(0.0, max_dist, int(n_lags) + 1)
     centers, semis, counts = [], [], []
     for k in range(int(n_lags)):
@@ -98,11 +74,6 @@ def empirical_variogram(pts, vals, n_lags=8, max_dist=None):
 
 
 def fit_variogram(pts, vals, n_lags=8):
-    """Подбор nugget/psill/range по эмпирической вариограмме (curve_fit).
-
-    При неуспехе (мало точек, вырожденный биннинг) — консервативный
-    фолбэк: nugget=0, psill=var(данных), range=половина максимального лага.
-    """
     pts = np.asarray(pts, float)
     vals = np.asarray(vals, float)
     ok = np.isfinite(vals)
@@ -128,8 +99,6 @@ def fit_variogram(pts, vals, n_lags=8):
 
 
 def idw(pts, vals, targets, power=IDW_POWER):
-    """Обратные взвешенные расстояния (фолбэк). Совпадение с точкой данных
-    даёт её значение точно. Возвращает (pred (M,), var (M,) из NaN)."""
     pts = np.asarray(pts, float)
     vals = np.asarray(vals, float)
     targets = np.atleast_2d(np.asarray(targets, float))
@@ -147,7 +116,6 @@ def idw(pts, vals, targets, power=IDW_POWER):
 
 
 def _plane_fit(pts, vals):
-    """МНК-плоскость z ~ a + b·lat + c·lon. Возвращает (A, coef)."""
     A = np.column_stack([np.ones(len(pts)), pts[:, 0], pts[:, 1]])
     coef, *_ = np.linalg.lstsq(A, vals, rcond=None)
     return A, coef
@@ -160,23 +128,15 @@ def _plane_eval(targets, coef):
 
 @dataclass
 class KrigingResult:
-    """Результат кринга: прогнозы, дисперсии, метод по каждой цели."""
-
-    pred: np.ndarray        # (M,) прогноз в целевых точках
-    var: np.ndarray         # (M,) дисперсия кринга (NaN — для IDW)
-    method: np.ndarray      # (M,) строковый флаг "ok"/"idw"
+    pred: np.ndarray
+    var: np.ndarray
+    method: np.ndarray
     variogram: Variogram
-    weights: np.ndarray     # (M, N+1) веса (последний — множитель Лагранжа)
-    n_fallback: int         # сколько целей посчитано через IDW
+    weights: np.ndarray
+    n_fallback: int
 
 
-def krige(pts, vals, targets, variogram=None, detrend=True, n_lags=8, power=IDW_POWER):
-    """Обыкновенный кринг значений в целевых точках.
-
-    pts (N,2) lat/lon, vals (N,), targets (M,2). variogram=None → подбирается
-    по данным. detrend=True → плоскостный детренд перед крингом.
-    Возвращает KrigingResult.
-    """
+def ordinary_kriging(pts, vals, targets, variogram=None, detrend=True, n_lags=8, power=IDW_POWER):
     pts = np.atleast_2d(np.asarray(pts, float))
     vals = np.asarray(vals, float)
     targets = np.atleast_2d(np.asarray(targets, float))
@@ -201,13 +161,13 @@ def krige(pts, vals, targets, variogram=None, detrend=True, n_lags=8, power=IDW_
     k_mat[n, :n] = 1.0
     k_mat[:n, n] = 1.0
     k_mat[n, n] = 0.0
-    c_cross = variogram.cov(d_cross)          # (N, M)
+    c_cross = variogram.cov(d_cross)
     rhs = np.vstack([c_cross, np.ones((1, d_cross.shape[1]))])
     try:
         cond = float(np.linalg.cond(k_mat[:n, :n]))
         if not np.isfinite(cond) or cond > COND_LIMIT:
             raise np.linalg.LinAlgError("ill-conditioned covariance")
-        sol = np.linalg.solve(k_mat, rhs)     # (N+1, M)
+        sol = np.linalg.solve(k_mat, rhs)
         w = sol[:n, :]
         lagr = sol[n, :]
         pred = w.T @ resid

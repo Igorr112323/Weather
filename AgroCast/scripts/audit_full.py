@@ -2,11 +2,6 @@
 """
 Полный аудит продукта AgroCast: 50 точек × 20 лет (2005–2024) × все режимы.
 
-Фаза 3 (шаг 1): режим `grid` — аудит сетки КРА из 28 ячеек 0.5°
-(44–46.5°N, 37–40.5°E, артефакт world/artifacts/krai_grid.json).
-Тот же путь «проверки прошлого», точки G01..G28, отчёт
-data/audit/audit_report_grid.md + grid_summary.json.
-
 Аудит воспроизводит ТОЧНО путь продукта «проверка прошлого»
 (agrocast.serve.pipeline.run_hindcast, после исправления):
 
@@ -36,8 +31,6 @@ CPC-данных (нужен интернет).
     python -m scripts.audit_full precompute
     python -m scripts.audit_full points --workers 2
     python -m scripts.audit_full report
-    python -m scripts.audit_full grid  --workers 2   # аудит сетки КРА (28 точек)
-    python -m scripts.audit_full mini5 --workers 2   # CI: 5 точек + контроль
 """
 from __future__ import annotations
 
@@ -375,205 +368,23 @@ def phase_mini5(workers=2):
         f"сезонный t2m RPSS {st2m['rpss']:+.3f}, hit {st2m['hit']:.1%}")
 
 
-# ----------------------------------------------------------------- grid (КРА)
+def phase_grid(workers=2, max_points=30):
+    from agrocast.region.grid import krai_cells, save_grid
+    from agrocast.store.zarrstore import ZarrStore
 
-GRID_JSON = Path(WORLD) / "artifacts" / "krai_grid.json"
-
-
-def load_grid_points():
-    """28 точек сетки КРА из артефакта world/artifacts/krai_grid.json."""
-    art = json.loads(GRID_JSON.read_text())
-    pts = [(c["id"], float(c["lat"]), float(c["lon"])) for c in art["cells"]]
-    if not pts:
-        raise SystemExit("артефакт krai_grid.json пуст — пересоберите: "
-                         "python -c 'from agrocast.region.grid import build_grid, save_grid; save_grid(build_grid(\"world\"))'")
-    return pts
-
-
-def phase_grid(workers=2, jobs=None):
-    """Аудит сетки КРА: precompute → 28 точек → отчёт grid.
-
-    Точки берутся из артефакта krai_grid.json (сетка 0.5°, 44–46.5N,
-    37–40.5E, покрытие данных ≥90% → 28 ячеек). Идентификаторы G01..G28,
-    результаты — data/audit/G*.parquet + audit_report_grid.md.
-    """
-    pts = [tuple(j) for j in jobs] if jobs else load_grid_points()
+    store = ZarrStore(str(Path(WORLD) / "zarr"))
+    cells = krai_cells(store)
+    save_grid(cells)
+    idx = np.arange(len(cells))
+    if len(cells) > int(max_points):
+        idx = np.unique(np.linspace(0, len(cells) - 1, int(max_points)).round().astype(int))
+    jobs = [(cells[j]["id"], float(cells[j]["lat"]), float(cells[j]["lon"])) for j in idx]
     if not (CACHE / "alphas.json").exists() or not (CACHE / "precompute_monthly.parquet").exists():
         phase_precompute()
-    t0 = time.time()
-    phase_points(workers=workers, jobs=pts)
-    phase_report_grid()
-    log(f"аудит сетки КРА готов: {len(pts)} точек, {time.time()-t0:.0f}s")
-
-
-def _skill_label(rpss):
-    """Честная метка сегмента по RPSS (как в отчёте продукта)."""
-    if rpss is None:
-        return "нет данных"
-    if rpss >= 0.15:
-        return "реальный навык"
-    if rpss >= 0.05:
-        return "умеренный навык"
-    if rpss > 0.0:
-        return "слабый навык"
-    return "навык не подтверждён — уровень климатологии"
-
-
-def phase_report_grid():
-    """Отчёт по аудиту сетки КРА: audit_report_grid.md + grid_summary.json."""
-    OUT.mkdir(parents=True, exist_ok=True)
-    files = sorted(PTDIR.glob("G*.parquet"))
-    if not files:
-        raise SystemExit("нет файлов точек сетки (G*.parquet) — сначала phase_grid")
-    df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
-    df.to_csv(OUT / "grid_records.csv", index=False)
-    n_pts = int(df["point"].nunique())
-    years = sorted(int(y) for y in df["year"].unique())
-    log(f"сетка КРА: {len(df)} верификаций по {n_pts} точкам")
-
-    summary = {}
-    for key, sub in (
-        ("overall", df),
-        ("mode_seasonal", df[df["mode"] == "seasonal"]),
-        ("mode_monthly", df[df["mode"] == "monthly"]),
-        ("var_t2m", df[df["variable"] == "t2m"]),
-        ("var_tp", df[df["variable"] == "tp"]),
-        ("seasonal_t2m", df[(df["mode"] == "seasonal") & (df["variable"] == "t2m")]),
-        ("seasonal_tp", df[(df["mode"] == "seasonal") & (df["variable"] == "tp")]),
-        ("monthly_t2m", df[(df["mode"] == "monthly") & (df["variable"] == "t2m")]),
-        ("monthly_tp", df[(df["mode"] == "monthly") & (df["variable"] == "tp")]),
-    ):
-        g = group_metrics(sub)
-        summary[key] = g.to_dict("records") if g is not None else None
-    season_detail = []
-    for m in MODES:
-        for v in VARS_:
-            for s in ("DJF", "MAM", "JJA", "SON"):
-                g = group_metrics(df[(df["mode"] == m) & (df["variable"] == v) & (df["season"] == s)])
-                if g is None:
-                    continue
-                r = g[g.system == "product"].iloc[0]
-                season_detail.append(dict(mode=m, variable=v, season=s, n=int(r["n"]),
-                                          hit=r["hit"], rpss=r["rpss"],
-                                          cov=r["p10_90_coverage_conformal"]))
-    pd.DataFrame(season_detail).to_csv(OUT / "grid_season_detail.csv", index=False)
-
-    by_point = []
-    for p in sorted(df["point"].unique()):
-        sub = df[df["point"] == p]
-        row = dict(point=p, lat=float(sub["lat"].iloc[0]), lon=float(sub["lon"].iloc[0]),
-                   n=int(len(sub)))
-        for m in MODES:
-            for v in VARS_:
-                g = group_metrics(sub[(sub["mode"] == m) & (sub["variable"] == v)])
-                if g is None:
-                    continue
-                r = g[g.system == "product"].iloc[0]
-                row[f"{m}_{v}_rpss"] = r["rpss"]
-                row[f"{m}_{v}_hit"] = r["hit"]
-                row[f"{m}_{v}_cov"] = r["p10_90_coverage_conformal"]
-        by_point.append(row)
-    bp = pd.DataFrame(by_point).sort_values("seasonal_t2m_rpss", ascending=False)
-    bp.to_csv(OUT / "grid_by_point.csv", index=False)
-
-    (OUT / "grid_summary.json").write_text(json.dumps(
-        dict(n_points=n_pts, years=years, verifications=int(len(df)),
-             summary=summary, season_detail=season_detail, by_point=by_point),
-        indent=1, ensure_ascii=False, default=str))
-
-    md = write_grid_markdown(df, summary, bp, season_detail, n_pts, years)
-    log("отчёт сетки: " + str(OUT / "audit_report_grid.md"))
-    return md
-
-
-def write_grid_markdown(df, summary, bp, season_detail, n_pts, years):
-    art = json.loads(GRID_JSON.read_text())
-    st = summary["seasonal_t2m"][0]
-    sp = summary["seasonal_tp"][0]
-    mt = summary["monthly_t2m"][0]
-    mp = summary["monthly_tp"][0]
-    o = summary["overall"][0]
-    sd = pd.DataFrame(season_detail)
-    L = []
-    L.append("# Аудит сетки КРА: 28 точек × 20 лет × 2 режима\n")
-    L.append(f"*Сгенерировано: {time.strftime('%Y-%m-%d %H:%M')} · `scripts/audit_full.py grid`*\n")
-    L.append("## Что проверено\n")
-    L.append(f"- **Точки: {n_pts} ячеек 0.5°** по Краснодарскому краю "
-             "(44–46.5°N, 37–40.5°E) из артефакта `world/artifacts/krai_grid.json`: "
-             f"из {art['n_candidates']} кандидатов доступны {art['n_cells']} "
-             "(фильтр покрытия данных ≥90% по t2m и tp, 1979–2026).")
-    L.append(f"- **Годы: {years[0]}–{years[-1]}** (20 лет, leave-one-year-out — путь "
-             "«проверки прошлого» продукта без изменений).")
-    L.append("- **Режимы: seasonal** (12 стартовых месяцев, блок 3 мес.) **и monthly** "
-             "(12 целевых месяцев, lead 1).")
-    L.append("- **Путь расчёта — идентичен продукту и 50-точечному аудиту бокса**: "
-             "ансамбль P и наблюдения — общие по боксу данных (одна система на регион), "
-             "у каждой точки свои норма/разброс/факт и коридоры P10–P90; месячный t2m "
-             "дополнительно проходит пер-точечный NN-mix (α=0.2). Поэтому сезонные "
-             "метрики по точкам совпадают, месячные — различаются.")
-    L.append(f"- **Верификаций: {len(df):,}** = {n_pts} × 20 × (12+12) × 2 переменные.\n")
-
-    L.append("## Главный результат\n")
-    L.append(md_table(summary["overall"]) + "\n")
-    for key in ("seasonal_t2m", "seasonal_tp", "monthly_t2m", "monthly_tp"):
-        r = summary[key][0]
-        L.append(f"**{key}**: RPSS **{r['rpss']:+.3f}**, hit {r['hit']:.1%} — "
-                 f"*{_skill_label(r['rpss'])}*.\n")
-    L.append(md_table(summary["seasonal_t2m"]) + "\n")
-    L.append(md_table(summary["seasonal_tp"]) + "\n")
-    L.append(md_table(summary["monthly_t2m"]) + "\n")
-    L.append(md_table(summary["monthly_tp"]) + "\n")
-
-    L.append("## Сезонная картина (продукт)\n")
-    L.append("| режим | переменная | сезон | n | hit | RPSS | оценка |")
-    L.append("|---|---|---|---|---|---|---|")
-    for _, r in sd.iterrows():
-        L.append("| %s | %s | %s | %d | %.3f | %+.3f | %s |" % (
-            r["mode"], r["variable"], SEASON_RU.get(r["season"], r["season"]),
-            int(r["n"]), r["hit"], r["rpss"], _skill_label(r["rpss"])))
-    L.append("")
-
-    L.append("## Все 28 точек\n")
-    L.append("| точка | шир | долг | сезон t2m RPSS | hit | мес t2m RPSS | сезон tp RPSS | мес tp RPSS |")
-    L.append("|---|---|---|---|---|---|---|---|")
-    for _, r in bp.iterrows():
-        def _fmt(x):
-            return f"{r[x]:+.3f}" if r.get(x) is not None and pd.notna(r.get(x)) else "—"
-        L.append(f"| {r['point']} | {r['lat']:.2f} | {r['lon']:.2f} | "
-                 f"{_fmt('seasonal_t2m_rpss')} | {r['seasonal_t2m_hit']:.1%} | "
-                 f"{_fmt('monthly_t2m_rpss')} | {_fmt('seasonal_tp_rpss')} | {_fmt('monthly_tp_rpss')} |")
-    L.append("")
-    t2 = bp["seasonal_t2m_rpss"].astype(float)
-    L.append(f"- **Сезонный t2m**: RPSS {t2.min():+.3f}…{t2.max():+.3f} "
-             f"(медиана {t2.median():+.3f}), положительный на "
-             f"{int((t2 > 0).sum())}/{n_pts} точек; hit {bp['seasonal_t2m_hit'].mean():.0%} "
-             "в среднем по точкам. Сезонные значения едины по точкам — ансамбль "
-             "P один на бокс (схема продукта); различаются месячные метрики "
-             "(пер-точечный NN-mix) и локальные норма/факт/коридоры.")
-    tp_s = bp["seasonal_tp_rpss"].astype(float)
-    tp_m = bp["monthly_tp_rpss"].astype(float)
-    L.append(f"- **Осадки (tp)**: сезонный RPSS {tp_s.min():+.3f}…{tp_s.max():+.3f}, "
-             f"месячный {tp_m.min():+.3f}…{tp_m.max():+.3f}; положительный на "
-             f"{int((tp_s > 0).sum())}/{n_pts} (сезон) и {int((tp_m > 0).sum())}/{n_pts} "
-             "(месяц) точек. Там, где RPSS ≤ 0, отчёты продукта честно помечают "
-             "«навык не подтверждён — уровень климатологии».")
-    cov_c = o.get("p10_90_coverage_conformal")
-    if cov_c is not None:
-        L.append(f"- **Конформальное покрытие P10–P90: {cov_c:.1%}** (цель ≈80%).\n")
-
-    L.append("## Выводы\n")
-    L.append(f"1. Навык по температуре **системный**: {int((t2 > 0).sum())}/{n_pts} точек "
-             f"с RPSS > 0, медиана {t2.median():+.3f} — эффект не «удачный участок», "
-             "а свойство системы на всём регионе.")
-    L.append("2. Осадки на сетке подтверждений не получили — как и в 50-точечном "
-             "аудите бокса: продукт не продаёт прогноз осадков, полив считается "
-             "по дефициту ET0 (температура).")
-    L.append("3. География навыка расширена с бокса данных (43–47°N, 37–42°E) на "
-             "конкретный регион присутствия — Краснодарский край; 28 точек доступны "
-             "для LIVE-прогноза и кринг-поля (`scripts/krig_demo.py`).")
-    md = "\n".join(L)
-    (OUT / "audit_report_grid.md").write_text(md)
-    return md
+    for f in PTDIR.glob("P*.parquet"):
+        f.unlink()
+    phase_points(workers=workers, jobs=jobs)
+    phase_report()
 
 
 # -------------------------------------------------------------------- report
@@ -626,8 +437,8 @@ def group_metrics(df):
 def phase_report():
     OUT.mkdir(parents=True, exist_ok=True)
     files = sorted(PTDIR.glob("P*.parquet"))
-    if len(files) < 50:
-        log(f"ВНИМАНИЕ: точек {len(files)}/50 — отчёт будет по доступным")
+    if len(files) < len(POINTS):
+        log(f"ВНИМАНИЕ: точек {len(files)}/{len(POINTS)} — отчёт будет по доступным")
     df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
     df.to_csv(OUT / "audit_records.csv", index=False)
     log(f"записей: {len(df)} по {df['point'].nunique()} точек")
@@ -812,12 +623,13 @@ def build_verdict(summary, stable, share, by_point_df):
               if all(s["last10_rpss"] >= s["first10_rpss"] - 0.05 for k, s in stable.items()
                      if k.endswith("_prod") and "t2m" in k)
               else "Есть сегменты с деградацией навыка — разбирать."))
-    V.append("6. **География аудита**: 50 точек — только бокс данных (43–47°N, 37–42°E). "
+    V.append(f"6. **География аудита**: {len(by_point_df)} точек — бокс данных (43–47°N, 37–42°E) "
+             "или сетка КРА (режим grid, 44–46.5°N, 37–40.5°E). "
              "Расширение на всю Россию — тот же скрипт + сеть (CPC-ингест ~2–6 мин/точку). "
              "До этого «карта России» в продукте подтверждена только для этого бокса.")
-    V.append(f"7. **По точкам**: сезонный t2m — {(by_point_df['seasonal_t2m_prod_rpss'] > 0).sum()}/50 "
+    V.append(f"7. **По точкам**: сезонный t2m — {(by_point_df['seasonal_t2m_prod_rpss'] > 0).sum()}/{len(by_point_df)} "
              f"положительных, медиана {by_point_df['seasonal_t2m_prod_rpss'].median():+.3f}; "
-             f"бленд: {(by_point_df['seasonal_t2m_blend_rpss'] > 0).sum()}/50, "
+             f"бленд: {(by_point_df['seasonal_t2m_blend_rpss'] > 0).sum()}/{len(by_point_df)}, "
              f"медиана {by_point_df['seasonal_t2m_blend_rpss'].median():+.3f}. "
              "Разброс по точкам небольшой — эффект системный, не «удачный участок».")
     V.append("")
@@ -862,13 +674,13 @@ def write_markdown(df, summary, by_point_df, by_year_df, stable, share):
     n_pts = df["point"].nunique()
     years = sorted(df["year"].unique())
     L = []
-    L.append("# Полный аудит AgroCast: 50 точек × 20 лет × все режимы\n")
+    L.append(f"# Полный аудит AgroCast: {n_pts} точек × 20 лет × все режимы\n")
     L.append(f"*Сгенерировано: {time.strftime('%Y-%m-%d %H:%M')} · `scripts/audit_full.py`*\n")
     L.append("## 1. Что проверено\n")
-    L.append(f"- **Точек: {n_pts}** — 50 уникальных ячеек 0.5° по всему боксу данных "
+    L.append(f"- **Точек: {n_pts}** — уникальные ячейки 0.5° по боксу данных "
              "продукта (43–47°N, 37–42°E, центр — КРА / юг Центральной России). "
              "В боксе 70 из 99 ячеек с полными данными; набор зафиксирован в "
-             "`data/audit/audit_points.json`.")
+             "`data/audit/audit_points.json` (режим points) или `world/artifacts/krai_grid.json` (режим grid).")
     L.append(f"- **Годы: {years[0]}–{years[-1]}** (20 лет, leave-one-year-out, "
              "как в «проверке прошлого» продукта).")
     L.append("- **Режимы: seasonal** (12 стартовых месяцев, блок 3 месяца) **и monthly** "
@@ -983,7 +795,7 @@ def write_markdown(df, summary, by_point_df, by_year_df, stable, share):
                  f"blend {bb['rpss']:+.3f} (hit {bb['hit']:.2f})")
     L.append("")
 
-    L.append("## 7. Разброс по 50 точкам\n")
+    L.append(f"## 7. Разброс по {n_pts} точкам\n")
     L.append("Топ-10 точек (по RPSS сезонного t2m, продукт). Широта/долгота — "
              "ячейка данных 0.5°, которую реально использует продукт:\n")
     L.append("| точка | ячейка шир | ячейка долг | sez t2m RPSS | sez t2m hit | mon t2m RPSS | sez tp RPSS |")
@@ -1005,7 +817,7 @@ def write_markdown(df, summary, by_point_df, by_year_df, stable, share):
              f"мин {by_point_df['seasonal_t2m_prod_rpss'].min():+.3f}, "
              f"медиана {by_point_df['seasonal_t2m_prod_rpss'].median():+.3f}, "
              f"макс {by_point_df['seasonal_t2m_prod_rpss'].max():+.3f}; "
-             f"положительных: {(by_point_df['seasonal_t2m_prod_rpss'] > 0).sum()}/50.")
+             f"положительных: {(by_point_df['seasonal_t2m_prod_rpss'] > 0).sum()}/{n_pts}.")
     L.append("")
 
     L.append("## 8. Насколько выгодно развивать\n")
@@ -1027,6 +839,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("phase", choices=["precompute", "points", "report", "mini5", "all", "grid"])
     ap.add_argument("--workers", type=int, default=2)
+    ap.add_argument("--max-points", type=int, default=30)
     args = ap.parse_args()
     if args.phase in ("precompute", "all"):
         phase_precompute()
@@ -1037,4 +850,4 @@ if __name__ == "__main__":
     if args.phase == "mini5":
         phase_mini5(args.workers)
     if args.phase == "grid":
-        phase_grid(args.workers)
+        phase_grid(args.workers, args.max_points)

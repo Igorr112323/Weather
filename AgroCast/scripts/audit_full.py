@@ -368,6 +368,25 @@ def phase_mini5(workers=2):
         f"сезонный t2m RPSS {st2m['rpss']:+.3f}, hit {st2m['hit']:.1%}")
 
 
+def phase_grid(workers=2, max_points=30):
+    from agrocast.region.grid import krai_cells, save_grid
+    from agrocast.store.zarrstore import ZarrStore
+
+    store = ZarrStore(str(Path(WORLD) / "zarr"))
+    cells = krai_cells(store)
+    save_grid(cells)
+    idx = np.arange(len(cells))
+    if len(cells) > int(max_points):
+        idx = np.unique(np.linspace(0, len(cells) - 1, int(max_points)).round().astype(int))
+    jobs = [(cells[j]["id"], float(cells[j]["lat"]), float(cells[j]["lon"])) for j in idx]
+    if not (CACHE / "alphas.json").exists() or not (CACHE / "precompute_monthly.parquet").exists():
+        phase_precompute()
+    for f in PTDIR.glob("P*.parquet"):
+        f.unlink()
+    phase_points(workers=workers, jobs=jobs)
+    phase_report()
+
+
 # -------------------------------------------------------------------- report
 
 def wilson(k, n, z=1.96):
@@ -418,8 +437,8 @@ def group_metrics(df):
 def phase_report():
     OUT.mkdir(parents=True, exist_ok=True)
     files = sorted(PTDIR.glob("P*.parquet"))
-    if len(files) < 50:
-        log(f"ВНИМАНИЕ: точек {len(files)}/50 — отчёт будет по доступным")
+    if len(files) < len(POINTS):
+        log(f"ВНИМАНИЕ: точек {len(files)}/{len(POINTS)} — отчёт будет по доступным")
     df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
     df.to_csv(OUT / "audit_records.csv", index=False)
     log(f"записей: {len(df)} по {df['point'].nunique()} точек")
@@ -604,12 +623,13 @@ def build_verdict(summary, stable, share, by_point_df):
               if all(s["last10_rpss"] >= s["first10_rpss"] - 0.05 for k, s in stable.items()
                      if k.endswith("_prod") and "t2m" in k)
               else "Есть сегменты с деградацией навыка — разбирать."))
-    V.append("6. **География аудита**: 50 точек — только бокс данных (43–47°N, 37–42°E). "
+    V.append(f"6. **География аудита**: {len(by_point_df)} точек — бокс данных (43–47°N, 37–42°E) "
+             "или сетка КРА (режим grid, 44–46.5°N, 37–40.5°E). "
              "Расширение на всю Россию — тот же скрипт + сеть (CPC-ингест ~2–6 мин/точку). "
              "До этого «карта России» в продукте подтверждена только для этого бокса.")
-    V.append(f"7. **По точкам**: сезонный t2m — {(by_point_df['seasonal_t2m_prod_rpss'] > 0).sum()}/50 "
+    V.append(f"7. **По точкам**: сезонный t2m — {(by_point_df['seasonal_t2m_prod_rpss'] > 0).sum()}/{len(by_point_df)} "
              f"положительных, медиана {by_point_df['seasonal_t2m_prod_rpss'].median():+.3f}; "
-             f"бленд: {(by_point_df['seasonal_t2m_blend_rpss'] > 0).sum()}/50, "
+             f"бленд: {(by_point_df['seasonal_t2m_blend_rpss'] > 0).sum()}/{len(by_point_df)}, "
              f"медиана {by_point_df['seasonal_t2m_blend_rpss'].median():+.3f}. "
              "Разброс по точкам небольшой — эффект системный, не «удачный участок».")
     V.append("")
@@ -654,13 +674,13 @@ def write_markdown(df, summary, by_point_df, by_year_df, stable, share):
     n_pts = df["point"].nunique()
     years = sorted(df["year"].unique())
     L = []
-    L.append("# Полный аудит AgroCast: 50 точек × 20 лет × все режимы\n")
+    L.append(f"# Полный аудит AgroCast: {n_pts} точек × 20 лет × все режимы\n")
     L.append(f"*Сгенерировано: {time.strftime('%Y-%m-%d %H:%M')} · `scripts/audit_full.py`*\n")
     L.append("## 1. Что проверено\n")
-    L.append(f"- **Точек: {n_pts}** — 50 уникальных ячеек 0.5° по всему боксу данных "
+    L.append(f"- **Точек: {n_pts}** — уникальные ячейки 0.5° по боксу данных "
              "продукта (43–47°N, 37–42°E, центр — КРА / юг Центральной России). "
              "В боксе 70 из 99 ячеек с полными данными; набор зафиксирован в "
-             "`data/audit/audit_points.json`.")
+             "`data/audit/audit_points.json` (режим points) или `world/artifacts/krai_grid.json` (режим grid).")
     L.append(f"- **Годы: {years[0]}–{years[-1]}** (20 лет, leave-one-year-out, "
              "как в «проверке прошлого» продукта).")
     L.append("- **Режимы: seasonal** (12 стартовых месяцев, блок 3 месяца) **и monthly** "
@@ -775,7 +795,7 @@ def write_markdown(df, summary, by_point_df, by_year_df, stable, share):
                  f"blend {bb['rpss']:+.3f} (hit {bb['hit']:.2f})")
     L.append("")
 
-    L.append("## 7. Разброс по 50 точкам\n")
+    L.append(f"## 7. Разброс по {n_pts} точкам\n")
     L.append("Топ-10 точек (по RPSS сезонного t2m, продукт). Широта/долгота — "
              "ячейка данных 0.5°, которую реально использует продукт:\n")
     L.append("| точка | ячейка шир | ячейка долг | sez t2m RPSS | sez t2m hit | mon t2m RPSS | sez tp RPSS |")
@@ -797,7 +817,7 @@ def write_markdown(df, summary, by_point_df, by_year_df, stable, share):
              f"мин {by_point_df['seasonal_t2m_prod_rpss'].min():+.3f}, "
              f"медиана {by_point_df['seasonal_t2m_prod_rpss'].median():+.3f}, "
              f"макс {by_point_df['seasonal_t2m_prod_rpss'].max():+.3f}; "
-             f"положительных: {(by_point_df['seasonal_t2m_prod_rpss'] > 0).sum()}/50.")
+             f"положительных: {(by_point_df['seasonal_t2m_prod_rpss'] > 0).sum()}/{n_pts}.")
     L.append("")
 
     L.append("## 8. Насколько выгодно развивать\n")
@@ -817,8 +837,9 @@ def write_markdown(df, summary, by_point_df, by_year_df, stable, share):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("phase", choices=["precompute", "points", "report", "mini5", "all"])
+    ap.add_argument("phase", choices=["precompute", "points", "report", "mini5", "all", "grid"])
     ap.add_argument("--workers", type=int, default=2)
+    ap.add_argument("--max-points", type=int, default=30)
     args = ap.parse_args()
     if args.phase in ("precompute", "all"):
         phase_precompute()
@@ -828,3 +849,5 @@ if __name__ == "__main__":
         phase_report()
     if args.phase == "mini5":
         phase_mini5(args.workers)
+    if args.phase == "grid":
+        phase_grid(args.workers, args.max_points)

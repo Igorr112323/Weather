@@ -1,0 +1,239 @@
+{
+ "name": "krai_grid",
+ "cell_deg": 0.5,
+ "bounds": {
+  "lat_min": 44.0,
+  "lat_max": 46.5,
+  "lon_min": 37.0,
+  "lon_max": 40.5
+ },
+ "min_coverage": 0.9,
+ "n_candidates": 35,
+ "n_cells": 28,
+ "cells": [
+  {
+   "lat": 46.25,
+   "lon": 38.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P01"
+  },
+  {
+   "lat": 46.25,
+   "lon": 38.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P02"
+  },
+  {
+   "lat": 46.25,
+   "lon": 39.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P03"
+  },
+  {
+   "lat": 46.25,
+   "lon": 39.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P04"
+  },
+  {
+   "lat": 46.25,
+   "lon": 40.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P05"
+  },
+  {
+   "lat": 45.75,
+   "lon": 37.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P06"
+  },
+  {
+   "lat": 45.75,
+   "lon": 38.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P07"
+  },
+  {
+   "lat": 45.75,
+   "lon": 38.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P08"
+  },
+  {
+   "lat": 45.75,
+   "lon": 39.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P09"
+  },
+  {
+   "lat": 45.75,
+   "lon": 39.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P10"
+  },
+  {
+   "lat": 45.75,
+   "lon": 40.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P11"
+  },
+  {
+   "lat": 45.25,
+   "lon": 37.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P12"
+  },
+  {
+   "lat": 45.25,
+   "lon": 37.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P13"
+  },
+  {
+   "lat": 45.25,
+   "lon": 38.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P14"
+  },
+  {
+   "lat": 45.25,
+   "lon": 38.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P15"
+  },
+  {
+   "lat": 45.25,
+   "lon": 39.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P16"
+  },
+  {
+   "lat": 45.25,
+   "lon": 39.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P17"
+  },
+  {
+   "lat": 45.25,
+   "lon": 40.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P18"
+  },
+  {
+   "lat": 44.75,
+   "lon": 37.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P19"
+  },
+  {
+   "lat": 44.75,
+   "lon": 38.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P20"
+  },
+  {
+   "lat": 44.75,
+   "lon": 38.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P21"
+  },
+  {
+   "lat": 44.75,
+   "lon": 39.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P22"
+  },
+  {
+   "lat": 44.75,
+   "lon": 39.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P23"
+  },
+  {
+   "lat": 44.75,
+   "lon": 40.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P24"
+  },
+  {
+   "lat": 44.25,
+   "lon": 38.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P25"
+  },
+  {
+   "lat": 44.25,
+   "lon": 39.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P26"
+  },
+  {
+   "lat": 44.25,
+   "lon": 39.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P27"
+  },
+  {
+   "lat": 44.25,
+   "lon": 40.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P28"
+  }
+ ]
+}

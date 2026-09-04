@@ -1,0 +1,244 @@
+{
+ "name": "krai_grid",
+ "description": "Сетка ячеек 0.5° по Краснодарскому краю с покрытием данных ≥ 90%",
+ "cell_deg": 0.5,
+ "bounds": {
+  "lat_min": 44.0,
+  "lat_max": 46.5,
+  "lon_min": 37.0,
+  "lon_max": 40.5
+ },
+ "min_coverage": 0.9,
+ "period": [
+  "1979-01-01",
+  "2026-08-28"
+ ],
+ "n_candidates": 35,
+ "n_cells": 28,
+ "cells": [
+  {
+   "lat": 46.25,
+   "lon": 38.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G01"
+  },
+  {
+   "lat": 46.25,
+   "lon": 38.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G02"
+  },
+  {
+   "lat": 46.25,
+   "lon": 39.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G03"
+  },
+  {
+   "lat": 46.25,
+   "lon": 39.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G04"
+  },
+  {
+   "lat": 46.25,
+   "lon": 40.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G05"
+  },
+  {
+   "lat": 45.75,
+   "lon": 37.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G06"
+  },
+  {
+   "lat": 45.75,
+   "lon": 38.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G07"
+  },
+  {
+   "lat": 45.75,
+   "lon": 38.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G08"
+  },
+  {
+   "lat": 45.75,
+   "lon": 39.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G09"
+  },
+  {
+   "lat": 45.75,
+   "lon": 39.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G10"
+  },
+  {
+   "lat": 45.75,
+   "lon": 40.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G11"
+  },
+  {
+   "lat": 45.25,
+   "lon": 37.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G12"
+  },
+  {
+   "lat": 45.25,
+   "lon": 37.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G13"
+  },
+  {
+   "lat": 45.25,
+   "lon": 38.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G14"
+  },
+  {
+   "lat": 45.25,
+   "lon": 38.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G15"
+  },
+  {
+   "lat": 45.25,
+   "lon": 39.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G16"
+  },
+  {
+   "lat": 45.25,
+   "lon": 39.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G17"
+  },
+  {
+   "lat": 45.25,
+   "lon": 40.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G18"
+  },
+  {
+   "lat": 44.75,
+   "lon": 37.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G19"
+  },
+  {
+   "lat": 44.75,
+   "lon": 38.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G20"
+  },
+  {
+   "lat": 44.75,
+   "lon": 38.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G21"
+  },
+  {
+   "lat": 44.75,
+   "lon": 39.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G22"
+  },
+  {
+   "lat": 44.75,
+   "lon": 39.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G23"
+  },
+  {
+   "lat": 44.75,
+   "lon": 40.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G24"
+  },
+  {
+   "lat": 44.25,
+   "lon": 38.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G25"
+  },
+  {
+   "lat": 44.25,
+   "lon": 39.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G26"
+  },
+  {
+   "lat": 44.25,
+   "lon": 39.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G27"
+  },
+  {
+   "lat": 44.25,
+   "lon": 40.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "G28"
+  }
+ ]
+}

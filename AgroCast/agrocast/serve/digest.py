@@ -91,7 +91,7 @@ def field_letter(field, payload):
     return "\n".join(lines)
 
 
-def build_digest(fields, payloads):
+def build_digest(fields, payloads, region_text=None):
     parts = []
     for f, p in zip(fields, payloads):
         parts.append(field_letter(f, p))
@@ -99,6 +99,8 @@ def build_digest(fields, payloads):
     label, _, _, _, _ = _season_line(first)
     subject = f"AgroCast: прогноз по вашим полям ({label})" if label and "?" not in label else "AgroCast: прогноз по вашим полям"
     body = "AgroCast — дайджест по полям\n(вероятности из ансамбля; горизонт — сезон)\n\n" + "\n".join(parts)
+    if region_text:
+        body += "\n" + region_text + "\n"
     body += "Полный отчёт с картой и фено-календарём: откройте продукт и выберите точку на карте.\n"
     return subject, body
 
@@ -159,7 +161,15 @@ def main(argv=None):
         print(f"считаю: {f.get('name')} ({f['lat']}, {f['lon']})", flush=True)
         payloads.append(run_one(world, data_root, float(f["lat"]), float(f["lon"]), start, args.horizon, args.mode, args.season_len))
 
-    subject, body = build_digest(fields, payloads)
+    region_txt = ""
+    try:
+        from agrocast.serve import region as region_mod
+
+        if region_mod.grid_path(world).exists():
+            region_txt = region_mod.region_block(world, data_root)
+    except Exception:
+        region_txt = ""
+    subject, body = build_digest(fields, payloads, region_txt)
     if args.dry_run:
         print("\nТема: " + subject + "\n\n" + body)
         return 0

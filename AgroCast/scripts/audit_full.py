@@ -385,6 +385,65 @@ def phase_grid(workers=2, max_points=30):
         f.unlink()
     phase_points(workers=workers, jobs=jobs)
     phase_report()
+    export_skill_artifact()
+
+
+def export_skill_artifact(path=None):
+    from agrocast.region.grid import DEFAULT_ARTIFACT
+
+    s = json.loads((OUT / "audit_summary.json").read_text())
+    bp = pd.read_csv(OUT / "by_point.csv")
+    sd = pd.read_csv(OUT / "season_detail.csv")
+    sd = sd[sd.system == "product"]
+    grid = json.loads(DEFAULT_ARTIFACT.read_text(encoding="utf-8"))
+    cells = {c["id"]: c for c in grid.get("cells", [])}
+    by_point = []
+    for _, r in bp.iterrows():
+        pid = str(r["point"])
+        c = cells.get(pid, {})
+        by_point.append({
+            "id": pid,
+            "lat": float(c.get("lat", r["lat"])),
+            "lon": float(c.get("lon", r["lon"])),
+            "coverage": float(c.get("coverage", 0.0)),
+            "seasonal_t2m_rpss": float(r["seasonal_t2m_prod_rpss"]),
+            "seasonal_t2m_hit": float(r["seasonal_t2m_prod_hit"]),
+            "monthly_t2m_rpss": float(r["monthly_t2m_prod_rpss"]),
+            "seasonal_tp_rpss": float(r["seasonal_tp_prod_rpss"]),
+            "monthly_tp_rpss": float(r["monthly_tp_prod_rpss"]),
+        })
+
+    def _block(key):
+        r = s[key][0]
+        out = {
+            "rpss": r["rpss"], "hit": r["hit"],
+            "hit_ci95": r["hit_ci95"],
+            "conformal_coverage": r.get("p10_90_coverage_conformal"),
+            "seasons": {},
+        }
+        m, v = key.split("_")
+        for _, row in sd[(sd["mode"] == m) & (sd["variable"] == v)].iterrows():
+            out["seasons"][row["season"]] = {"rpss": float(row["rpss"]), "hit": float(row["hit"])}
+        return out
+
+    out = {
+        "source": "audit_full grid: точки КРА × 20 лет × 2 режима",
+        "generated_at": time.strftime("%Y-%m-%d"),
+        "n_points": int(len(bp)),
+        "verifications": int(s["overall"][0]["n"]),
+        "years": "2005-2024",
+        "note_tp": "навык осадков не подтверждён — уровень климатологии",
+        "seasonal_t2m": _block("seasonal_t2m"),
+        "seasonal_tp": _block("seasonal_tp"),
+        "monthly_t2m": _block("monthly_t2m"),
+        "monthly_tp": _block("monthly_tp"),
+        "by_point": by_point,
+    }
+    path = Path(path) if path else Path(WORLD) / "artifacts" / "krai_grid_skill.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(out, ensure_ascii=False, indent=1))
+    log(f"артефакт навыка сетки: {path}")
+    return path
 
 
 # -------------------------------------------------------------------- report

@@ -117,6 +117,16 @@ label{font-size:12.5px;color:#9dbd90;display:block;margin:10px 0 5px}
 </div>
 </div>
 
+<div class="card" id="regcard">
+<h3>Регион · Краснодарский край (Фаза 3)</h3>
+<div class="sub" style="margin-top:0">Сетка 28 ячеек 0.5° + кринг-поле терцилей осадков 0.25° (обыкновенный кринг: вариограмма, детрендинг, IDW-фолбэк). <b>Честно:</b> навык осадков в регионе аудитом 20 лет не подтверждён — поле показывает связность прогноза, не подтверждённый навык.</div>
+<div style="display:flex;gap:8px;margin-top:8px">
+<button class="btn ghost" id="regshow" style="flex:1;margin-top:0">Показать на карте</button>
+<button class="btn ghost" id="regrefresh" style="flex:1;margin-top:0">Рассчитать поле</button>
+</div>
+<div class="hint" id="regstat"></div>
+</div>
+
 <div class="card warn" id="outwarn" style="display:none">
 <h3>Вне зоны поддержки</h3>
 <div class="sub" id="outtxt"></div>
@@ -161,6 +171,16 @@ function updHint(){
 }
 el('start').addEventListener('input',updHint);
 el('start').addEventListener('change',updHint);
+function choosePoint(lat,lng){
+ pt={lat:lat,lon:lng};
+ if(marker)map.removeLayer(marker);
+ marker=L.circleMarker([lat,lng],{radius:9,color:'#a4d65e',weight:3,fillColor:'#6fae3f',fillOpacity:.6}).addTo(map).bindPopup(lat.toFixed(3)+'°N · '+lng.toFixed(3)+'°E').openPopup();
+ el('pt').innerHTML='Широта '+lat.toFixed(3)+'° · Долгота '+lng.toFixed(3)+'°';
+ el('start').value=nextMonth();
+ updHint();
+ el('dlg').style.display='block';
+ el('dlg').scrollIntoView({behavior:'smooth'});
+}
 map.on('click',async e=>{
  const{lat,lng}=e.latlng;
  el('outwarn').style.display='none';el('prog').style.display='none';el('goerr').textContent='';
@@ -173,14 +193,7 @@ map.on('click',async e=>{
   el('outtxt').textContent='Продукт поддерживает только территорию России.'+(r.nearest_russia_km?' Ближайшая поддерживаемая точка ≈ '+r.nearest_russia_km+' км.':'');
   return;
  }
- pt={lat:lat,lon:lng};
- if(marker)map.removeLayer(marker);
- marker=L.circleMarker([lat,lng],{radius:9,color:'#a4d65e',weight:3,fillColor:'#6fae3f',fillOpacity:.6}).addTo(map).bindPopup(lat.toFixed(3)+'°N · '+lng.toFixed(3)+'°E').openPopup();
- el('pt').innerHTML='Широта '+lat.toFixed(3)+'° · Долгота '+lng.toFixed(3)+'°';
- el('start').value=nextMonth();
- updHint();
- el('dlg').style.display='block';
- el('dlg').scrollIntoView({behavior:'smooth'});
+ choosePoint(lat,lng);
 });
 el('go').onclick=async()=>{
  el('goerr').textContent='';
@@ -278,6 +291,79 @@ el('c_save').onclick=async()=>{
 };
 el('c_clear').onclick=()=>{['c_name','c_fao','c_gdd','c_vp','c_yield','c_area','c_breeder','c_sowf','c_sowt','c_ftol','c_ffat','c_notes'].forEach(i=>el(i).value='');el('cerr').textContent=''};
 cropLoad();
+
+let regLayers=null,regLegend=null;
+const TER_KEYS=['below','normal','above'];
+const TER_RU={below:'ниже нормы',normal:'около нормы',above:'выше нормы'};
+const TER_COLOR={below:'#3b7dd8',normal:'#6fae3f',above:'#d84b3b'};
+const terDom=(b,n,a)=>TER_KEYS[[b,n,a].indexOf(Math.max(b,n,a))];
+function regClear(){
+ if(regLayers){regLayers.forEach(l=>map.removeLayer(l));regLayers=null}
+ if(regLegend){map.removeControl(regLegend);regLegend=null}
+}
+function regLegendAdd(){
+ regLegend=L.control({position:'bottomright'});
+ regLegend.onAdd=()=>{
+  const d=L.DomUtil.create('div','reglegend');
+  d.style.cssText='background:#13221ae6;border:1px solid #2e4a36;border-radius:8px;padding:7px 10px;font-size:11.5px;color:#c8e6b0;line-height:1.7';
+  d.innerHTML='<b>терцель осадков</b><br>'+TER_KEYS.map(k=>'<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+TER_COLOR[k]+';margin-right:6px"></span>'+TER_RU[k]).join('<br>');
+  return d;
+ };
+ regLegend.addTo(map);
+}
+async function regShow(){
+ el('regstat').textContent='загружаю сетку…';
+ let g;
+ try{g=await(await fetch('/api/region/grid')).json()}catch(e){el('regstat').textContent='сервер недоступен';return}
+ if(!g.ok){el('regstat').textContent=g.error;return}
+ let f;
+ try{f=await(await fetch('/api/region/field')).json()}catch(e){f={ok:false}}
+ regClear();
+ const b=g.grid.bounds;
+ map.fitBounds([[b.lat_min,b.lon_min],[b.lat_max,b.lon_max]],{padding:[24,24]});
+ regLayers=[];
+ regLayers.push(L.rectangle([[b.lat_min,b.lon_min],[b.lat_max,b.lon_max]],{color:'#a4d65e',weight:1.5,fill:false,dashArray:'6 5'}).addTo(map));
+ const probs={};(f.points||[]).forEach(p=>probs[p.id]=p);
+ g.grid.cells.forEach(c=>{
+  const p=probs[c.id];
+  const k=p?terDom(p.below,p.normal,p.above):null;
+  const col=k?TER_COLOR[k]:'#6f8f57';
+  const m=L.circleMarker([c.lat,c.lon],{radius:7,color:col,weight:2,fillColor:col,fillOpacity:.75}).addTo(map);
+  m.bindPopup('<b>'+c.id+'</b> · '+c.lat.toFixed(2)+'°N '+c.lon.toFixed(2)+'°E'+(p
+    ?'<br>осадки: '+TER_RU[k]+' ('+p.below+' / '+p.normal+' / '+p.above+')<br>медиана '+(p.p50_mm??'—')+' мм · норма '+(p.normal_mm??'—')+' мм'
+    :'<br>нет данных поля — нажмите «Рассчитать поле»')+'<br><i style="color:#8fae86">клик по маркеру — сделать точкой расчёта</i>');
+  m.on('click',()=>choosePoint(c.lat,c.lon));
+  regLayers.push(m);
+ });
+ if(f.ok&&f.field&&f.field.below){
+  const B=f.field.below,N=f.field.normal,A=f.field.above;
+  for(let i=0;i<f.meta.lats.length;i++){
+   for(let j=0;j<f.meta.lons.length;j++){
+    const la=f.meta.lats[i],lo=f.meta.lons[j],k=terDom(B[i][j],N[i][j],A[i][j]);
+    const op=(0.10+0.40*Math.max(B[i][j],N[i][j],A[i][j])).toFixed(2);
+    regLayers.push(L.rectangle([[la-0.125,lo-0.125],[la+0.125,lo+0.125]],{stroke:false,fillColor:TER_COLOR[k],fillOpacity:+op}).addTo(map));
+   }
+  }
+  const hrs=Math.max(1,Math.round(f.meta.age_s/3600));
+  el('regstat').textContent='поле: '+f.meta.months.join('–')+' · выпуск по '+f.meta.issue_through+' · '+hrs+' ч назад'+(f.meta.stale?' · УСТАРЕЛО':'');
+ } else el('regstat').textContent=f.error||'поле не готово';
+ regLegendAdd();
+}
+el('regshow').onclick=regShow;
+el('regrefresh').onclick=async()=>{
+ el('regstat').textContent='запускаю расчёт (28 точек × полный путь продукта, ~4–5 мин)…';
+ let r;
+ try{r=await(await fetch('/api/region/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:nextMonth()})})).json()}
+ catch(e){el('regstat').textContent='сервер недоступен';return}
+ if(!r.job){el('regstat').textContent='поле уже свежее — перерисовываю';regShow();return}
+ const t=setInterval(async()=>{
+  let st;
+  try{st=await(await fetch('/api/job/'+r.job)).json()}catch(e){return}
+  if(st.log&&st.log.length)el('regstat').textContent=st.log[st.log.length-1];
+  if(st.status==='done'){clearInterval(t);regShow()}
+  if(st.status==='error'){clearInterval(t);el('regstat').textContent='ошибка: '+(st.error||'?')}
+ },3000);
+};
 </script>
 </body>
 </html>

@@ -1,0 +1,426 @@
+{
+ "source": "audit_full grid: точки КРА × 20 лет × 2 режима",
+ "generated_at": "2026-09-04",
+ "n_points": 28,
+ "verifications": 26880,
+ "years": "2005-2024",
+ "note_tp": "навык осадков не подтверждён — уровень климатологии",
+ "seasonal_t2m": {
+  "rpss": 0.2544,
+  "hit": 0.6333,
+  "hit_ci95": [
+   0.6217,
+   0.6448
+  ],
+  "conformal_coverage": 0.8,
+  "seasons": {
+   "DJF": {
+    "rpss": 0.1499,
+    "hit": 0.45
+   },
+   "MAM": {
+    "rpss": 0.1973,
+    "hit": 0.6333
+   },
+   "JJA": {
+    "rpss": 0.4041,
+    "hit": 0.7833
+   },
+   "SON": {
+    "rpss": 0.2525,
+    "hit": 0.6667
+   }
+  }
+ },
+ "seasonal_tp": {
+  "rpss": -0.0598,
+  "hit": 0.3583,
+  "hit_ci95": [
+   0.347,
+   0.3699
+  ],
+  "conformal_coverage": 0.7833,
+  "seasons": {
+   "DJF": {
+    "rpss": -0.0531,
+    "hit": 0.3
+   },
+   "MAM": {
+    "rpss": -0.1249,
+    "hit": 0.3667
+   },
+   "JJA": {
+    "rpss": -0.0125,
+    "hit": 0.4833
+   },
+   "SON": {
+    "rpss": -0.0473,
+    "hit": 0.2833
+   }
+  }
+ },
+ "monthly_t2m": {
+  "rpss": 0.1264,
+  "hit": 0.5272,
+  "hit_ci95": [
+   0.5153,
+   0.5392
+  ],
+  "conformal_coverage": 0.7833,
+  "seasons": {
+   "DJF": {
+    "rpss": 0.1207,
+    "hit": 0.5298
+   },
+   "MAM": {
+    "rpss": 0.0437,
+    "hit": 0.4155
+   },
+   "JJA": {
+    "rpss": 0.2521,
+    "hit": 0.6167
+   },
+   "SON": {
+    "rpss": 0.0879,
+    "hit": 0.547
+   }
+  }
+ },
+ "monthly_tp": {
+  "rpss": -0.0185,
+  "hit": 0.3201,
+  "hit_ci95": [
+   0.309,
+   0.3313
+  ],
+  "conformal_coverage": 0.7917,
+  "seasons": {
+   "DJF": {
+    "rpss": -0.034,
+    "hit": 0.3667
+   },
+   "MAM": {
+    "rpss": 0.0011,
+    "hit": 0.2821
+   },
+   "JJA": {
+    "rpss": -0.0022,
+    "hit": 0.2899
+   },
+   "SON": {
+    "rpss": -0.0367,
+    "hit": 0.3417
+   }
+  }
+ },
+ "by_point": [
+  {
+   "id": "P01",
+   "lat": 46.25,
+   "lon": 38.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1237,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0143
+  },
+  {
+   "id": "P02",
+   "lat": 46.25,
+   "lon": 38.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1234,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0195
+  },
+  {
+   "id": "P03",
+   "lat": 46.25,
+   "lon": 39.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1225,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0217
+  },
+  {
+   "id": "P04",
+   "lat": 46.25,
+   "lon": 39.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1266,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0219
+  },
+  {
+   "id": "P05",
+   "lat": 46.25,
+   "lon": 40.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1215,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0126
+  },
+  {
+   "id": "P06",
+   "lat": 45.75,
+   "lon": 37.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1239,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0155
+  },
+  {
+   "id": "P07",
+   "lat": 45.75,
+   "lon": 38.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1231,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0155
+  },
+  {
+   "id": "P08",
+   "lat": 45.75,
+   "lon": 38.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1204,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0178
+  },
+  {
+   "id": "P09",
+   "lat": 45.75,
+   "lon": 39.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1197,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0238
+  },
+  {
+   "id": "P10",
+   "lat": 45.75,
+   "lon": 39.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1236,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0198
+  },
+  {
+   "id": "P11",
+   "lat": 45.75,
+   "lon": 40.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1242,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.017
+  },
+  {
+   "id": "P12",
+   "lat": 45.25,
+   "lon": 37.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1351,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0219
+  },
+  {
+   "id": "P13",
+   "lat": 45.25,
+   "lon": 37.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1244,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0189
+  },
+  {
+   "id": "P14",
+   "lat": 45.25,
+   "lon": 38.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1241,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0162
+  },
+  {
+   "id": "P15",
+   "lat": 45.25,
+   "lon": 38.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.127,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0224
+  },
+  {
+   "id": "P16",
+   "lat": 45.25,
+   "lon": 39.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1257,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0206
+  },
+  {
+   "id": "P17",
+   "lat": 45.25,
+   "lon": 39.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.118,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.023
+  },
+  {
+   "id": "P18",
+   "lat": 45.25,
+   "lon": 40.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.126,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0199
+  },
+  {
+   "id": "P19",
+   "lat": 44.75,
+   "lon": 37.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1288,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0186
+  },
+  {
+   "id": "P20",
+   "lat": 44.75,
+   "lon": 38.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1328,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0143
+  },
+  {
+   "id": "P21",
+   "lat": 44.75,
+   "lon": 38.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.138,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0223
+  },
+  {
+   "id": "P22",
+   "lat": 44.75,
+   "lon": 39.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1328,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0208
+  },
+  {
+   "id": "P23",
+   "lat": 44.75,
+   "lon": 39.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1246,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0176
+  },
+  {
+   "id": "P24",
+   "lat": 44.75,
+   "lon": 40.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1269,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0192
+  },
+  {
+   "id": "P25",
+   "lat": 44.25,
+   "lon": 38.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1285,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0172
+  },
+  {
+   "id": "P26",
+   "lat": 44.25,
+   "lon": 39.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1326,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0157
+  },
+  {
+   "id": "P27",
+   "lat": 44.25,
+   "lon": 39.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1332,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0153
+  },
+  {
+   "id": "P28",
+   "lat": 44.25,
+   "lon": 40.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1275,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0142
+  }
+ ]
+}

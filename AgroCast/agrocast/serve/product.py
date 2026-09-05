@@ -322,3 +322,16 @@ def index():
 @app.get("/report.html", response_class=HTMLResponse)
 def report_page():
     return (STATIC / "report.html").read_text(encoding="utf-8")
+
+
+@app.get("/api/value")
+def value_api():
+    p = Path(WORLD) / "artifacts" / "value_report.json"
+    if not p.exists():
+        return {"ok": False, "error": "постройте отчёт: python -m scripts.value_report"}
+    return {"ok": True, "report": json.loads(p.read_text(encoding="utf-8"))}
+
+
+@app.get("/value.html", response_class=HTMLResponse)
+def value_page():
+    return (STATIC / "value.html").read_text(encoding="utf-8")

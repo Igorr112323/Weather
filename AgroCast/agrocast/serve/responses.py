@@ -131,6 +131,25 @@ class JobResponse(Historical):
     job: JobRecord
 
 
+class PublicationRecord(OwnedRecord[dict[str, JsonValue]]):
+    job_id: UUID
+    checksum: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+
+    @field_validator("data")
+    @classmethod
+    def finite_json(cls, value):
+        json.dumps(value, allow_nan=False)
+        return value
+
+
+class PublicationsResponse(Historical):
+    publications: list[PublicationRecord]
+
+
+class PublicationResponse(Historical):
+    publication: PublicationRecord
+
+
 class AcceptedJob(Contract):
     job: UUID
     status: Literal["queued"] = "queued"

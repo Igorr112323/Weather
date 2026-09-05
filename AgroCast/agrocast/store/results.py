@@ -30,7 +30,9 @@ class Releases(Contract):
 
     @classmethod
     def from_file(cls, path=None):
-        path = path or os.environ.get("AGROCAST_RELEASE_MANIFEST_FILE")
+        from agrocast.core.settings import RuntimeSettings
+
+        path = path or RuntimeSettings.from_environment().release_manifest_file
         if not path:
             raise ValueError("Explicit data/model/application release identity is required")
         with Path(path).open(encoding="utf-8") as handle:

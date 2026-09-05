@@ -130,9 +130,11 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true", help="напечатать письмо и выйти")
     args = ap.parse_args(argv)
 
-    root = Path(__file__).resolve().parent.parent.parent
-    world = os.environ.get("AGROCAST_WORLD", str(root / "world"))
-    data_root = os.environ.get("AGROCAST_DATA", str(root / "data"))
+    from agrocast.core.settings import RuntimeSettings
+
+    settings = RuntimeSettings.from_environment()
+    settings.compute_config()
+    world, data_root = settings.world_dir, settings.state_dir
 
     fpath = Path(args.fields)
     if not fpath.exists():

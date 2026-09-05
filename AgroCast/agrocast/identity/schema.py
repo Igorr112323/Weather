@@ -3,7 +3,7 @@ from sqlalchemy import (
     Integer, JSON, MetaData, String, Table, UniqueConstraint,
 )
 
-REVISION = "0002_crop_revision"
+REVISION = "0003_persistent_state"
 metadata = MetaData()
 organizations = Table(
     "organizations", metadata,
@@ -82,4 +82,33 @@ jobs.append_column(Column("status", String(16), nullable=False))
 jobs.append_constraint(CheckConstraint(
     "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')", name="ck_jobs_status",
 ))
-RESOURCES = {"fields": fields, "crops": crops, "subscriptions": subscriptions, "jobs": jobs}
+publications = owned_table("publications")
+publications.append_column(Column("job_id", String(36), nullable=False))
+publications.append_column(Column("checksum", String(64), nullable=False))
+publications.append_constraint(ForeignKeyConstraint(
+    ["job_id", "owner_id", "organization_id"], ["jobs.id", "jobs.owner_id", "jobs.organization_id"], name="fk_publications_job_owner",
+))
+publications.append_constraint(UniqueConstraint("job_id", name="uq_publications_job"))
+migration_runs = Table(
+    "migration_runs", metadata,
+    Column("id", String(36), primary_key=True),
+    Column("namespace", String(80), nullable=False, unique=True),
+    Column("source_checksum", String(64), nullable=False),
+    Column("mapping_checksum", String(64), nullable=False),
+    Column("report", JSON, nullable=False),
+    Column("created_at", BigInteger, nullable=False),
+)
+legacy_records = Table(
+    "legacy_records", metadata,
+    Column("id", String(36), primary_key=True),
+    Column("migration_id", String(36), ForeignKey("migration_runs.id"), nullable=False),
+    Column("source_key", String(240), nullable=False),
+    Column("kind", String(32), nullable=False),
+    Column("disposition", String(16), nullable=False),
+    Column("data", JSON, nullable=False),
+    Column("checksum", String(64), nullable=False),
+    Column("targets", JSON, nullable=False),
+    UniqueConstraint("migration_id", "source_key", name="uq_legacy_record_source"),
+    CheckConstraint("disposition IN ('imported', 'quarantined')", name="ck_legacy_disposition"),
+)
+RESOURCES = {"fields": fields, "crops": crops, "subscriptions": subscriptions, "jobs": jobs, "publications": publications}

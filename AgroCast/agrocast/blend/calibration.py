@@ -47,7 +47,7 @@ class TercileCalibrator:
 
     def save(self, path):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        data = {"n": self.n, "curves": [{"x": list(c.x), "y": list(c.y)} for c in self.curves]}
+        data = {"n": self.n, "curves": [{"x": list(c.x), "y": list(c.y)} for c in (self.curves or [])]}
         Path(path).write_text(json.dumps(data))
 
     @classmethod

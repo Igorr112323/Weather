@@ -67,6 +67,10 @@ def test_stored_names_round_trip_and_saved_report_reopens_as_text(pages, live_ap
     page.get_by_label("Название сорта", exact=True).fill(FIELD)
     page.get_by_label("Селекционер", exact=True).fill(BREEDER)
     page.get_by_label("Заметки", exact=True).fill(NOTE)
+    page.get_by_label("Группа спелости", exact=True).fill("Ранний <svg>")
+    page.get_by_label("Начало сева, ММ-ДД", exact=True).fill("04-20")
+    page.get_by_label("Конец сева, ММ-ДД", exact=True).fill("05-15")
+    page.get_by_label("Площадь сорта, га", exact=True).fill("12.5")
     page.get_by_role("button", name="Сохранить сорт", exact=True).click()
     expect(page.locator("#cerr")).to_have_text("Сорт сохранён.")
     page.reload()
@@ -108,6 +112,11 @@ def test_stored_names_round_trip_and_saved_report_reopens_as_text(pages, live_ap
     with live_app.identity.engine.connect() as connection:
         assert connection.execute(select(fields.c.id)).scalar_one() == field["id"]
         assert connection.execute(select(crops.c.id)).scalar_one() == crop["id"]
+        saved_crop = connection.execute(select(crops.c.data)).scalar_one()
+        assert saved_crop["maturity"] == "Ранний <svg>"
+        assert saved_crop["sow_from"] == "04-20"
+        assert saved_crop["sow_to"] == "05-15"
+        assert saved_crop["area_ha"] == 12.5
     page.evaluate("localStorage.setItem('agrocast_fields', JSON.stringify([{name: 'Чужое из старого браузера', area: 1000}]))")
     for _ in range(2):
         response = page.goto(live_app.origin + "/report.html?job=" + job_id)

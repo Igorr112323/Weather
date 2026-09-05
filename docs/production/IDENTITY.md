@@ -1,6 +1,6 @@
 # T02 · Личные учётные записи, роли и владение
 
-Дата: **2026-09-05**. Identity реализована в T02; текущая политика после T04: **`closed-pilot-v4`**. [Защита DOM/CSP](BROWSER_SECURITY.md).
+Дата: **2026-09-05**. Identity реализована в T02; текущая политика после T04: **`closed-pilot-v4`**. [Защита DOM/CSP](BROWSER_SECURITY.md) · [Настройки и восстановление T05](STATE.md).
 
 [План](PLAN.md) · [Действующий scope](PILOT.md) · [Прогресс и проверки](PROGRESS.md)
 
@@ -59,20 +59,20 @@ Cookie `__Host-agrocast_session` имеет `Secure`, `HttpOnly`, `SameSite=Lax`
 
 ## Хранилище и миграция
 
-Реализована минимальная часть зависимости T05, необходимая для T02:
+Первичная схема T02 расширена в T04/T05:
 
-- PostgreSQL + SQLAlchemy, миграции Alembic `0001_identity` и `0002_crop_revision`.
+- PostgreSQL + SQLAlchemy, миграции Alembic `0001_identity`, `0002_crop_revision`, `0003_persistent_state`.
 - Таблицы `organizations`, `users`, `sessions`, `login_limits`, `identity_events`, `fields`, `crops`, `subscriptions`, `jobs`.
 - UUID, уникальность пользователей, ограничения ролей/статусов, владельцев и межтабличных связей.
 - Миграция повторно применима без потери записей; metadata/schema сопоставлены на SQLite и PostgreSQL. Установка миграций PostgreSQL защищена advisory lock.
 - Запуск API сам не создаёт таблицы. Compose выполняет отдельный migration job до API.
 - SQLite используется только явной инъекцией engine в тестах. `IdentitySettings.from_environment()` допускает для HTTP deployment только `postgresql+psycopg`.
 
-Старые `crops.db`, registry SQLite, process-local `JOBS` и поля в localStorage **не импортируются автоматически**: в них нет надёжной принадлежности пользователю. Ничего не удалено и не назначено первому вошедшему. Перенос требует backup, явного сопоставления owner/organization и проверки результата в T05. Сохранённые jobs в новом SQL-контуре читаются только владельцем; создание/исполнение job по HTTP пока запрещено. Удаление queued/running job запрещено до корректной отмены в T06.
+Старые `crops.db`, registry SQLite, process-local `JOBS` и поля в localStorage **не импортируются автоматически**: в них нет надёжной принадлежности пользователю. Ничего не удалено и не назначено первому вошедшему. T05 реализует snapshot/import с обязательным backup, явным owner/organization mapping либо quarantine и проверкой результата; [runbook](STATE.md). Сохранённые jobs в новом SQL-контуре читаются только владельцем; создание/исполнение job по HTTP пока запрещено. Удаление queued/running job запрещено до корректной отмены в T06.
 
 Подписки сейчас только предпочтения: `active=false`, без подключения к старому autopilot и без отправки. Поле выбирается из собственных полей, `start_month` сохраняется. Удаление поля удаляет только связанные с ним настройки подписок. Режим/горизонт предпочтения не означают разрешение выпустить прогноз.
 
-Остаются открытыми полный T05, очереди/outbox T06, bundle/backup/restore, least-privilege deployment и наблюдаемость. Наличие тома PostgreSQL не является проверкой восстановления. `downgrade` начальной миграции удаляет новые таблицы; его нельзя использовать как бездумный production rollback.
+T05 реализовал конфигурацию, разделение bundle/state и проверяемые backup/restore; PostgreSQL process/restore tests пройдены. Остаются очереди/outbox T06, release provenance, least-privilege deployment, наблюдаемость и проверка реального Docker rollout/recreation. Наличие тома PostgreSQL само по себе не является доказательством восстановления. `downgrade` начальной миграции удаляет новые таблицы; его нельзя использовать как бездумный production rollback.
 
 ## Настройка
 
@@ -103,12 +103,14 @@ CLI запросит пароль администратора дважды бе
 Сохранить DSN `postgresql+psycopg://...` в защищённом внешнем файле, указать его путь, а не значение в env. Для удалённого PostgreSQL оператор должен настроить TLS с проверкой сертификата, сеть, отдельные права и backup. Для production ещё требуется проверка/разделение прав DB runtime и мигратора; текущий Compose — пилотная конфигурация.
 
 ```bash
+cd AgroCast
+export AGROCAST_WORLD_DIR="$PWD/world"
+export AGROCAST_STATE_DIR=/srv/agrocast/state
 export AGROCAST_DATABASE_URL_FILE=/secure/location/agrocast_database_url
 export AGROCAST_PUBLIC_ORIGIN=https://agrocast.example.com
-cd AgroCast
 ../.venv/bin/python -m agrocast.identity.cli migrate
 ../.venv/bin/python -m agrocast.identity.cli bootstrap --organization "Пилотное хозяйство" --username admin
-../.venv/bin/python -m uvicorn agrocast.serve.product:app --host 0.0.0.0 --port 8501
+../.venv/bin/python -m uvicorn agrocast.serve.product:create_app --factory --host 0.0.0.0 --port 8501
 ```
 
 Последнюю команду использовать только за настроенным HTTPS proxy в ограниченной сети. Origin — точное значение браузера без пути и завершающего `/`, не wildcard. Допустимый `AGROCAST_SESSION_SECONDS` — 300–86400, по умолчанию 28800. После изменения конфигурации или применения миграций к ранее неготовому сервису перезапустить API.
@@ -130,7 +132,7 @@ cd AgroCast
 | `GET /api/jobs`, `GET/DELETE /api/jobs/{uuid}` | Собственные записи jobs; удаление только завершённых |
 | `GET /api/job/{uuid}` | Защищённый alias чтения своей job; без fallback на старый `JOBS` |
 
-Списки ограничены `limit=1…100`. Запись имеет серверные `id`, `owner_id`, `organization_id`, timestamps и объект `data`. PUT принимает полное содержимое `data`, не метаданные владения. Сорт адресуется UUID, не именем, и имеет атомарно увеличиваемую `revision`. T04 добавил строгие параметры/ответы, расширил неактивные настройки подписки и запрещает неизвестные query-поля; [текущий контракт](API_CACHE.md). Анонимный API-запрос — 401, недостаточная роль — 403, чужой/несуществующий ресурс — одинаковый 404; HTML-навигация без сессии перенаправляется на `/login`. Неизвестные/отключённые операции — 403 по default-deny политике.
+Списки ограничены `limit=1…100`. Запись имеет серверные `id`, `owner_id`, `organization_id`, timestamps и объект `data`. PUT принимает полное содержимое `data`, не метаданные владения. Сорт адресуется UUID, не именем, и имеет атомарно увеличиваемую `revision`. T04 добавил строгие параметры/ответы, расширил неактивные настройки подписки и запрещает неизвестные query-поля; [текущий контракт](API_CACHE.md). После успешного startup анонимный API-запрос — 401, недостаточная роль — 403, чужой/несуществующий ресурс — одинаковый 404; HTML-навигация без сессии перенаправляется на `/login`. Неизвестные/отключённые операции — 403 по default-deny политике.
 
 Пример клиента для operator/admin; пароль вводится локально, токены не печатаются:
 

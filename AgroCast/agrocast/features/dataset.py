@@ -1,4 +1,3 @@
-import os
 import re
 
 import numpy as np
@@ -6,10 +5,8 @@ import pandas as pd
 
 from agrocast.features.lim import lim_forecast_frame
 
-from agrocast.core.config import Config
 from agrocast.core.geo import snap
-from agrocast.store.zarrstore import ZarrStore
-from agrocast.features.climatology import monthly_from_daily, standardize_monthly, month_z, past_monthly_anom, past_standardize, seasonal_series
+from agrocast.features.climatology import monthly_from_daily, standardize_monthly, past_monthly_anom, past_standardize, seasonal_series
 from agrocast.features.teleconnections import indices_from_store, IDX_COLS, _box_series
 
 
@@ -191,13 +188,13 @@ class PointDataset:
         return df.groupby(p).mean()
 
     def land_ocean_frame(self):
-        p = self.store.root.parent / "artifacts" / "land_ocean_features.parquet"
+        p = self.config.source_artifact("land_ocean_features.parquet")
         if not p.exists():
             return None
         df = pd.read_parquet(p)
         df.index = pd.PeriodIndex(df.index, freq="M")
         keep = [c for c in df.columns if float(np.nanstd(df[c].to_numpy(float))) > 1e-9]
-        preset = os.environ.get("PHYS_PRESET", "land")
+        preset = self.config.phys_preset
         if preset == "state":
             keep = [c for c in keep if c.startswith("ls_")]
         elif preset == "land_d6":
@@ -261,7 +258,6 @@ class PointDataset:
     def predictor_frame(self):
         if self._pf is not None:
             return self._pf
-        cfg = self.config
         idx = self.indices()
         pcs = self.sst_pcs().reindex(idx.index)
         m = self.monthly()
@@ -274,7 +270,7 @@ class PointDataset:
             data[c + "_3m"] = s3.to_numpy()
             data[c + "_1m"] = v
             if c == "nino34":
-                # развитие/смена фазы ENSO (лечит «2016-й тип»: разворачивающаяся Ла-Нинья)
+
                 data["nino34_3m_s6"] = (s3 - s3.shift(6)).to_numpy()
                 data["nino34_3m_e"] = (s3 * np.abs(s3)).to_numpy()
         for i, c in enumerate(pcs.columns):

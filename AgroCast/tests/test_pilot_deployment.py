@@ -77,5 +77,23 @@ def test_serve_cli_uses_the_guarded_product_without_opening_offline_config(monke
     monkeypatch.setattr(uvicorn, "run", run)
     monkeypatch.setattr(cli, "_load_config", load)
     cli.main(["serve", "--port", "8501"])
-    run.assert_called_once_with(product.app, host="0.0.0.0", port=8501)
+    run.assert_called_once()
+    assert run.call_args.kwargs == {"host": "0.0.0.0", "port": 8501}
+    application = run.call_args.args[0]
+    assert not application.state.started
+    assert application.state.identity is None
+    assert not hasattr(product, "app")
     load.assert_not_called()
+
+
+def test_readonly_bundle_and_writable_volume_are_explicit(compose):
+    app = compose["services"]["app"]
+    assert app["read_only"] is True
+    assert app["tmpfs"] == ["/tmp"]
+    assert "../AgroCast/world:/app/world:ro" in app["volumes"]
+    for name in ("app", "migrate"):
+        environment = compose["services"][name]["environment"]
+        assert environment["AGROCAST_WORLD_DIR"] == "/app/world"
+        assert environment["AGROCAST_STATE_DIR"] == "/app/data"
+    dockerfile = (ROOT / "Dockerfile").read_text()
+    assert '"agrocast.serve.product:create_app", "--factory"' in dockerfile

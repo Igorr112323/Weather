@@ -22,6 +22,8 @@ services:
     restart: "no"
     command: ["python", "-m", "agrocast.identity.cli", "migrate"]
     environment:
+      AGROCAST_STATE_DIR: /app/data
+      AGROCAST_WORLD_DIR: /app/world
       AGROCAST_DATABASE_URL_FILE: /run/secrets/database_url
       AGROCAST_PUBLIC_ORIGIN: https://${AGROCAST_DOMAIN:?Set the HTTPS domain}
     secrets:
@@ -37,12 +39,18 @@ services:
     restart: unless-stopped
     environment:
       AGROCAST_LOG_LEVEL: INFO
+      AGROCAST_STATE_DIR: /app/data
+      AGROCAST_WORLD_DIR: /app/world
       AGROCAST_DATABASE_URL_FILE: /run/secrets/database_url
       AGROCAST_PUBLIC_ORIGIN: https://${AGROCAST_DOMAIN:?Set the HTTPS domain}
     secrets:
       - database_url
+    read_only: true
+    tmpfs:
+      - /tmp
     volumes:
       - agrocast-data:/app/data
+      - ../AgroCast/world:/app/world:ro
     expose:
       - "8501"
     depends_on:

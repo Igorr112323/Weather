@@ -1,7 +1,6 @@
 import logging
-import logging.handlers
-import os
 import time
+from dataclasses import replace
 from html import escape
 from pathlib import Path
 from typing import Annotated
@@ -19,7 +18,8 @@ from agrocast.core.contracts import (
 )
 from agrocast.core.jsoncodec import strict_json
 from agrocast.identity.credentials import IdentityError
-from agrocast.identity.database import IdentitySettings
+from agrocast.core.settings import RuntimeSettings
+from agrocast.serve.runtime import runtime_lifespan
 from agrocast.identity.service import IdentityService
 from agrocast.serve.accounts import Actor, router as account_router
 from agrocast.serve.browser_policy import ASSETS, BROWSER_HEADERS
@@ -32,37 +32,13 @@ from agrocast.serve.responses import (
 from agrocast.serve.security import AccessGuard, PUBLIC_GET_PATHS
 
 STATIC = Path(__file__).resolve().parents[2] / "static"
-WORLD = os.environ.get("AGROCAST_WORLD", str(STATIC.parent / "world"))
-DATA_ROOT = os.environ.get("AGROCAST_DATA", str(STATIC.parent / "data"))
 PrepareRequest = ForecastSpec
 RegionRefreshRequest = RegionFieldSpec
 JOBS = {}
 NoQuery = Annotated[EmptyQuery, Query()]
 
 
-def setup_logging():
-    level = os.environ.get("AGROCAST_LOG_LEVEL", "INFO").upper()
-    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s :: %(message)s")
-    root = logging.getLogger()
-    root.setLevel(level)
-    stream = logging.StreamHandler()
-    stream.setFormatter(fmt)
-    root.addHandler(stream)
-    try:
-        directory = Path(DATA_ROOT) / "logs"
-        directory.mkdir(parents=True, exist_ok=True)
-        fileh = logging.handlers.RotatingFileHandler(directory / "app.log", maxBytes=5_000_000, backupCount=3, encoding="utf-8")
-        fileh.setFormatter(fmt)
-        root.addHandler(fileh)
-    except OSError:
-        pass
-    for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
-        logging.getLogger(name).handlers = []
-        logging.getLogger(name).propagate = True
-    return logging.getLogger("agrocast")
-
-
-log = setup_logging()
+log = logging.getLogger("agrocast")
 router = APIRouter(responses=ERROR_RESPONSES)
 
 
@@ -73,7 +49,7 @@ async def _request_log(request, call_next):
     except Exception:
         log.error("Unhandled HTTP failure: %s %s", request.method, request.url.path)
         response = error_response(APIError("internal_error", 500))
-    log.info("%s %s -> %d (%.0f ms)", request.method, request.url.path, response.status_code, (time.perf_counter() - started) * 1000)
+    request.app.state.logger.info("%s %s -> %d (%.0f ms)", request.method, request.url.path, response.status_code, (time.perf_counter() - started) * 1000)
     return response
 
 
@@ -122,11 +98,11 @@ def artifact(path):
         raise APIError("artifact_unavailable", 503, "Исторический артефакт недоступен") from None
 
 
-def region_grid(region: RegionId = RegionId.KRAI):
+def region_grid(region: RegionId = RegionId.KRAI, world_dir=None):
     from agrocast.serve.region import grid_path
 
     region = RegionId(region)
-    grid = artifact(grid_path(WORLD, region))
+    grid = artifact(grid_path(world_dir or RuntimeSettings.from_environment().world_dir, region))
     from agrocast.region.regions import region_name
 
     grid["region"] = region.value
@@ -139,36 +115,38 @@ def region_grid(region: RegionId = RegionId.KRAI):
 
 
 @router.get("/api/region/grid", response_model=GridResponse)
-def grid_endpoint(query: Annotated[RegionQuery, Query()]):
-    return region_grid(query.region)
+def grid_endpoint(query: Annotated[RegionQuery, Query()], request: Request):
+    return region_grid(query.region, request.app.state.settings.world_dir)
 
 
-def region_skill(region: RegionId = RegionId.KRAI):
+def region_skill(region: RegionId = RegionId.KRAI, world_dir=None):
     from agrocast.serve.region import skill_path
 
-    return historical_result({"ok": True, "skill": artifact(skill_path(WORLD, RegionId(region)))})
+    return historical_result({"ok": True, "skill": artifact(skill_path(world_dir or RuntimeSettings.from_environment().world_dir, RegionId(region)))})
 
 
 @router.get("/api/region/skill", response_model=SkillResponse)
-def skill_endpoint(query: Annotated[RegionQuery, Query()]):
-    return region_skill(query.region)
+def skill_endpoint(query: Annotated[RegionQuery, Query()], request: Request):
+    return region_skill(query.region, request.app.state.settings.world_dir)
 
 
-@router.get("/api/region/regions", response_model=RegionsResponse)
-def region_regions(query: NoQuery = EmptyQuery()):
+def region_regions(world_dir=None):
     from agrocast.region.regions import region_summary
 
-    rows = [row for row in region_summary(WORLD) if row["region"] == PILOT_REGION]
+    rows = [row for row in region_summary(world_dir or RuntimeSettings.from_environment().world_dir) if row["region"] == PILOT_REGION]
     return historical_result({"ok": True, "regions": rows})
 
 
-@router.get("/api/health", response_model=DiagnosticResponse)
-def health(query: NoQuery = EmptyQuery()):
-    from agrocast.serve.pipeline import world_config
+@router.get("/api/region/regions", response_model=RegionsResponse)
+def regions_endpoint(request: Request, query: NoQuery = EmptyQuery()):
+    return region_regions(request.app.state.settings.world_dir)
 
-    out = {"ok": True, "world": str(WORLD)}
+
+@router.get("/api/health", response_model=DiagnosticResponse)
+def health(request: Request, query: NoQuery = EmptyQuery()):
+    out = {"ok": True, "world": str(request.app.state.settings.world_dir)}
     try:
-        store = world_config(WORLD).zarr_store()
+        store = request.app.state.config.zarr_store()
         for name in ("daily_region", "sst", "fields_monthly", "strat_snow", "oisst_boxes", "regimes"):
             out[name] = str(store.last_time(name)) if store.exists(name) else None
     except Exception:
@@ -193,9 +171,13 @@ def report_page(query: Annotated[ReportQuery, Query()], request: Request, actor:
     return (STATIC / "report.html").read_text(encoding="utf-8").replace("{{PILOT_WARNING}}", escape(PILOT_WARNING))
 
 
+def value_api(world_dir=None):
+    return historical_result({"ok": True, "report": artifact(Path(world_dir or RuntimeSettings.from_environment().world_dir) / "artifacts" / "value_report.json")})
+
+
 @router.get("/api/value", response_model=ValueResponse)
-def value_api(query: NoQuery = EmptyQuery()):
-    return historical_result({"ok": True, "report": artifact(Path(WORLD) / "artifacts" / "value_report.json")})
+def value_endpoint(request: Request, query: NoQuery = EmptyQuery()):
+    return value_api(request.app.state.settings.world_dir)
 
 
 @router.get("/value.html", response_class=HTMLResponse, include_in_schema=False)
@@ -236,24 +218,16 @@ def contracts(request: Request, query: NoQuery = EmptyQuery()):
     return request.app.openapi()
 
 
-def configured_identity():
-    engine = None
-    try:
-        settings = IdentitySettings.from_environment()
-        if settings is None:
-            return None
-        engine = settings.engine()
-        return IdentityService(engine, settings.public_origin, settings.session_seconds)
-    except Exception:
-        if engine is not None:
-            engine.dispose()
-        log.error("Identity недоступна: проверьте конфигурацию, PostgreSQL и миграции")
-        return None
-
-
-def create_app(identity: IdentityService | None = None) -> FastAPI:
-    application = FastAPI(title="AgroCast · закрытый пилот", version=CONTRACT_VERSION, docs_url=None, redoc_url=None, openapi_url=None)
-    application.state.identity = identity if identity is not None else configured_identity()
+def create_app(identity: IdentityService | None = None, settings: RuntimeSettings | None = None) -> FastAPI:
+    if settings is None:
+        settings = RuntimeSettings.from_environment()
+        if identity is not None:
+            settings = replace(settings, public_origin=identity.public_origin, session_seconds=identity.session_seconds)
+    application = FastAPI(title="AgroCast · закрытый пилот", version=CONTRACT_VERSION, docs_url=None, redoc_url=None, openapi_url=None, lifespan=runtime_lifespan(settings, identity))
+    application.state.settings = settings
+    application.state.identity = identity
+    application.state.logger = log
+    application.state.started = False
     application.include_router(account_router)
     application.include_router(router)
 
@@ -312,8 +286,5 @@ def create_app(identity: IdentityService | None = None) -> FastAPI:
 
     application.openapi = openapi
     application.middleware("http")(_request_log)
-    application.add_middleware(AccessGuard, identity=application.state.identity)
+    application.add_middleware(AccessGuard)
     return application
-
-
-app = create_app()

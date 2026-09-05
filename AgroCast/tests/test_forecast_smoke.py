@@ -1,5 +1,7 @@
-"""Дымовой тест: полный прогноз для точки в Краснодарском крае."""
 from pathlib import Path
+import shutil
+
+from agrocast.state.backup import file_checksum
 
 import pytest
 
@@ -9,8 +11,22 @@ WORLD = Path(__file__).resolve().parents[1] / "world"
 
 
 @pytest.fixture(scope="module")
-def cfg():
-    return world_config(WORLD)
+def cfg(tmp_path_factory):
+    world = tmp_path_factory.mktemp("readonly-models") / "world"
+    shutil.copytree(WORLD, world)
+    files = {path.relative_to(world): file_checksum(path) for path in world.rglob("*") if path.is_file()}
+    for path in world.rglob("*"):
+        path.chmod(0o555 if path.is_dir() else 0o444)
+    world.chmod(0o555)
+    try:
+        with pytest.raises(PermissionError):
+            (world / "must-not-write").write_text("forbidden")
+        yield world_config(world, tmp_path_factory.mktemp("forecast-state"))
+        assert files == {path.relative_to(world): file_checksum(path) for path in world.rglob("*") if path.is_file()}
+    finally:
+        world.chmod(0o700)
+        for path in world.rglob("*"):
+            path.chmod(0o700 if path.is_dir() else 0o600)
 
 
 def test_forecast_seasonal(cfg):
@@ -28,13 +44,13 @@ def test_forecast_seasonal(cfg):
         assert abs(p["below"] + p["normal"] + p["above"] - 1.0) < 0.02
         q = blk["quantiles_c" if v == "t2m" else "quantiles_mm"]
         assert q["p10"] <= q["p50"] <= q["p90"]
-        # новые модели в ансамбле (ssw — температурный драйвер, для tp намеренно исключён)
+
         mp = blk["model_probs"]
         for name in ("deep_analog", "ridge_strat"):
             assert name in mp, f"нет модели {name}: {list(mp)}"
         if v == "t2m":
             assert "ssw" in mp, f"нет ssw для t2m: {list(mp)}"
-    # реестр доверия в отчёте (мировые артефакты должны быть переобучены)
+
     tl = (fc.get("agro") or {}).get("trust_ledger")
     if tl:
         assert "overall" in tl

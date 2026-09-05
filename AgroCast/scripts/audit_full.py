@@ -1,37 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Полный аудит продукта AgroCast: 50 точек × 20 лет (2005–2024) × все режимы.
-
-Аудит воспроизводит ТОЧНО путь продукта «проверка прошлого»
-(agrocast.serve.pipeline.run_hindcast, после исправления):
-
-  1. P = ансамблевый бленд 9 моделей (leave-one-year-out, half_life=5 лет);
-  2. P = (1-α)·P + α·NN  (walk-forward нейроядро PooledNN, α из артефактов бокса;
-     select_alpha: селекция 2004–2014 + валидация 2015–2024);
-  3. P = TercileCalibrator(бленд прошлых лет, leave-one-year-out) — как в продукте;
-  4. факт = mu_pt + sd_pt · z_pt; obs — из записей бэктеста (центр бокса),
-     mu/sd/z для факта — климатология самой точки (как в run_hindcast);
-  5. режимы: seasonal (12 стартовых месяцев, блок 3 мес.) и monthly
-     (12 целевых месяцев, lead 1 — только его использует продукт в проверке);
-  6. метрики: tercile-hit (+ Wilson CI), RPS/RPSS против климатологии
-     (функции продукта), ECE, надёжность терцилей, покрытие коридора P10–P90.
-
-Кроме того, для каждой верификации считается КОНТРАФАКТУАЛ «blend»:
-что было бы, каи продукт использовал собственный ансамблевый бленд
-(веса артефакта blender_{mode}.json, half_life=5 лет) с тем же NN-mix и той же
-калибровкой. Это отделяет навык системы (из A/B-реестра) от того, что реально
-видит пользователь в режиме «проверка прошлого».
-
-Сеть в песочнице недоступна → 50 точек = 50 уникальных ячеек 0.5° по боксу
-данных продукта (43–47°N, 37–42°E). Точки вне бокса требуют скачивания
-CPC-данных (нужен интернет).
-
-Запуск:
-    python -m scripts.audit_full all           # precompute + points + report
-    python -m scripts.audit_full precompute
-    python -m scripts.audit_full points --workers 2
-    python -m scripts.audit_full report
-"""
 from __future__ import annotations
 
 import argparse
@@ -48,74 +14,80 @@ BASE = Path(__file__).resolve().parent.parent
 if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
 
-WORLD = str(BASE / "world")
-DATA_ROOT = str(BASE / "data")
-OUT = Path(DATA_ROOT) / "audit"
-CACHE = OUT / "cache"
-PTDIR = OUT / "points"
+from agrocast.core.settings import RuntimeSettings
 
-YEARS = list(range(2005, 2025))  # 20 лет
+
+def _settings():
+    return RuntimeSettings.from_environment()
+
+
+def _config():
+    return _settings().compute_config()
+
+
+def _output(name=""):
+    return _settings().state_dir / "audit" / name
+
+
+YEARS = list(range(2005, 2025))
 MODES = ("seasonal", "monthly")
 VARS_ = ("t2m", "tp")
 SEASONS = {12: "DJF", 1: "DJF", 2: "DJF", 3: "MAM", 4: "MAM", 5: "MAM",
            6: "JJA", 7: "JJA", 8: "JJA", 9: "SON", 10: "SON", 11: "SON"}
 SEASON_RU = {"DJF": "зима (DJF)", "MAM": "весна (MAM)", "JJA": "лето (JJA)", "SON": "осень (SON)"}
 
-# 50 уникальных ячеек 0.5° по всему боксу данных (43–47°N, 37–42°E).
-# Координаты = центры ячеек; в боксе 70 из 99 ячеек с полными данными
-# (остальные отбрасываются продуктом: доля не-NaN > 0.9).
-# Зафиксировано в data/audit/audit_points.json.
+
 POINT_CELLS = [
-    ("P01", 46.75, 38.75),  # ячейка 0.5°
-    ("P02", 46.75, 39.25),  # ячейка 0.5°
-    ("P03", 46.75, 39.75),  # ячейка 0.5°
-    ("P04", 46.75, 40.25),  # ячейка 0.5°
-    ("P05", 46.75, 40.75),  # ячейка 0.5°
-    ("P06", 46.75, 41.25),  # ячейка 0.5°
-    ("P07", 46.75, 41.75),  # ячейка 0.5°
-    ("P08", 46.25, 38.25),  # ячейка 0.5°
-    ("P09", 46.25, 38.75),  # ячейка 0.5°
-    ("P10", 46.25, 40.25),  # ячейка 0.5°
-    ("P11", 46.25, 41.75),  # ячейка 0.5°
-    ("P12", 45.75, 37.75),  # ячейка 0.5°
-    ("P13", 45.75, 38.25),  # ячейка 0.5°
-    ("P14", 45.75, 38.75),  # ячейка 0.5°
-    ("P15", 45.75, 39.25),  # ячейка 0.5°
-    ("P16", 45.75, 39.75),  # ячейка 0.5°
-    ("P17", 45.75, 40.25),  # ячейка 0.5°
-    ("P18", 45.75, 40.75),  # ячейка 0.5°
-    ("P19", 45.75, 41.25),  # ячейка 0.5°
-    ("P20", 45.75, 41.75),  # ячейка 0.5°
-    ("P21", 45.25, 37.25),  # ячейка 0.5°
-    ("P22", 45.25, 37.75),  # ячейка 0.5°
-    ("P23", 45.25, 39.25),  # ячейка 0.5°
-    ("P24", 45.25, 40.75),  # ячейка 0.5°
-    ("P25", 45.25, 42.25),  # ячейка 0.5°
-    ("P26", 44.75, 37.75),  # ячейка 0.5°
-    ("P27", 44.75, 38.25),  # ячейка 0.5°
-    ("P28", 44.75, 38.75),  # ячейка 0.5°
-    ("P29", 44.75, 39.25),  # ячейка 0.5°
-    ("P30", 44.75, 39.75),  # ячейка 0.5°
-    ("P31", 44.75, 40.25),  # ячейка 0.5°
-    ("P32", 44.75, 40.75),  # ячейка 0.5°
-    ("P33", 44.75, 41.25),  # ячейка 0.5°
-    ("P34", 44.75, 41.75),  # ячейка 0.5°
-    ("P35", 44.25, 38.75),  # ячейка 0.5°
-    ("P36", 44.25, 39.75),  # ячейка 0.5°
-    ("P37", 44.25, 40.75),  # ячейка 0.5°
-    ("P38", 44.25, 42.25),  # ячейка 0.5°
-    ("P39", 43.75, 39.75),  # ячейка 0.5°
-    ("P40", 43.75, 40.25),  # ячейка 0.5°
-    ("P41", 43.75, 40.75),  # ячейка 0.5°
-    ("P42", 43.75, 41.25),  # ячейка 0.5°
-    ("P43", 43.75, 41.75),  # ячейка 0.5°
-    ("P44", 43.25, 40.25),  # ячейка 0.5°
-    ("P45", 43.25, 40.75),  # ячейка 0.5°
-    ("P46", 43.25, 41.25),  # ячейка 0.5°
-    ("P47", 43.25, 41.75),  # ячейка 0.5°
-    ("P48", 42.75, 41.25),  # ячейка 0.5°
-    ("P49", 42.75, 41.75),  # ячейка 0.5°
-    ("P50", 42.75, 42.25),  # ячейка 0.5°
+    ("P01", 46.75, 38.75),
+    ("P02", 46.75, 39.25),
+    ("P03", 46.75, 39.75),
+    ("P04", 46.75, 40.25),
+    ("P05", 46.75, 40.75),
+    ("P06", 46.75, 41.25),
+    ("P07", 46.75, 41.75),
+    ("P08", 46.25, 38.25),
+    ("P09", 46.25, 38.75),
+    ("P10", 46.25, 40.25),
+    ("P11", 46.25, 41.75),
+    ("P12", 45.75, 37.75),
+    ("P13", 45.75, 38.25),
+    ("P14", 45.75, 38.75),
+    ("P15", 45.75, 39.25),
+    ("P16", 45.75, 39.75),
+    ("P17", 45.75, 40.25),
+    ("P18", 45.75, 40.75),
+    ("P19", 45.75, 41.25),
+    ("P20", 45.75, 41.75),
+    ("P21", 45.25, 37.25),
+    ("P22", 45.25, 37.75),
+    ("P23", 45.25, 39.25),
+    ("P24", 45.25, 40.75),
+    ("P25", 45.25, 42.25),
+    ("P26", 44.75, 37.75),
+    ("P27", 44.75, 38.25),
+    ("P28", 44.75, 38.75),
+    ("P29", 44.75, 39.25),
+    ("P30", 44.75, 39.75),
+    ("P31", 44.75, 40.25),
+    ("P32", 44.75, 40.75),
+    ("P33", 44.75, 41.25),
+    ("P34", 44.75, 41.75),
+    ("P35", 44.25, 38.75),
+    ("P36", 44.25, 39.75),
+    ("P37", 44.25, 40.75),
+    ("P38", 44.25, 42.25),
+    ("P39", 43.75, 39.75),
+    ("P40", 43.75, 40.25),
+    ("P41", 43.75, 40.75),
+    ("P42", 43.75, 41.25),
+    ("P43", 43.75, 41.75),
+    ("P44", 43.25, 40.25),
+    ("P45", 43.25, 40.75),
+    ("P46", 43.25, 41.25),
+    ("P47", 43.25, 41.75),
+    ("P48", 42.75, 41.25),
+    ("P49", 42.75, 41.75),
+    ("P50", 42.75, 42.25),
 ]
 POINTS = [(p, la, lo) for p, la, lo in POINT_CELLS]
 
@@ -128,23 +100,16 @@ def log(msg):
     print(f"[audit] {time.strftime('%H:%M:%S')} {msg}", flush=True)
 
 
-# ---------------------------------------------------------------- precompute
-
 def phase_precompute():
-    """Общий (не зависит от точки) расчёт. Точно повторяет run_hindcast:
 
-    - прошлый год t при целевом Y: веса Blender().fit(rec[year >= Y]) —
-      эквивалент LOYO-веса для t < Y в продукте;
-    - текущий год Y: LOYO-бленд 9 моделей (Blender half_life=5, год Y исключён),
-      как в исправленном run_hindcast.
-    """
+
     from agrocast.blend.blender import Blender, attach_obs, blended_records
 
-    CACHE.mkdir(parents=True, exist_ok=True)
+    _output("cache").mkdir(parents=True, exist_ok=True)
     alphas = {}
     for mode in MODES:
         t0 = time.time()
-        rec = pd.read_parquet(Path(WORLD) / "artifacts" / f"backtest_records_{mode}.parquet")
+        rec = pd.read_parquet(_config().artifact_path(f"backtest_records_{mode}.parquet"))
         rec = rec.copy() if mode == "seasonal" else rec[rec.lead == 1].copy()
         rows = []
         for Y in YEARS:
@@ -164,16 +129,14 @@ def phase_precompute():
             loyo = loyo.assign(start_month=_sm(loyo))
             rows.append(loyo.assign(audit_year=int(Y), audit_kind="cur_loyo"))
         pre = pd.concat(rows, ignore_index=True)
-        pre.to_parquet(CACHE / f"precompute_{mode}.parquet")
+        pre.to_parquet(_output("cache") / f"precompute_{mode}.parquet")
         for v in VARS_:
-            p = Path(WORLD) / "artifacts" / f"stack_{mode}_{v}.json"
+            p = _config().artifact_path(f"stack_{mode}_{v}.json")
             alphas[f"{mode}:{v}"] = float(json.loads(p.read_text()).get("alpha", 0.0)) if p.exists() else 0.0
         log(f"precompute {mode}: {len(pre)} строк (past+cur), {time.time()-t0:.0f}s")
-    (CACHE / "alphas.json").write_text(json.dumps(alphas, indent=1))
+    (_output("cache") / "alphas.json").write_text(json.dumps(alphas, indent=1))
     log(f"precompute готов. alphas: {alphas}")
 
-
-# -------------------------------------------------------------------- points
 
 def _mix(P, keys, nnmap, alpha):
     P = np.asarray(P, float).copy()
@@ -198,35 +161,35 @@ def _ccor(cc, r, v, obs_z):
 
 
 def process_point(pid, lat, lon):
-    """Одна точка: полный цикл «проверки прошлого» во всех режимах и годах."""
+
     from agrocast.backtest.metrics import clim_rps, rps_rows
     from agrocast.blend.calibration import gated_calibrator
     from agrocast.blend.nn_stack import nn_map
     from agrocast.features.dataset import PointDataset
     from agrocast.serve.pipeline import point_config
 
-    PTDIR.mkdir(parents=True, exist_ok=True)
-    out_path = PTDIR / f"{pid}_{lat:.2f}_{lon:.2f}.parquet"
+    _output("points").mkdir(parents=True, exist_ok=True)
+    out_path = _output("points") / f"{pid}_{lat:.2f}_{lon:.2f}.parquet"
     if out_path.exists():
         log(f"{pid}: уже есть, пропускаю")
         return out_path
 
     t0 = time.time()
-    cfg, _ = point_config(WORLD, DATA_ROOT, lat, lon)
+    cfg, _ = point_config(_settings().world_dir, _settings().state_dir, lat, lon)
     pt = PointDataset(cfg, lat, lon, cfg.zarr_store())
     pt.raw_daily()
-    alphas = json.loads((CACHE / "alphas.json").read_text())
+    alphas = json.loads((_output("cache") / "alphas.json").read_text())
     rec_years = sorted(int(y) for y in pd.read_parquet(
-        Path(WORLD) / "artifacts" / "backtest_records_seasonal.parquet").year.unique())
+        _config().artifact_path("backtest_records_seasonal.parquet")).year.unique())
 
-    pre = {m: pd.read_parquet(CACHE / f"precompute_{m}.parquet") for m in MODES}
+    pre = {m: pd.read_parquet(_output("cache") / f"precompute_{m}.parquet") for m in MODES}
 
     rows = []
     for mode in MODES:
         stds = {v: (pt.seasonal_std(v, 3) if mode == "seasonal" else pt.standardized(v)) for v in VARS_}
         from agrocast.blend.conformal import ConformalQuantileCalibrator
 
-        ccs = {v: ConformalQuantileCalibrator.load(Path(WORLD) / "artifacts" / f"conformal_{mode}_{v}.json") for v in VARS_}
+        ccs = {v: ConformalQuantileCalibrator.load(_config().artifact_path(f"conformal_{mode}_{v}.json")) for v in VARS_}
         nnmaps = {}
         for v in VARS_:
             if alphas[f"{mode}:{v}"] <= 0:
@@ -277,7 +240,7 @@ def process_point(pid, lat, lon):
                         continue
                     mu = float(std.loc[t, "mu"])
                     sd = float(std.loc[t, "sd"])
-                    fact = mu + sd * float(std.loc[t, "z"])  # факт точки (как в run_hindcast)
+                    fact = mu + sd * float(std.loc[t, "z"])
                     rows.append(dict(
                         point=pid, lat=lat, lon=lon,
                         grid_lat=pt.grid_lat, grid_lon=pt.grid_lon,
@@ -340,13 +303,13 @@ MINI_POINTS = [
 
 
 def phase_mini5(workers=2):
-    if not (CACHE / "alphas.json").exists() or not (CACHE / "precompute_monthly.parquet").exists():
+    if not (_output("cache") / "alphas.json").exists() or not (_output("cache") / "precompute_monthly.parquet").exists():
         phase_precompute()
-    for f in PTDIR.glob("P*.parquet"):
+    for f in _output("points").glob("P*.parquet"):
         f.unlink()
     phase_points(workers=workers, jobs=MINI_POINTS)
     phase_report()
-    s = json.loads((OUT / "audit_summary.json").read_text())
+    s = json.loads((_output() / "audit_summary.json").read_text())
     o = s["overall"][0]
     st2m = s["seasonal_t2m"][0]
     cov = o.get("p10_90_coverage_conformal")
@@ -370,18 +333,17 @@ def phase_mini5(workers=2):
 
 def phase_grid(workers=2, max_points=30, region="krai"):
     from agrocast.region.regions import region_cells, save_region_grid
-    from agrocast.store.zarrstore import ZarrStore
 
-    store = ZarrStore(str(Path(WORLD) / "zarr"))
+    store = _config().zarr_store()
     cells = region_cells(store, region=region)
-    save_region_grid(cells, WORLD, region=region)
+    save_region_grid(cells, _config().data_dir, region=region)
     idx = np.arange(len(cells))
     if len(cells) > int(max_points):
         idx = np.unique(np.linspace(0, len(cells) - 1, int(max_points)).round().astype(int))
     jobs = [(cells[j]["id"], float(cells[j]["lat"]), float(cells[j]["lon"])) for j in idx]
-    if not (CACHE / "alphas.json").exists() or not (CACHE / "precompute_monthly.parquet").exists():
+    if not (_output("cache") / "alphas.json").exists() or not (_output("cache") / "precompute_monthly.parquet").exists():
         phase_precompute()
-    for f in PTDIR.glob("P*.parquet"):
+    for f in _output("points").glob("P*.parquet"):
         f.unlink()
     phase_points(workers=workers, jobs=jobs)
     phase_report()
@@ -389,13 +351,13 @@ def phase_grid(workers=2, max_points=30, region="krai"):
 
 
 def export_skill_artifact(path=None, region="krai"):
-    from agrocast.region.regions import REGIONS, grid_artifact_path, skill_artifact_path
+    from agrocast.region.regions import REGIONS, skill_artifact_path
 
-    s = json.loads((OUT / "audit_summary.json").read_text())
-    bp = pd.read_csv(OUT / "by_point.csv")
-    sd = pd.read_csv(OUT / "season_detail.csv")
+    s = json.loads((_output() / "audit_summary.json").read_text())
+    bp = pd.read_csv(_output() / "by_point.csv")
+    sd = pd.read_csv(_output() / "season_detail.csv")
     sd = sd[sd.system == "product"]
-    grid = json.loads(grid_artifact_path(WORLD, region).read_text(encoding="utf-8"))
+    grid = json.loads(_config().artifact_path(f"{region}_grid.json").read_text(encoding="utf-8"))
     cells = {c["id"]: c for c in grid.get("cells", [])}
     by_point = []
     for _, r in bp.iterrows():
@@ -441,14 +403,13 @@ def export_skill_artifact(path=None, region="krai"):
         "monthly_tp": _block("monthly_tp"),
         "by_point": by_point,
     }
-    path = Path(path) if path else skill_artifact_path(WORLD, region)
+    path = Path(path) if path else skill_artifact_path(_config().data_dir, region)
+    path = _settings().writable_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(out, ensure_ascii=False, indent=1))
     log(f"артефакт навыка сетки: {path}")
     return path
 
-
-# -------------------------------------------------------------------- report
 
 def wilson(k, n, z=1.96):
     if n == 0:
@@ -460,7 +421,7 @@ def wilson(k, n, z=1.96):
 
 
 def group_metrics(df):
-    """Метрики для подборки верификационных строк. 2 строки: product / blend."""
+
     if df.empty:
         return None
     out = []
@@ -496,12 +457,12 @@ def group_metrics(df):
 
 
 def phase_report():
-    OUT.mkdir(parents=True, exist_ok=True)
-    files = sorted(PTDIR.glob("P*.parquet"))
+    _output().mkdir(parents=True, exist_ok=True)
+    files = sorted(_output("points").glob("P*.parquet"))
     if len(files) < len(POINTS):
         log(f"ВНИМАНИЕ: точек {len(files)}/{len(POINTS)} — отчёт будет по доступным")
     df = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
-    df.to_csv(OUT / "audit_records.csv", index=False)
+    df.to_csv(_output() / "audit_records.csv", index=False)
     log(f"записей: {len(df)} по {df['point'].nunique()} точек")
 
     summary = {}
@@ -521,7 +482,7 @@ def phase_report():
     for s in ("DJF", "MAM", "JJA", "SON"):
         agg(df[df["season"] == s], f"season_{s}")
 
-    # по годам
+
     by_year = []
     for y in sorted(df["year"].unique()):
         for m in MODES:
@@ -536,9 +497,9 @@ def phase_report():
                                         n=int(r["n"]), hit=r["hit"], rpss=r["rpss"],
                                         ece=r["ece"], cov=r["p10_90_coverage"]))
     by_year_df = pd.DataFrame(by_year)
-    by_year_df.to_csv(OUT / "by_year.csv", index=False)
+    by_year_df.to_csv(_output() / "by_year.csv", index=False)
 
-    # по точкам
+
     by_point = []
     for p in sorted(df["point"].unique()):
         sub = df[df["point"] == p]
@@ -556,9 +517,9 @@ def phase_report():
                     row[f"{m}_{v}_{suf}_rpss"] = r["rpss"]
         by_point.append(row)
     by_point_df = pd.DataFrame(by_point).sort_values("seasonal_t2m_prod_rpss", ascending=False)
-    by_point_df.to_csv(OUT / "by_point.csv", index=False)
+    by_point_df.to_csv(_output() / "by_point.csv", index=False)
 
-    # стабильность: первые 10 vs последние 10 лет
+
     stable = {}
     for m in MODES:
         for v in VARS_:
@@ -573,7 +534,7 @@ def phase_report():
                     "last10_hit": h2[h2.system == sysname].iloc[0]["hit"],
                 }
 
-    # ячейки навыка (точка × режим × переменная)
+
     sc_rows = []
     for p in df["point"].unique():
         for m in MODES:
@@ -585,7 +546,7 @@ def phase_report():
                     sc_rows.append(dict(point=p, mode=m, variable=v, system=r["system"],
                                         rpss=r["rpss"], hit=r["hit"]))
     sc = pd.DataFrame(sc_rows)
-    sc.to_csv(OUT / "skill_cells.csv", index=False)
+    sc.to_csv(_output() / "skill_cells.csv", index=False)
     prod = sc[sc.system == "product"]
     blen = sc[sc.system == "blend_counterfactual"]
     share = {
@@ -596,7 +557,7 @@ def phase_report():
         "blend_rpss_gt_0.05": round(float((blen.rpss > 0.05).mean()), 3),
     }
 
-    # сезонная детализация
+
     season_detail = []
     for m in MODES:
         for v in VARS_:
@@ -608,11 +569,11 @@ def phase_report():
                     season_detail.append(dict(mode=m, variable=v, season=s, system=r["system"],
                                               n=int(r["n"]), hit=r["hit"], rpss=r["rpss"],
                                               ece=r["ece"], cov=r["p10_90_coverage"]))
-    pd.DataFrame(season_detail).to_csv(OUT / "season_detail.csv", index=False)
+    pd.DataFrame(season_detail).to_csv(_output() / "season_detail.csv", index=False)
 
     summary["stable_10y"] = stable
     summary["skill_share"] = share
-    (OUT / "audit_summary.json").write_text(
+    (_output() / "audit_summary.json").write_text(
         json.dumps(summary, indent=1, ensure_ascii=False, default=str))
     log("summary сохранён")
     md = write_markdown(df, summary, by_point_df, by_year_df, stable, share)
@@ -620,14 +581,14 @@ def phase_report():
 
 
 def build_verdict(summary, stable, share, by_point_df):
-    """Числовой вердикт: где навык, где его нет, что чинить в первую очередь."""
+
     V = []
     o_p, o_b = summary["overall"]
     st = summary["seasonal_t2m"]
     sp = summary["seasonal_tp"]
     mt = summary["monthly_t2m"]
     mp = summary["monthly_tp"]
-    st_p, st_b, sp_p, sp_b, mt_p, mt_b, mp_p, mp_b = (
+    st_p, _, sp_p, sp_b, mt_p, _, mp_p, mp_b = (
         st[0], st[1], sp[0], sp[1], mt[0], mt[1], mp[0], mp[1])
 
     def grade(rpss, hit):
@@ -658,7 +619,7 @@ def build_verdict(summary, stable, share, by_point_df):
              f"A/B-реестр — продукт {o_p['rpss']:+.3f} vs чистый бленд {o_b['rpss']:+.3f} "
              f"(оставшаяся разница {gap_b:+.3f} — это NN-mix и калибровка, т.е. реальная "
              "система продукта).")
-    sd = pd.read_csv(OUT / "season_detail.csv")
+    sd = pd.read_csv(_output() / "season_detail.csv")
     good = sd[(sd.system == "product") & (sd.rpss > 0.05)]
     bad = sd[(sd.system == "product") & (sd.rpss <= 0.0)]
     if len(good):
@@ -774,7 +735,7 @@ def write_markdown(df, summary, by_point_df, by_year_df, stable, share):
 
     L.append("## 3. Сезонная картина (продукт)\n")
     L.append("| режим | переменная | сезон | n | hit | RPSS | ECE | коридор |\n|---|---|---|---|---|---|---|---|")
-    for _, r in pd.read_csv(OUT / "season_detail.csv").iterrows():
+    for _, r in pd.read_csv(_output() / "season_detail.csv").iterrows():
         if r.system == "product":
             L.append("| %s | %s | %s | %d | %.3f | %+.3f | %.3f | %.3f |" % (
                 r["mode"], r["variable"], SEASON_RU.get(r["season"], r["season"]),
@@ -782,7 +743,7 @@ def write_markdown(df, summary, by_point_df, by_year_df, stable, share):
     L.append("")
 
     L.append("## 4. Калибровка (надёжность терцилей)\n")
-    o = summary["overall"][0]  # product
+    o = summary["overall"][0]
     L.append(f"Продукт (итого): P(ниже)={o['pred_0']:.3f} при факт {o['freq_0']:.3f}; "
              f"P(норма)={o['pred_1']:.3f} при {o['freq_1']:.3f}; "
              f"P(выше)={o['pred_2']:.3f} при {o['freq_2']:.3f}. ECE={o['ece']:.3f}.\n")
@@ -891,9 +852,9 @@ def write_markdown(df, summary, by_point_df, by_year_df, stable, share):
     L.append("### Вердикт\n")
     L.extend(build_verdict(summary, stable, share, by_point_df))
     md = "\n".join(L)
-    (OUT / "audit_report.md").write_text(md)
-    log("отчёт: " + str(OUT / "audit_report.md"))
-    return OUT / "audit_report.md"
+    (_output() / "audit_report.md").write_text(md)
+    log("отчёт: " + str(_output() / "audit_report.md"))
+    return _output() / "audit_report.md"
 
 
 if __name__ == "__main__":

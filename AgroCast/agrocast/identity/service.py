@@ -303,6 +303,8 @@ class IdentityService:
             return dict(connection.execute(select(table).where(table.c.id == resource_id)).mappings().one())
 
     def delete_resource(self, kind, principal, resource_id):
+        if kind == "publications":
+            raise IdentityError("immutable_publication", 403)
         table = RESOURCES[kind]
         roles = ADMIN_ROLES if kind == "crops" else WRITE_ROLES
         with self.engine.begin() as connection:
@@ -315,6 +317,8 @@ class IdentityService:
                 raise IdentityError("resource_not_found", 404)
             if kind == "jobs" and row["status"] in {"queued", "running"}:
                 raise IdentityError("job_still_active", 409)
+            if kind == "jobs" and connection.execute(select(RESOURCES["publications"].c.id).where(RESOURCES["publications"].c.job_id == resource_id)).first():
+                raise IdentityError("job_has_publication", 409)
             connection.execute(delete(table).where(table.c.id == resource_id, self._scope(table, current)))
             self._event(connection, current.id, current.organization_id, kind + ".deleted", resource_id)
 

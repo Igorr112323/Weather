@@ -193,7 +193,8 @@ def test_real_regional_builder_writes_and_reads_parameterized_cache(world, relea
             return map(function, arguments)
 
     def forecast(args):
-        pid, lat, lon, start, _, _ = args
+        pid, lat, lon, start, _, _, config_snapshot = args
+        assert config_snapshot["bundle_dir"] == str(world)
         calls.append(start)
         return {"id": pid, "lat": lat, "lon": lon, "target": start, "months": target_months("2026-11" if wrong_period else start, 3), "issue_through": "2026-02", "below": 0.2, "normal": 0.3, "above": 0.5}
 

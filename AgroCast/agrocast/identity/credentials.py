@@ -2,6 +2,7 @@ import secrets
 import threading
 from dataclasses import dataclass, field
 from enum import StrEnum
+from functools import cached_property
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
@@ -45,7 +46,10 @@ class Passwords:
     def __init__(self):
         self.hasher = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=1)
         self.capacity = threading.BoundedSemaphore(2)
-        self.dummy_hash = self.hasher.hash(secrets.token_urlsafe(32))
+
+    @cached_property
+    def dummy_hash(self):
+        return self.hasher.hash(secrets.token_urlsafe(32))
 
     def hash(self, password: str) -> str:
         if not 15 <= len(password) <= 128 or password.isspace():

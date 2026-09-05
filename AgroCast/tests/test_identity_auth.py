@@ -215,10 +215,11 @@ def test_missing_identity_configuration_does_not_fall_back_to_old_shared_secret(
     secret.write_text(secrets.token_urlsafe(32))
     monkeypatch.delenv("AGROCAST_DATABASE_URL_FILE", raising=False)
     monkeypatch.setenv("AGROCAST_PILOT_SECRET_FILE", str(secret))
-    with TestClient(create_app(), base_url=ORIGIN) as client:
-        assert client.get("/api/fields").status_code == 503
-        assert client.get("/health/live").status_code == 200
-        assert client.get("/login").status_code == 200
+    from agrocast.core.settings import ConfigurationError
+
+    with pytest.raises(ConfigurationError, match="AGROCAST_DATABASE_URL_FILE is required"):
+        with TestClient(create_app(), base_url=ORIGIN):
+            pytest.fail("startup must fail without personal identity configuration")
 
 
 @pytest.mark.parametrize("origin", ["", "http://testserver", "https://*.example.com", "https://user:secret@example.com", "https://example.com/path", "https://example.com?query=1"])

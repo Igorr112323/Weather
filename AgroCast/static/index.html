@@ -50,10 +50,14 @@
 <legend>Сорт кукурузы</legend>
 <label for="c_name">Название сорта</label><input id="c_name" required maxlength="120">
 <label for="c_breeder">Селекционер</label><input id="c_breeder" maxlength="120">
+<label for="c_maturity">Группа спелости</label><input id="c_maturity" maxlength="120">
 <div class="columns">
 <div><label for="c_fao">ФАО</label><input id="c_fao" type="number" min="50" max="650" step="1"></div>
 <div><label for="c_gdd">САТ, °C</label><input id="c_gdd" type="number" min="1500" max="3500" step="any"></div>
 <div><label for="c_vp">Вегетация, дней</label><input id="c_vp" type="number" min="60" max="200" step="1"></div>
+<div><label for="c_sow_from">Начало сева, ММ-ДД</label><input id="c_sow_from" placeholder="04-20" maxlength="5" pattern="[0-9]{2}-[0-9]{2}"></div>
+<div><label for="c_sow_to">Конец сева, ММ-ДД</label><input id="c_sow_to" placeholder="05-15" maxlength="5" pattern="[0-9]{2}-[0-9]{2}"></div>
+<div><label for="c_area">Площадь сорта, га</label><input id="c_area" type="number" min="0.01" max="1000000" step="any"></div>
 <div><label for="c_yield">Урожайность, т/га</label><input id="c_yield" type="number" min="0.01" max="30" step="any"></div>
 <div><label for="c_ftol">Переносимый мороз, °C</label><input id="c_ftol" type="number" min="-8" max="0" step="any" value="-2"></div>
 <div><label for="c_ffat">Мороз гибели, °C</label><input id="c_ffat" type="number" min="-8" max="0" step="any" value="-3"></div>

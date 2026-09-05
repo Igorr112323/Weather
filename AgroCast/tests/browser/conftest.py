@@ -46,7 +46,9 @@ def live_app(security_browser, identity, tmp_path, monkeypatch):
     (world / "artifacts").mkdir(parents=True)
     for name in ("value_report.json", "krai_grid.json", "krai_grid_skill.json"):
         shutil.copyfile(BASE / "world/artifacts" / name, world / "artifacts" / name)
-    monkeypatch.setattr(product, "WORLD", str(world))
+    from agrocast.core.settings import RuntimeSettings
+
+    shutil.copyfile(BASE / "world/config.json", world / "config.json")
     cert = tmp_path / "test-cert.pem"
     key = tmp_path / "test-key.pem"
     subprocess.run([
@@ -61,7 +63,7 @@ def live_app(security_browser, identity, tmp_path, monkeypatch):
     port = listener.getsockname()[1]
     origin = "https://127.0.0.1:" + str(port)
     service = IdentityService(identity.engine, origin, clock=identity.clock)
-    application = product.create_app(service)
+    application = product.create_app(service, RuntimeSettings(world_dir=world, state_dir=tmp_path / "state", public_origin=origin))
     ready = threading.Event()
 
     class Server(uvicorn.Server):

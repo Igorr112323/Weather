@@ -12,6 +12,7 @@ from agrocast.serve.errors import ERROR_RESPONSES
 from agrocast.serve.responses import (
     LoginResponse, SessionResponse, UserResponse, UsersResponse, EventsResponse, FieldResponse, FieldsResponse,
     CropResponse, CropsResponse, SubscriptionResponse, SubscriptionsResponse, JobResponse, JobsResponse,
+    PublicationResponse, PublicationsResponse,
 )
 from agrocast.serve.account_models import (
     CropBody, FieldBody, LoginBody, PasswordBody, SubscriptionBody, UserBody, UserUpdateBody,
@@ -187,3 +188,13 @@ def get_job(job_id: UUID, request: Request, actor: Actor, query: NoQuery = Empty
 @router.delete("/api/jobs/{job_id}", status_code=204)
 def delete_job(job_id: UUID, request: Request, actor: Actor, query: NoQuery = EmptyQuery()):
     request.app.state.identity.delete_resource("jobs", actor, str(job_id))
+
+
+@router.get("/api/publications", response_model=PublicationsResponse)
+def list_publications(request: Request, actor: Actor, query: PageQuery):
+    return historical_result({"publications": request.app.state.identity.list_resources("publications", actor, query.limit)})
+
+
+@router.get("/api/publications/{publication_id}", response_model=PublicationResponse)
+def get_publication(publication_id: UUID, request: Request, actor: Actor, query: NoQuery = EmptyQuery()):
+    return historical_result({"publication": request.app.state.identity.get_resource("publications", actor, str(publication_id))})

@@ -41,7 +41,7 @@ def allowed_roles(method, path):
             return ALL_ROLES
         if path in {"/api/health", "/api/admin/users", "/api/admin/events"}:
             return ADMIN_ROLES
-        if re.fullmatch(rf"/api/(fields|crops|subscriptions|jobs)(/{RESOURCE_ID})?", path) or re.fullmatch(rf"/api/job/{RESOURCE_ID}", path):
+        if re.fullmatch(rf"/api/(fields|crops|subscriptions|jobs|publications)(/{RESOURCE_ID})?", path) or re.fullmatch(rf"/api/job/{RESOURCE_ID}", path):
             return ALL_ROLES
     if method == "POST" and path in {"/api/auth/logout", "/api/auth/password"}:
         return ALL_ROLES
@@ -86,7 +86,7 @@ class AccessGuard:
             await send(message)
 
         if self.retired:
-            await error_response(APIError("legacy_api_disabled", 410, "Используйте agrocast.serve.product:app"))(scope, receive, secure_send)
+            await error_response(APIError("legacy_api_disabled", 410, "Используйте agrocast.serve.product:create_app --factory"))(scope, receive, secure_send)
             return
         method = scope["method"]
         path = get_route_path(scope).rstrip("/") or "/"
@@ -94,14 +94,15 @@ class AccessGuard:
         if method in {"GET", "HEAD"} and path in PUBLIC_GET_PATHS:
             await self.app(scope, receive, secure_send)
             return
-        if self.identity is None:
+        identity = self.identity or getattr(scope.get("app").state, "identity", None)
+        if identity is None:
             await identity_error(IdentityError("identity_unavailable", 503))(scope, receive, secure_send)
             return
         try:
             principal = None
             if not (method == "POST" and path == "/api/auth/login"):
                 try:
-                    principal = await run_in_threadpool(self.identity.authenticate, session_token(headers))
+                    principal = await run_in_threadpool(identity.authenticate, session_token(headers))
                 except IdentityError as error:
                     if error.status == 401 and method == "GET" and path in {"/", "/value.html", "/workspace", "/index.html", "/report.html"}:
                         prefix = scope.get("root_path", "")
@@ -124,7 +125,7 @@ class AccessGuard:
                 raise APIError("invalid_request", 422, "Duplicate query parameters are not allowed")
             if method not in {"GET", "HEAD"}:
                 origins = headers.getlist("origin")
-                if origins != [self.identity.public_origin]:
+                if origins != [identity.public_origin]:
                     raise IdentityError("origin_forbidden", 403)
                 if principal is not None:
                     csrf = headers.getlist("x-csrf-token")

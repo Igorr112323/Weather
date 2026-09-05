@@ -92,13 +92,13 @@ def update(config, nc_path=None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="NOAA CDR снеговое покрытие → почвенный zarr мира")
-    ap.add_argument("--world", default=str(Path(__file__).resolve().parent.parent.parent / "world"))
+    ap.add_argument("--world", default=None)
+    ap.add_argument("--state-dir", default=None)
     ap.add_argument("--file", default=None)
     args = ap.parse_args(argv)
-    from agrocast.core.config import Config
     from agrocast.serve.pipeline import world_config
 
-    cfg = world_config(args.world) if Path(args.world, "config.json").exists() else Config(data_dir=args.world)
+    cfg = world_config(args.world, args.state_dir)
     print(update(cfg, args.file))
     return 0
 

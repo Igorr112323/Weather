@@ -1,12 +1,12 @@
 # Прогресс реализации production-плана
 
-[План](PLAN.md) · [Scope пилота](PILOT.md) · [Identity и запуск](IDENTITY.md) · [DOM/CSP](BROWSER_SECURITY.md) · [HTTP/кэш](API_CACHE.md) · [Исходный аудит](AUDIT.md) · [Release gates](RELEASE_CHECKLIST.md)
+[План](PLAN.md) · [Scope пилота](PILOT.md) · [Identity и запуск](IDENTITY.md) · [DOM/CSP](BROWSER_SECURITY.md) · [HTTP/кэш](API_CACHE.md) · [Settings/state](STATE.md) · [Исходный аудит](AUDIT.md) · [Release gates](RELEASE_CHECKLIST.md)
 
 ## Состояние на 2026-09-05
 
-**T01–T04 реализованы и локально проверены. T05–T24 ещё не завершены. Production-релиз не разрешён.**
+**T01–T05 реализованы и локально проверены. T06–T24 ещё не завершены. Container rollout/recreation для T05 не проверены; production-релиз не разрешён.**
 
-Работа идёт по одному пункту с проверкой результата. Минимальная SQL-схема из зависимости T05 подготовлена для T02; это не выполнение полного T05, очереди T06, readiness T07 или всех CI gates T17.
+Работа идёт по одному пункту с проверкой результата. T05 добавляет единые settings, явный lifespan, разделённое хранение и проверяемый перенос/restore. Это не очередь T06, readiness T07 или выполнение всех deployment/CI gates.
 
 | Пункт | Статус | Результат |
 |---|---|---|
@@ -14,8 +14,40 @@
 | T02 · Identity / роли / ownership | Реализован; проверен на PostgreSQL | Личные аккаунты, server sessions, CSRF, reader/operator/admin, owner/organization и миграция |
 | T03 · DOM / CSP | Реализован; Chromium-проверки пройдены | Текстовые DOM-узлы, enforced CSP, локальный Leaflet, реальные HTTPS browser tests |
 | T04 · HTTP / cache | Реализован; локальные проверки пройдены | Строгие модели/ошибки, crop revision, полный ключ и атомарный региональный cache |
-| T05 · Settings / persistent state | Следующий; не завершён | Минимальная identity-схема не заменяет полный перенос runtime state и настройки |
+| T05 · Settings / persistent state | Реализован; локально проверен; Docker-приёмка не выполнена | Общие settings, factory/lifespan, read-only bundle, migration/quarantine, DB/runtime backup и restore |
 | T06–T24 | Ожидают исполнения | Подготовительные изменения не закрывают соответствующие задачи |
+
+## T05 · Реализованный результат
+
+- Один `RuntimeSettings` для API/CLI/worker, валидируемые canonical paths/aliases, numeric overrides и безопасный snapshot. Worker использует захваченный effective config; ошибки startup не выводят DSN/пароль.
+- Убран глобальный `product.app`, чтение env/config/БД и настройка logging из import-time пути. Основной entrypoint — `agrocast.serve.product:create_app --factory`. Launcher делегирует общей CLI; engine/handler закрываются lifespan.
+- `world` — read-only bundle; новые Zarr/artifacts/registry/point state — только в writable state. Общие обновлённые inputs читаются и внешними точками, но чужие bundled-модели им не подставляются. Исправлены copy-on-write live ledger и отключённая калибровка поверх старого bundle.
+- Миграция `0003_persistent_state`: owner-scoped publications, migration journal и quarantine/raw archive. Старые таблицы не пересоздаются. Catalogue legacy-поля проходят через DTO и UI без потери при edit.
+- SQLite backup snapshots + явные JSON exports; обязательное решение о наличии in-memory jobs и mapping для каждой записи. Никакого присвоения первому вошедшему. Неизвестный start month/field/owner не угадывается. In-flight jobs требуют explicit interruption, а не restart.
+- Транзакционный/idempotent import со сверкой counts/hashes исходного архива и нормализованных rows. CLI требует pre-import backup и maintenance confirmation.
+- Private DB backup/empty-target restore с table checksums и без восстановления sessions; отдельный filesystem backup/staged restore. Offline job snapshots сохраняются, но не превращены в очередь.
+- Все T01–T04 запреты HTTP compute/refresh/delivery, ownership, CSRF, CSP и exact cache identities сохранены.
+
+### Выполненные проверки T05
+
+| Проверка | Результат |
+|---|---|
+| Полный non-browser pytest | **527 passed, 3 skipped, 10 deselected**, 38 warnings, 193.70 s |
+| PostgreSQL | **426 passed**, 2 warnings, 141.27 s; настоящий PostgreSQL 16.2, включая три PG-only случая |
+| Browser | **10 passed**, 2 warnings, 26.16 s; Chromium 149.0.7827.0 + Playwright 1.62.0, настоящий HTTPS; включая сохранение дополнительных полей сорта после редактирования |
+| Выбранные T05-модули | **87% combined line/branch coverage**: settings/config, lifespan, state tools и atomic writer; не coverage всего проекта |
+| Read-only bundle | Полные forecast smoke на 60 MiB копии world с 0444/0555; контрольная запись получает PermissionError, все file checksums после тестов прежние |
+| Settings / import | API/CLI/region worker configuration parity, защита от изменения env после snapshot, несовпадающих paths, bad configuration и import-time DB/files/hash/logging |
+| Schema / restart / restore | Alembic ↔ metadata comparison, повторные upgrade, изолированный downgrade/reapply, PostgreSQL backup/restore и два отдельных API-процесса с теми же resources/checksums |
+| Legacy rehearsal | **177 actual legacy records**: 52 forecasts + 7 varieties + 118 technical; все 177 явно quarantined, т.к. owner mapping не предоставлен. Backup → import → reconcile → repeat → restore → реальный restart PostgreSQL; hashes/counts совпали, оригиналы не изменились |
+| Mapped import | На отдельной fixture: 1 field, 1 crop, 1 inactive subscription, 3 jobs, 2 publications; owner/org negatives, interrupted running job, rollback при плохой карте, source corruption и idempotency |
+| Filesystem recovery | Bytes/directories/counts/checksums, private files, отказ nonempty target, symlink/traversal/corruption/partial-copy cases; jobs не возобновляются |
+| Статические проверки | 67 changed Python files: syntax, no comments/docstrings, Ruff F; 139 local Markdown links/UTF-8/headings; DOM/vendor checks, pip check и Compose schema пройдены; `world` не изменён |
+| Docker | **Не выполнено**: в sandbox нет Docker executable/socket. YAML/Compose checks не заменяют build/recreate/volume/restore в контейнерах |
+
+Полные логи: `AgroCast/data/production-work/t05-full-final.log`, `t05-postgres-final.log`, `t05-browser-final.log`, `.coverage-t05`, `t05-rehearsal.log`, `t05-restart.log`. Test/recovery data ignored, не включены в Git. Часть проверок шла параллельно; времена не являются performance benchmark.
+
+38 warnings оставлены видимыми: прежние numerical/pandas warnings и два предупреждения Starlette/AnyIO. PostgreSQL 17 из Compose, Docker build/recreate, Caddy и Firefox локально не проверены. [Runbook и границы T05](STATE.md).
 
 ## T04 · Реализованный результат
 
@@ -126,8 +158,8 @@ AGROCAST_TEST_DATABASE_URL_FILE=/secure/test-only/database_url OPENBLAS_NUM_THRE
 
 ## Что пока не завершено
 
-- Единые settings и полное persistent runtime state — следующий T05. Дальнейшие browser/UX сценарии остаются T18/T21.
-- Допуск научных контрактов к исполнению, миграция старого runtime state и ограниченная durable queue. Контракты T04 не включают вычисления автоматически.
+- Единые settings и persistence реализованы в T05; фактический container rollout/recreation остаётся непроверенным. Дальнейшие browser/UX сценарии — T18/T21.
+- Допуск научных контрактов к исполнению и ограниченная durable queue T06. T05 сохраняет/мигрирует snapshots, но не запускает очередь и не подменяет недостающую карту владельцев.
 - Свежесть predictor frame, временные/пространственные утечки, независимая калибровка и допуск агрорекомендаций.
 - Immutable bundles, release registry, data pipeline, backup/restore, production least privilege, эксплуатационные SLO и юридические gates.
 

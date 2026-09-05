@@ -1,11 +1,9 @@
 import datetime as dt
-import os
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-from agrocast.core.config import Config
 from agrocast.core.mathutils import exp_weights
 from agrocast.core.timeutils import now_period
 from agrocast.features.dataset import PointDataset, training_data, make_test_row, feature_columns_for
@@ -18,14 +16,12 @@ from agrocast.blend.blender import season_of
 from agrocast.blend.regime_clim import RegimeClimatology, SPECS, memory_z, tercile_grid
 from agrocast.models.nn_kernel import PooledNN
 from agrocast.ingest.registry import Registry
-from agrocast.store.zarrstore import ZarrStore
 from agrocast.agro.generator import WeatherGenerator
 from agrocast.agro.indices import daily_indices, ensemble_indices, spi_block
 from agrocast.blend.conformal import ConformalQuantileCalibrator
 from agrocast.models.builder import MODEL_NAMES
 
 TERCILE_KEYS = ["below", "normal", "above"]
-W_OSPR = 0.20
 
 
 def _r(x, nd=2):
@@ -33,7 +29,7 @@ def _r(x, nd=2):
 
 
 def _what_to_do(agro):
-    """Топ-3 простых действия для фермера: «что, почему, на сколько критично»."""
+
     cards = []
     for d in agro.get("decisions") or []:
         if d["verdict"] == "действовать":
@@ -165,7 +161,7 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
     if mon is not None:
         from agrocast.blend import regime_guard
 
-        if regime_guard.shifted(mon, std, variable, mode, issue, tgt if mode == "seasonal" else None):
+        if regime_guard.shifted(mon, std, variable, mode, issue, tgt if mode == "seasonal" else None, config=config):
             P = P_unc
     if rcal is not None:
         group = season_of(tgt.month) if mode == "seasonal" else f"m{int(tgt.month)}"
@@ -190,7 +186,7 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
             _sv = float(_s.loc[issue])
             if np.isfinite(_sv):
                 _u = min(1.0, max(0.0, (_sv - ospr["min"]) / max(ospr["max"] - ospr["min"], 1e-9)))
-                _w = W_OSPR * _u
+                _w = config.ospr_weight * _u
                 if _w > 0:
                     P = (1.0 - _w) * P + _w * np.array([1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0])
                     P = P / P.sum()
@@ -248,13 +244,12 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
     monthly = point.monthly()
     vcrop = None
     all_crops = []
-    import os as _vos
 
     from agrocast.crops.db import CropDB
 
-    _vdroot = _vos.environ.get("AGROCAST_DATA", str(Path(__file__).resolve().parent.parent.parent / "data"))
+    _vdroot = config.runtime_dir or config.data_dir
     try:
-        _cdb = CropDB(Path(_vdroot) / "crops.db", str(Path(config.artifact_dir) / "crop_seed.json"))
+        _cdb = CropDB(Path(_vdroot) / "crops.db", str(config.source_artifact("crop_seed.json")))
         all_crops = _cdb.all()
         if variety:
             vcrop = _cdb.get(variety)
@@ -271,17 +266,17 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
         issue = pf.index[-1]
         if not explicit:
             start = issue + 1
-    blender = Blender.load(config.artifact_dir / blender_name(mode)) or Blender.default(variables)
+    blender = Blender.load(config.artifact_path(blender_name(mode))) or Blender.default(variables)
     pcalib = {}
     ccalib = {}
     for v in variables:
-        pc = TercileCalibrator.load(config.artifact_dir / f"calib_{mode}_{v}.json")
+        pc = TercileCalibrator.load(config.artifact_path(f"calib_{mode}_{v}.json"))
         if pc is not None:
             pcalib[v] = pc
-        cc = ConformalQuantileCalibrator.load(config.artifact_dir / f"conformal_{mode}_{v}.json")
+        cc = ConformalQuantileCalibrator.load(config.artifact_path(f"conformal_{mode}_{v}.json"))
         if cc is not None and cc.usable():
             ccalib[v] = cc
-    rcalib = RegimeClimatology.load(config.artifact_dir / f"regimeclim_{mode}.json")
+    rcalib = RegimeClimatology.load(config.artifact_path(f"regimeclim_{mode}.json"))
     mz = {}
     terc_map = {}
     for v, spec in SPECS.get(mode, {}).items():
@@ -312,7 +307,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
     except Exception:
         sctx_map = {}
     ospr_data = {}
-    if os.environ.get("AGROCAST_OSPR", "1") != "0":
+    if config.ospr_enabled:
         try:
             _spr = point.ocean_spread(lead=3)
             if _spr is not None and len(_spr) >= 20:
@@ -342,7 +337,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
         targets = [(start + i, i + 1) for i in range(horizon)]
     nnstack = {}
     for v in variables:
-        sp = config.artifact_dir / f"stack_{mode}_{v}.json"
+        sp = config.artifact_path(f"stack_{mode}_{v}.json")
         if sp.exists():
             import json as _json
 
@@ -427,8 +422,8 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                     if ay and s_months:
                         agro["analogs_facts"] = analogs_facts(ay, monthly, s_months, it0.get("year"))
                         try:
-                            skill = pd.read_parquet(config.artifact_dir / skill_name(mode))
-                            recs = pd.read_parquet(config.artifact_dir / records_name(mode))
+                            skill = pd.read_parquet(config.artifact_path(skill_name(mode)))
+                            recs = pd.read_parquet(config.artifact_path(records_name(mode)))
                             agro["passport"] = passport(skill, recs, "t2m", s_months, mode)
                         except Exception:
                             pass
@@ -456,12 +451,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                     from agrocast.market.source import corn_price
 
                     try:
-                        import os as _os
-
-                        _droot = _os.environ.get(
-                            "AGROCAST_DATA", str(Path(__file__).resolve().parent.parent.parent / "data")
-                        )
-                        mprice = corn_price(_droot, str(Path(config.artifact_dir).parent), timeout=10)
+                        mprice = corn_price(config.runtime_dir or config.data_dir, config.bundle_dir or config.data_dir, timeout=10)
                     except Exception:
                         mprice = None
                     agro["econ"] = econ_block(
@@ -475,7 +465,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                     )
                 except Exception:
                     pass
-    # Реестр доверия: публичный счёт навыка (backtest-лет + живые выпуски)
+
     try:
         from agrocast.skill.ledger import live_summary, load_ledger
 
@@ -540,7 +530,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
     if save:
         reg = Registry(config.registry_path)
         reg.save_forecast(lat, lon, start.year, start.month, horizon, payload)
-        # Живой реестр доверия: фиксируем выпуск с хэшем входов (подлинностно)
+
         try:
             from agrocast.skill.ledger import append_live
 

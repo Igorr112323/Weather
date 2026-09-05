@@ -11,6 +11,7 @@ from sqlalchemy import create_engine, event, insert
 from sqlalchemy.schema import CreateSchema, DropSchema
 
 from agrocast.identity.credentials import passwords
+from agrocast.core.settings import RuntimeSettings
 from agrocast.identity.database import migrate
 from agrocast.identity.schema import organizations, users
 from agrocast.identity.service import IdentityService
@@ -83,8 +84,13 @@ def identity(identity_engine, account_password_hash, clock):
 
 
 @pytest.fixture
-def application(identity):
-    return create_app(identity)
+def runtime_settings(tmp_path):
+    return RuntimeSettings(state_dir=tmp_path / "state", public_origin=ORIGIN)
+
+
+@pytest.fixture
+def application(identity, runtime_settings):
+    return create_app(identity, settings=runtime_settings)
 
 
 @pytest.fixture

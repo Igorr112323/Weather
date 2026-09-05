@@ -8,6 +8,7 @@ from pathlib import Path
 from sqlalchemy.engine import URL
 
 from agrocast.identity.credentials import IdentityError
+from agrocast.core.settings import ConfigurationError
 from agrocast.identity.database import IdentitySettings, migrate
 from agrocast.identity.service import IdentityService
 
@@ -70,6 +71,8 @@ def main(argv=None):
             raise IdentityError("password_confirmation_failed", 422)
         result = identity.bootstrap(args.organization, args.username, password)
         print(json.dumps(result, ensure_ascii=False))
+    except ConfigurationError as error:
+        raise SystemExit(str(error)) from None
     except IdentityError as error:
         raise SystemExit(error.code) from None
     except Exception:

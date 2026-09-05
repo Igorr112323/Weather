@@ -10,7 +10,7 @@ let editingCrop = null;
 let map;
 let mapLayer;
 const writable = () => ['operator', 'admin'].includes(user?.role);
-const cropInputs = {name: 'c_name', breeder: 'c_breeder', notes: 'c_notes', fao: 'c_fao', gdd: 'c_gdd', vp_days: 'c_vp', yield_t_ha: 'c_yield', frost_tol_c: 'c_ftol', frost_fatal_c: 'c_ffat'};
+const cropInputs = {name: 'c_name', breeder: 'c_breeder', maturity: 'c_maturity', sow_from: 'c_sow_from', sow_to: 'c_sow_to', area_ha: 'c_area', notes: 'c_notes', fao: 'c_fao', gdd: 'c_gdd', vp_days: 'c_vp', yield_t_ha: 'c_yield', frost_tol_c: 'c_ftol', frost_fatal_c: 'c_ffat'};
 
 function clearField() {
     editingField = null;
@@ -115,7 +115,7 @@ byId('crop-form').addEventListener('submit', async event => {
         const body = {};
         for (const [key, id] of Object.entries(cropInputs)) {
             const value = byId(id).value;
-            body[key] = ['name', 'breeder', 'notes'].includes(key) ? value : value === '' ? null : Number(value);
+            body[key] = ['name', 'breeder', 'maturity', 'sow_from', 'sow_to', 'notes'].includes(key) ? value : value === '' ? null : Number(value);
         }
         body.frost_tol_c ??= -2;
         body.frost_fatal_c ??= -3;

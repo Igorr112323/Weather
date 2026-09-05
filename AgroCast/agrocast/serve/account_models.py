@@ -1,4 +1,5 @@
 from typing import Annotated
+from datetime import date
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, StrictFloat, field_validator, model_validator
@@ -74,6 +75,10 @@ class SubscriptionBody(Body, DraftTiming, VarietySelection):
 class CropBody(Body):
     name: Name
     breeder: Annotated[str, Field(max_length=120)] = ""
+    maturity: Annotated[str, Field(max_length=120)] = ""
+    sow_from: Annotated[str, Field(pattern=r"^((0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]))?$")] = ""
+    sow_to: Annotated[str, Field(pattern=r"^((0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]))?$")] = ""
+    area_ha: Annotated[StrictFloat, Field(gt=0, le=1000000)] | None = None
     notes: Annotated[str, Field(max_length=2000)] = ""
     fao: Annotated[int, Field(ge=50, le=650, strict=True)] | None = None
     gdd: Annotated[StrictFloat, Field(ge=1500, le=3500)] | None = None
@@ -81,6 +86,14 @@ class CropBody(Body):
     yield_t_ha: Annotated[StrictFloat, Field(gt=0, le=30)] | None = None
     frost_tol_c: Annotated[StrictFloat, Field(ge=-8, le=0)] = -2
     frost_fatal_c: Annotated[StrictFloat, Field(ge=-8, le=0)] = -3
+
+    @field_validator("sow_from", "sow_to")
+    @classmethod
+    def calendar_day(cls, value):
+        if value:
+            month, day = map(int, value.split("-"))
+            date(2000, month, day)
+        return value
 
     @model_validator(mode="after")
     def frost_limits(self):

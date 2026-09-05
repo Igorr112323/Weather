@@ -145,8 +145,10 @@ def test_response_validation_failure_is_safe_and_typed(clients, identity, monkey
     assert secret not in response.text
 
 
-def test_artifact_errors_are_not_success_responses(clients, tmp_path, monkeypatch):
-    monkeypatch.setattr(product, "WORLD", str(tmp_path))
+def test_artifact_errors_are_not_success_responses(clients, application, tmp_path, monkeypatch):
+    monkeypatch.setattr(application.state, "settings", application.state.settings.with_paths(world_dir=tmp_path / "missing-world"))
+    tmp_path = tmp_path / "missing-world"
+    tmp_path.mkdir()
     client = clients()
     for body in (None, '{"bad": NaN}', '{"bad":1e999}', '{"key":1,"key":2}'):
         artifact = tmp_path / "artifacts/value_report.json"

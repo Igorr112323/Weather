@@ -55,7 +55,7 @@ OpenAPI доступен после входа через **`GET /api/contracts`
 
 Настройки подписок сохраняют `start_month`, `horizon`, `mode`, `season_len`, `variables`, пару сорта/версии и `active=false`. Неверный месяц, нецелый горизонт, несовместимая длина сезона, повторенные/неизвестные variables и псевдо-boolean отклоняются. Сорт проверяется внутри организации, его версия — по текущей записи; чужой даёт 404, устаревшая версия — 409.
 
-Подписка пока **неисполняемое предпочтение**, не запрос forecast. Диапазон horizon=1…6 сохраняется и для старых seasonal preferences; значение 1 не переписывается в 3. Превращение такой настройки в задачу должно дополнительно проходить `ForecastSpec` с требованием полного периода. Активация/рассылка не реализованы, старый unowned SQLite registry не импортирован — это остаётся T05/T06.
+Подписка пока **неисполняемое предпочтение**, не запрос forecast. Диапазон horizon=1…6 сохраняется и для старых seasonal preferences; значение 1 не переписывается в 3. Превращение такой настройки в задачу должно дополнительно проходить `ForecastSpec` с требованием полного периода. Активация/рассылка не реализованы. T05 добавил явный snapshot/import/quarantine для старого unowned SQLite registry без угадывания владельца; исполнение остаётся T06.
 
 ## Query, JSON и ответы
 
@@ -83,7 +83,7 @@ OpenAPI доступен после входа через **`GET /api/contracts`
 
 ## Версия сорта и миграция
 
-Добавлена миграция **`0002_crop_revision`**, поверх `0001_identity`:
+T04 добавил миграцию **`0002_crop_revision`**, поверх `0001_identity`. Текущий head после T05 — **`0003_persistent_state`**; [schema/state runbook](STATE.md). Изменения revision:
 
 - `crops.revision` — положительное целое с начальным значением 1.
 - Каждое обновление атомарно увеличивает revision, в том числе при нескольких изменениях в одну секунду. `updated_at` не используется как версия.
@@ -134,7 +134,7 @@ cd AgroCast
 
 Нет fallback `latest`, `unknown` или mtime вместо data/model version. Для offline регионального вычисления нужен `AGROCAST_RELEASE_MANIFEST_FILE` либо явно переданный объект `Releases`. Файл содержит **три 64-символьных SHA-256 идентификатора**: `data_release`, `model_release`, `application_release`. Они должны приходить от доверенного release process и обозначать неизменяемые входы/модели/код; подстановка произвольных hex-строк ради запуска недопустима.
 
-T04 **не создаёт и не аттестует реальные releases**. Проверка подлинности manifest, immutable/read-only bundles, отсутствие изменений входов во время расчёта, полный provenance и rollback — задачи T05/T14/T15. Checksum кэша защищает от смешивания/случайной порчи, не от атакующего с правом переписать файл и checksum. Отсутствие release identity закрывает повторное использование/построение этого кэша, а не даёт ложную актуальность.
+T04 **не создаёт и не аттестует реальные releases**. T05 разделяет read-only bundle и writable state; проверка подлинности manifest, аттестация неизменяемого release, отсутствие изменений всех входов во время расчёта, полный provenance и rollback остаются T14/T15. Checksum кэша защищает от смешивания/случайной порчи, не от атакующего с правом переписать файл и checksum. Отсутствие release identity закрывает повторное использование/построение этого кэша, а не даёт ложную актуальность.
 
 У существующего CLI теперь обязателен start:
 
@@ -154,3 +154,8 @@ cd AgroCast
 Тесты покрывают ошибки до worker, полные периоды, enum/finite/strict types, duplicate JSON/query, response validation, особые имена, subscriptions round trip, revision migration, различные key dimensions, отсутствие collision март/октябрь, stale/checksum/partial/mismatch, неуспешную атомарную публикацию, конкурентные read/write, настоящий региональный builder с тестовым вычислителем и scheduler с разными месяцами/releases.
 
 Реальные модели/NOAA в cache tests не запускаются. Новые численные утверждения и прохождение science gates не заявляются. [Точные результаты, версии и ограничения](PROGRESS.md).
+
+
+## Дополнения T05
+
+Read-only owner-scoped `/api/publications` и `/api/publications/{UUID}` возвращают typed historical response с job reference и checksum; PUT/POST/DELETE не открыты. Удаление job с publication даёт 409. В `CropBody` сохранены legacy `maturity`, `sow_from`, `sow_to`, `area_ha`; пустое окно сева означает неизвестное, заданное проверяется как календарное ММ-ДД. Разрешение на вычисления не изменено. Запуск теперь через `agrocast.serve.product:create_app --factory`; invalid configuration не оставляет placeholder API. [Подробности](STATE.md).

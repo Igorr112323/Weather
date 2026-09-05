@@ -176,9 +176,10 @@ def test_alternative_app_still_cannot_bypass_access_control(monkeypatch, method,
     config.assert_not_called()
 
 
-def test_canonical_application_has_guard_and_no_openapi_route():
-    assert any(item.cls is AccessGuard for item in product.app.user_middleware)
-    assert product.app.openapi_url is None
+def test_canonical_application_has_guard_and_no_openapi_route(application):
+    assert any(item.cls is AccessGuard for item in application.user_middleware)
+    assert application.openapi_url is None
+    assert not hasattr(product, "app")
 
 
 def test_a_future_nested_route_cannot_hide_behind_resource_id_policy(application, clients):

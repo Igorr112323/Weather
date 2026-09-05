@@ -107,7 +107,7 @@ def predict_states(monthly_state, clim_t, clim_p, issues):
 
 
 def main():
-    wc = world_config(BASE / "world")
+    wc = world_config()
     pt = PointDataset(wc, 45.0, 39.5, wc.zarr_store())
     soil = pt.soil_monthly()
     soil_periods = list(pd.period_range("1948-01", "2026-08", freq="M"))

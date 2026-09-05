@@ -1,15 +1,3 @@
-"""По-годовая «счёт-фактура»: в скольких годах система лучше
-климатологии (RPSS > 0) по температуре и осадкам — за последние 10 лет
-и за всю доступную выборку.
-
-Две системы, один протокол (leave-one-year-out, без подглядывания):
-  НОВАЯ — 9 моделей, веса «свежести», изотоника + конформная калибровка
-         (строки из реестра доверия trust_ledger_*.parquet);
-  СТАРАЯ — 6 моделей, равномерные веса, без калибровок
-         (те же записи backtest'а, отфильтрованные по именам моделей).
-
-Запуск:  python -m scripts.yearly_scorecard  (из папки AgroCast)
-"""
 import json
 import sys
 from pathlib import Path
@@ -20,8 +8,8 @@ import pandas as pd
 BASE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE))
 
-from agrocast.serve.pipeline import world_config  # noqa: E402
-from agrocast.backtest.metrics import rps_rows  # noqa: E402
+from agrocast.serve.pipeline import world_config
+from agrocast.backtest.metrics import rps_rows
 
 OLD_MODELS = ["clim", "analog", "ridge", "gbm", "ridge_land", "ridge_ocean"]
 YEARS = range(2015, 2025)
@@ -45,7 +33,7 @@ def old_loy(rec, year, variable):
 
 
 def main():
-    wc = world_config(BASE / "world")
+    wc = world_config()
     from agrocast.backtest.engine import load_records
     from agrocast.skill.ledger import load_ledger
 
@@ -64,7 +52,7 @@ def main():
                     "old_rpss": _rpss(lo)[0] if len(lo) else None,
                     "old_hit": round(_rpss(lo)[1], 3) if len(lo) else None,
                 }
-        # итог по 10-летнему окну (все годы вместе)
+
         window = {}
         for v in ("t2m", "tp"):
             ln = led[(led.year.isin(list(YEARS))) & (led.variable == v)]

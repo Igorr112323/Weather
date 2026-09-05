@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 
@@ -6,11 +5,8 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agrocast.serve.pipeline import world_config
+from agrocast.core.settings import RuntimeSettings
 
-BASE = Path(__file__).resolve().parent.parent
-WORLD = os.environ.get("AGROCAST_WORLD", str(BASE / "world"))
-DATA_ROOT = os.environ.get("AGROCAST_DATA", str(BASE / "data"))
 NAMES = ["daily_region", "sst", "fields_monthly", "strat_snow", "oisst_boxes", "regimes"]
 MAX_AGE_DAYS = {
     "daily_region": 14,
@@ -56,7 +52,8 @@ def region_freshness(world, data_root):
 
 
 def main():
-    cfg = world_config(WORLD)
+    settings = RuntimeSettings.from_environment()
+    cfg = settings.compute_config()
     st = cfg.zarr_store()
     now = pd.Timestamp.now()
     bad = []
@@ -74,12 +71,12 @@ def main():
         if age > limit:
             bad.append(f"{name} ({age}d > {limit}d)")
     try:
-        bad += region_freshness(WORLD, DATA_ROOT)
+        bad += region_freshness(settings.world_dir, settings.state_dir)
     except Exception as exc:
         print(f"region: ошибка проверки: {exc}")
     if bad:
         print("АЛЕРТ: данные устарели или отсутствуют: " + "; ".join(bad))
-        print("Обновите zarr/артефакты в AgroCast/world (см. README_ЗАПУСК.txt) и перезакоммитьте.")
+        print("Создайте новый проверяемый bundle вне рабочего world; см. docs/production/STATE.md.")
         sys.exit(1)
     print("СВЕЖЕСТЬ: все zarr-сторы и региональные артефакты в пределах норматива")
 

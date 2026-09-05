@@ -6,16 +6,18 @@ import xarray as xr
 
 
 class ZarrStore:
-    def __init__(self, root, shared=None):
+    def __init__(self, root, shared=None, fallback=None):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.shared = Path(shared) if shared else None
+        self.fallback = Path(fallback) if fallback else None
 
     def path(self, name):
         return self.root / name
 
     def shared_path(self, name):
-        return (self.shared / name) if self.shared else None
+        paths = [path / name for path in (self.shared, self.fallback) if path is not None]
+        return next((path for path in paths if path.exists()), paths[0] if paths else None)
 
     def exists(self, name):
         if self.path(name).exists():
@@ -25,8 +27,9 @@ class ZarrStore:
 
     def names(self):
         out = {p.name for p in self.root.iterdir() if p.is_dir()}
-        if self.shared and self.shared.exists():
-            out |= {p.name for p in self.shared.iterdir() if p.is_dir()}
+        for path in (self.shared, self.fallback):
+            if path is not None and path.exists():
+                out |= {p.name for p in path.iterdir() if p.is_dir()}
         return sorted(out)
 
     def write(self, name, ds):

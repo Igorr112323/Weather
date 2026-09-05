@@ -12,7 +12,9 @@ from agrocast.identity.credentials import IdentityError
 from agrocast.identity.database import IdentitySettings, check_schema, migrate
 from agrocast.identity.schema import metadata, sessions
 from agrocast.identity.service import IdentityService
-from agrocast.serve.product import configured_identity
+from agrocast.core.settings import ConfigurationError
+from agrocast.serve.product import create_app
+from fastapi.testclient import TestClient
 
 
 @pytest.mark.parametrize("repeat", [1, 2])
@@ -68,7 +70,9 @@ def test_invalid_database_file_does_not_open_http_access(tmp_path, monkeypatch, 
     path.write_text(value)
     monkeypatch.setenv("AGROCAST_DATABASE_URL_FILE", str(path))
     monkeypatch.setenv("AGROCAST_PUBLIC_ORIGIN", "https://testserver")
-    assert configured_identity() is None
+    with pytest.raises(ConfigurationError):
+        with TestClient(create_app()):
+            pytest.fail("invalid configuration must prevent startup")
     assert value not in caplog.text
 
 
@@ -143,12 +147,13 @@ def test_real_postgresql_factory_reads_settings_and_authenticates_existing_users
     path.write_text(url.render_as_string(hide_password=False))
     monkeypatch.setenv("AGROCAST_DATABASE_URL_FILE", str(path))
     monkeypatch.setenv("AGROCAST_PUBLIC_ORIGIN", "https://testserver")
+    monkeypatch.setenv("AGROCAST_STATE_DIR", str(tmp_path / "state"))
     application = create_app()
-    assert application.state.identity is not None
-    try:
-        with TestClient(application, base_url="https://testserver") as client:
-            response = client.post("/api/auth/login", headers={"Origin": "https://testserver"}, json={"username": "operator_a", "password": account_password})
-            assert response.status_code == 200
-            assert client.get("/api/fields").status_code == 200
-    finally:
-        application.state.identity.engine.dispose()
+    assert application.state.identity is None
+    with TestClient(application, base_url="https://testserver") as client:
+        assert application.state.identity is not None
+        response = client.post("/api/auth/login", headers={"Origin": "https://testserver"}, json={"username": "operator_a", "password": account_password})
+        assert response.status_code == 200
+        assert client.get("/api/fields").status_code == 200
+    assert application.state.identity is None
+    assert not application.state.started

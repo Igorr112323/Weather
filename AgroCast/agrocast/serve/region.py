@@ -9,7 +9,7 @@ import numpy as np
 
 from agrocast.region.regions import REGIONS as REGIONS
 from agrocast.region.regions import grid_artifact_path, known, region_name, skill_artifact_path
-from agrocast.core.config import Config
+from agrocast.core.settings import RuntimeSettings
 from agrocast.core.contracts import RegionFieldSpec, target_months
 from agrocast.core.jsoncodec import strict_json
 from agrocast.store.results import Releases, ResultCache, ResultIdentity, fingerprint
@@ -67,10 +67,10 @@ def region_identity(start, world_dir, region="krai", releases=None):
     request = RegionFieldSpec(start=start, region=region)
     releases = releases or Releases.from_file()
     grid = strict_json(grid_path(world_dir, request.region).read_text(encoding="utf-8"))
-    configuration = Config.load(Path(world_dir) / "config.json").to_dict()
-    defaults = Config().to_dict()
+    configuration = RuntimeSettings.from_environment().with_paths(world_dir).compute_config().to_dict()
+    defaults = dict(configuration)
     for settings in (configuration, defaults):
-        for key in ("data_dir", "shared_zarr"):
+        for key in ("data_dir", "shared_zarr", "bundle_dir", "runtime_dir"):
             settings.pop(key, None)
     settings = {
         "world_configuration": configuration, "point_defaults": defaults,
@@ -161,11 +161,11 @@ def region_block(world_dir, data_root, region="krai"):
 
 
 def _forecast_cell(args_):
-    pid, lat, lon, start, world_dir, data_root = args_
+    pid, lat, lon, start, world_dir, data_root, config_snapshot = args_
     from agrocast.forecast.orchestrator import forecast_point
     from agrocast.serve.pipeline import point_config
 
-    cfg, _ = point_config(world_dir, data_root, lat, lon)
+    cfg, _ = point_config(world_dir, data_root, lat, lon, config_snapshot)
     payload = forecast_point(
         cfg, lat, lon,
         start=start, horizon=3, mode="seasonal", season_len=3,
@@ -210,7 +210,8 @@ def build_field(start, world_dir, data_root, region="krai", workers=2, log=None,
     cells = art["cells"]
     if not cells:
         raise ValueError("regional grid is empty")
-    jobs = [(c["id"], float(c["lat"]), float(c["lon"]), start, str(world_dir), str(data_root))
+    config_snapshot = RuntimeSettings.from_environment().with_paths(world_dir, data_root).compute_config().to_dict()
+    jobs = [(c["id"], float(c["lat"]), float(c["lon"]), start, str(world_dir), str(data_root), config_snapshot)
             for c in cells]
     t0 = time.time()
     results = []

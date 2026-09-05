@@ -32,7 +32,6 @@ def test_skill_endpoint_serves_audit_numbers():
     assert len(s["by_point"]) == 28
 
 
-
 def test_invalid_region_models_and_disabled_refresh():
     for fn in (region_grid, region_skill):
         with pytest.raises(ValueError):
@@ -94,10 +93,9 @@ def test_field_paths_per_region(tmp_path):
 
 
 def test_region_block_per_region(tmp_path):
-    import agrocast.serve.product as product_mod
-    from pathlib import Path
+    from agrocast.core.settings import RuntimeSettings
 
-    base = Path(product_mod.WORLD)
+    base = RuntimeSettings.from_environment().world_dir
     txt_k = region_mod.region_block(str(base), str(tmp_path), "krai")
     assert "Краснодарский край" in txt_k
     assert "поле региона не рассчитано" in txt_k

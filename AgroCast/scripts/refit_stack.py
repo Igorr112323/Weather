@@ -6,19 +6,18 @@ import pandas as pd
 BASE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE))
 
-from agrocast.serve.pipeline import world_config  # noqa: E402
+from agrocast.serve.pipeline import world_config
 
 
 def main(world_dir=None):
-    w = Path(world_dir) if world_dir else BASE / "world"
-    wc = world_config(w)
+    wc = world_config(world_dir)
     from agrocast.blend.blender import Blender, attach_obs, blended_records
     from agrocast.blend.calibration import gated_calibrator
     from agrocast.blend.nn_stack import mix, nn_map, row_keys, save_alpha, select_alpha
     from agrocast.features.dataset import PointDataset
 
     for mode in ("seasonal", "monthly"):
-        rec = pd.read_parquet(wc.artifact_dir / f"backtest_records_{mode}.parquet")
+        rec = pd.read_parquet(wc.artifact_path(f"backtest_records_{mode}.parquet"))
         pieces = []
         for y in sorted(rec.year.unique()):
             b = Blender(half_life_years=5.0).fit(rec[rec.year != y])
@@ -35,10 +34,7 @@ def main(world_dir=None):
                 P = mix(P, row_keys(sub), nnmap, a)
             cal = gated_calibrator(P, sub.obs_tercile.to_numpy(), years=sub["year"].to_numpy())
             cal_path = wc.artifact_dir / f"calib_{mode}_{v}.json"
-            if cal.usable():
-                cal.save(cal_path)
-            else:
-                cal_path.unlink(missing_ok=True)
+            cal.save(cal_path)
             print(f"{mode} {v}: alpha={a}, calib n={cal.n}")
 
 

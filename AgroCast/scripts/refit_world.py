@@ -1,9 +1,3 @@
-"""Переобучение мировых артефактов: новый ансамбль (9 моделей),
-веса с полупериодом 5 лет, изотоника + конформная калибровка по
-каждой переменной, реестр доверия.
-
-Запуск:  python -m scripts.refit_world  (из папки AgroCast)
-"""
 import os
 import sys
 from pathlib import Path
@@ -13,12 +7,11 @@ import pandas as pd
 BASE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE))
 
-from agrocast.serve.pipeline import world_config  # noqa: E402
+from agrocast.serve.pipeline import world_config
 
 
 def main(world_dir=None, years=(2004, 2025), half_life=5.0):
-    w = Path(world_dir) if world_dir else BASE / "world"
-    wc = world_config(w)
+    wc = world_config(world_dir)
     from agrocast.backtest.engine import run_backtest, load_records, records_name
     from agrocast.blend.blender import Blender, blended_records, attach_obs, season_of
     from agrocast.blend.calibration import TercileCalibrator
@@ -29,7 +22,7 @@ def main(world_dir=None, years=(2004, 2025), half_life=5.0):
         print(f"== backtest {mode} years {years[0]}..{years[1]-1} ==")
         rec = None
         reuse = os.environ.get("REUSE_RECORDS") == "1" or os.environ.get(f"REUSE_RECORDS_{mode.upper()}") == "1"
-        if reuse and (wc.artifact_dir / records_name(mode)).exists():
+        if reuse and wc.artifact_path(records_name(mode)).exists():
             rec = load_records(wc, mode)
             print("  (использую уже посчитанные записи)")
         if rec is None or rec.empty:
@@ -46,7 +39,7 @@ def main(world_dir=None, years=(2004, 2025), half_life=5.0):
         if rec is None or rec.empty:
             print("  нет записей")
             continue
-        # LOY-бленд для калибровки (без подглядывания)
+
         pieces = []
         for y in sorted(rec.year.unique()):
             b = Blender(half_life_years=half_life).fit(rec[rec.year != y])

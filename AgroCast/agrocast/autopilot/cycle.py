@@ -1,7 +1,5 @@
 import json
-import os
 import time
-from pathlib import Path
 
 import pandas as pd
 
@@ -119,7 +117,7 @@ def monthly_cycle(config, full=False):
             subs.append({"name": s["name"], "mode": mode, "start": fc["start"], "blocks": len(fc.get("months", fc.get("seasons", [])))})
         except Exception as exc:
             reg.log_event("sub_fail", f"{s['name']}: {exc}")
-    rebuilt = _refresh_region_fields(reg)
+    rebuilt = _refresh_region_fields(reg, config)
     summary = {
         "ingest_keys": list(ingest.keys()),
         "verified_scores": n,
@@ -131,19 +129,20 @@ def monthly_cycle(config, full=False):
     return summary
 
 
-def _refresh_region_fields(reg):
+def _refresh_region_fields(reg, config=None):
     from agrocast.core.timeutils import next_occurrence
     from agrocast.serve import region as region_mod
 
-    base = Path(__file__).resolve().parent.parent.parent
-    world_dir = os.environ.get("AGROCAST_WORLD", str(base / "world"))
-    data_root = os.environ.get("AGROCAST_DATA", str(base / "data"))
+    from agrocast.core.settings import RuntimeSettings
+
+    settings = RuntimeSettings.from_environment().with_paths(getattr(config, "bundle_dir", None), getattr(config, "runtime_dir", None))
+    world_dir, data_root = settings.world_dir, settings.state_dir
     start = str(next_occurrence((pd.Timestamp.now().month % 12) + 1))
     rebuilt = []
     from agrocast.store.results import Releases, ResultCache
 
     try:
-        releases = Releases.from_file()
+        releases = Releases.from_file(settings.release_manifest_file)
     except (OSError, ValueError):
         reg.log_event("region_unavailable", "explicit release identity is missing or invalid")
         return rebuilt

@@ -9,7 +9,9 @@ import pandas as pd
 KRA_BOUNDS = (44.0, 46.5, 37.0, 40.5)
 CELL_DEG = 0.5
 MIN_COVERAGE = 0.90
-DEFAULT_ARTIFACT = Path(__file__).resolve().parents[2] / "world" / "artifacts" / "krai_grid.json"
+from agrocast.core.settings import RuntimeSettings, DEFAULT_WORLD
+
+DEFAULT_ARTIFACT = DEFAULT_WORLD / "artifacts/krai_grid.json"
 
 
 def cell_centers(bounds=KRA_BOUNDS, cell=CELL_DEG):
@@ -67,7 +69,7 @@ def _match_coord(vals, x):
     return float(v) if np.isclose(v, float(x), atol=1e-6) else None
 
 
-def save_grid(cells, path=DEFAULT_ARTIFACT, bounds=KRA_BOUNDS, cell=CELL_DEG, min_coverage=MIN_COVERAGE, name="krai_grid"):
+def save_grid(cells, path=None, bounds=KRA_BOUNDS, cell=CELL_DEG, min_coverage=MIN_COVERAGE, name="krai_grid"):
     lat_min, lat_max, lon_min, lon_max = (float(b) for b in bounds)
     cl, co = cell_centers(bounds, cell)
     grid = {
@@ -79,14 +81,15 @@ def save_grid(cells, path=DEFAULT_ARTIFACT, bounds=KRA_BOUNDS, cell=CELL_DEG, mi
         "n_cells": len(cells),
         "cells": cells,
     }
-    path = Path(path)
+    settings = RuntimeSettings.from_environment()
+    path = settings.writable_path(path if path is not None else settings.state_dir / "compute/artifacts/krai_grid.json")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(grid, ensure_ascii=False, indent=1))
     return grid
 
 
-def load_grid(path=DEFAULT_ARTIFACT):
-    return json.loads(Path(path).read_text())
+def load_grid(path=None):
+    return json.loads(Path(path or RuntimeSettings.from_environment().world_dir / "artifacts/krai_grid.json").read_text())
 
 
 def grid_points(grid):

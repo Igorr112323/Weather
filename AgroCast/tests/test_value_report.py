@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from scripts.value_report import (build_report, decomposition, render_md, segment_stats,
+from scripts.value_report import (build_report, decomposition, segment_stats,
                                   write_outputs, years_block)
 from agrocast.serve.product import value_api, value_page
 
@@ -149,12 +149,9 @@ def test_write_outputs_md_and_json(tmp_path):
 
 
 def test_value_api_ok_missing_and_page(tmp_path, monkeypatch):
-    import agrocast.serve.product as product_mod
-
-    monkeypatch.setattr(product_mod, "WORLD", str(tmp_path))
     from agrocast.serve.errors import APIError
     with pytest.raises(APIError) as missing:
-        value_api()
+        value_api(tmp_path)
     assert missing.value.status == 503
     assert missing.value.code == "artifact_unavailable"
     art = tmp_path / "artifacts"
@@ -163,7 +160,7 @@ def test_value_api_ok_missing_and_page(tmp_path, monkeypatch):
         json.dumps({"title": "Паспорт навыка AgroCast", "n_points": 28,
                     "segments": {"seasonal_t2m": {"rpss": 0.2544}}}),
         encoding="utf-8")
-    got = value_api()
+    got = value_api(tmp_path)
     assert got["ok"] is True
     assert got["report"]["n_points"] == 28
     assert got["report"]["segments"]["seasonal_t2m"]["rpss"] == pytest.approx(0.2544)

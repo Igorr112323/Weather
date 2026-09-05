@@ -1,0 +1,41 @@
+{
+  "package": "leaflet",
+  "version": "1.9.4",
+  "source": "https://registry.npmjs.org/leaflet/-/leaflet-1.9.4.tgz",
+  "integrity": "sha512-nxS1ynzJOmOlHp+iL3FyWqK89GtNL8U8rvlMOsQdTTssxZwCXh8N2NB3GDQOL+YR3XnWyZAxwQixURb+FA74PA==",
+  "builder": "esbuild@0.25.10",
+  "files": {
+    "leaflet.js": {
+      "sha256": "0170665c02b1894e975e8c154cc90f7dc27354419e1b8959425509ce3d7610fd",
+      "sri": "sha384-/ebwMPBNh/7cTi+L/d2x6DmcjCLDgJc3BRKB1mGbTgltaFzFP0Mi2YU9I0YGhmjx"
+    },
+    "leaflet.css": {
+      "sha256": "ee2b8290ebd820ba488531c9da0a82654199212dc0e06053df4fc6af2d8ecf65",
+      "sri": "sha384-3Zp5dU/2e36sCZIslNy0nR/CpV0m2JOEp63JIiahU1YkB0LiKui1CUM8nml2lmU2"
+    },
+    "images/layers.png": {
+      "sha256": "1dbbe9d028e292f36fcba8f8b3a28d5e8932754fc2215b9ac69e4cdecf5107c6",
+      "sri": "sha384-80x85ZS+G189o0xL8E8D7BnfhuNss6EwUPHzG7e+qByRD2xnpxikZ6UQU4Re5nNy"
+    },
+    "images/layers-2x.png": {
+      "sha256": "066daca850d8ffbef007af00b06eac0015728dee279c51f3cb6c716df7c42edf",
+      "sri": "sha384-+F2ZWK/HTpkV9kN2HnMGCQOTM/cnQJLs770FLOeHznwVWRfDESI8z4JwcGYmy2Au"
+    },
+    "images/marker-icon.png": {
+      "sha256": "574c3a5cca85f4114085b6841596d62f00d7c892c7b03f28cbfa301deb1dc437",
+      "sri": "sha384-wg83fCOXjBtqzFAWhTL9Sd9vmLUNhfEEzfmNUX9zwv2igKlz/YQbdapF4ObdxF+R"
+    },
+    "images/marker-icon-2x.png": {
+      "sha256": "00179c4c1ee830d3a108412ae0d294f55776cfeb085c60129a39aa6fc4ae2528",
+      "sri": "sha384-bDEa1RhAAKIr/VQnMZ7gUhhXwmKYB4V0g8AsxOvCEPwGxfHCUEzAEMAEEzkjuxiA"
+    },
+    "images/marker-shadow.png": {
+      "sha256": "264f5c640339f042dd729062cfc04c17f8ea0f29882b538e3848ed8f10edb4da",
+      "sri": "sha384-dB8ivfvPGb1MSIzX8oWTakCxmq+VwqP/QL1TX4jT4INR3pM5T4FgF3Gx4mN3NTMq"
+    },
+    "LICENSE.txt": {
+      "sha256": "53e8dc25862014e4324741ca18fbe3611e11d42ef69f59f86ea8c5389647d4cb",
+      "sri": "sha384-CXYK4I2izUBQWizu8sKhYyBLtabBOMnWJhiEcYE2hnY+ov3P+/NGnAkucH4hN0hK"
+    }
+  }
+}

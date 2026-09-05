@@ -1,0 +1,33 @@
+:root {color-scheme: light; font-family: system-ui, sans-serif; color: #22301f; background: #f2f5ee;}
+* {box-sizing: border-box;}
+body {margin: 0;}
+main {max-width: 1000px; margin: auto; padding: 40px 24px;}
+header {padding: 36px; background: #173a29; color: #f2f5ee; border-radius: 16px;}
+h1 {font-size: clamp(30px, 5vw, 48px); line-height: 1.12; margin: 12px 0 20px;}
+h2 {font-size: 20px; margin: 0 0 12px;}
+p {line-height: 1.65; margin: 8px 0;}
+a {color: #285f3d; display: inline-block; padding: 8px 0; text-underline-offset: 4px;}
+a:focus-visible {outline: 3px solid #c47a10; outline-offset: 5px;}
+.eyebrow {font-size: 12px; letter-spacing: 2px; color: #b7d4a7;}
+.notice {background: #fff0d7; border: 1px solid #dec088; border-left: 5px solid #aa741f; border-radius: 12px; padding: 24px; margin: 24px 0;}
+.cards {display: grid; grid-template-columns: 1fr 1fr; gap: 20px;}
+article, .points {background: white; border: 1px solid #d6e0d0; border-radius: 12px; padding: 24px;}
+.points {margin-top: 24px;}
+.table-wrap {overflow-x: auto;}
+table {border-collapse: collapse; width: 100%; margin-top: 12px; font-size: 14px;}
+caption {text-align: left; padding: 12px 0; color: #52634b;}
+th, td {text-align: left; padding: 12px; border-bottom: 1px solid #e4ecdf; font-variant-numeric: tabular-nums;}
+th {background: #eff5e9;}
+#status, footer {color: #52634b; font-size: 14px;}
+footer {margin-top: 28px;}
+@media (max-width: 600px) {.cards {grid-template-columns: 1fr;} main {padding: 20px 14px;} header {padding: 24px;} th, td {padding: 10px 6px;}}
+@media print {body {background: white;} main {padding: 0;} header {background: white; color: #22301f;} .notice {border: 2px solid #aa741f;} article, .notice {break-inside: avoid;} footer a {display: none;}}
+
+.login-wrap {max-width: 650px;}
+form {display: grid; gap: 12px; margin-top: 24px;}
+input, button {font: inherit; padding: 12px 16px; border-radius: 8px; border: 1px solid #9ab18b;}
+input {min-width: 0; width: 100%; background: white;}
+button {cursor: pointer; background: #173a29; color: white;}
+button:disabled {opacity: 0.6; cursor: wait;}
+input:focus-visible, button:focus-visible {outline: 3px solid #c47a10; outline-offset: 3px;}
+.account-bar {display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 24px;}

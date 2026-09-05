@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Вход · AgroCast</title>
+<link rel="stylesheet" href="/pilot.css">
+<script src="/login.js" defer></script>
+</head>
+<body>
+<main class="login-wrap">
+<header>
+<p class="eyebrow">AGROCAST · ЗАКРЫТЫЙ ПИЛОТ</p>
+<h1>Личный доступ</h1>
+<p>Пользователи, роли и данные своей организации.</p>
+</header>
+<section class="points">
+<h2>Войти в аккаунт</h2>
+<p>Учётную запись выдаёт администратор. Общий пароль пилота больше не используется.</p>
+<form id="login-form">
+<label for="username">Имя пользователя</label>
+<input id="username" name="username" autocomplete="username" required maxlength="64" spellcheck="false">
+<label for="password">Пароль</label>
+<input id="password" name="password" type="password" autocomplete="current-password" required maxlength="128">
+<button type="submit" id="login-submit">Войти</button>
+</form>
+<p id="login-status" role="status" aria-live="polite">Вход доступен только по HTTPS.</p>
+</section>
+<section class="notice">
+<h2>Прогнозы пока отключены</h2>
+<p>Вход не означает допуска прогнозов и агрорекомендаций. Исторические оценки навыка требуют исправления и независимой перепроверки.</p>
+</section>
+<footer><a href="/api/capabilities">Матрица возможностей API</a></footer>
+</main>
+</body>
+</html>

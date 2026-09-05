@@ -18,3 +18,10 @@ venv/
 # IDE
 .idea/
 .vscode/
+
+deploy/secrets/
+.env
+.env.*
+!.env.example
+
+node_modules/

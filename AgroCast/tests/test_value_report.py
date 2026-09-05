@@ -152,9 +152,11 @@ def test_value_api_ok_missing_and_page(tmp_path, monkeypatch):
     import agrocast.serve.product as product_mod
 
     monkeypatch.setattr(product_mod, "WORLD", str(tmp_path))
-    miss = value_api()
-    assert miss["ok"] is False
-    assert "python -m scripts.value_report" in miss["error"]
+    from agrocast.serve.errors import APIError
+    with pytest.raises(APIError) as missing:
+        value_api()
+    assert missing.value.status == 503
+    assert missing.value.code == "artifact_unavailable"
     art = tmp_path / "artifacts"
     art.mkdir()
     (art / "value_report.json").write_text(
@@ -167,4 +169,5 @@ def test_value_api_ok_missing_and_page(tmp_path, monkeypatch):
     assert got["report"]["segments"]["seasonal_t2m"]["rpss"] == pytest.approx(0.2544)
     body = value_page()
     assert "Паспорт навыка" in body
-    assert "fetch('/api/value')" in body
+    assert 'src="/assets/value.js"' in body
+    assert "<script>" not in body

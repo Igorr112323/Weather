@@ -1,3 +1,4 @@
+import hashlib
 import json
 import threading
 import traceback
@@ -7,6 +8,8 @@ import numpy as np
 import pandas as pd
 
 from agrocast.core.config import Config, Region
+from agrocast.core.contracts import Coordinates
+from agrocast.core.jsoncodec import canonical_json
 from agrocast.ingest.openobs import fetch_cpc_daily, fetch_soil
 
 HINDCAST_YEARS = list(range(2004, 2025))
@@ -33,12 +36,14 @@ def world_config(world_dir):
 
 
 def point_config(world_dir, data_root, lat, lon):
+    coordinates = Coordinates(lat=lat, lon=lon)
+    lat, lon = coordinates.lat, coordinates.lon
     wc = world_config(world_dir)
     r = wc.region
     box = point_box(lat, lon)
     if box.lat_min >= r.lat_min and box.lat_max <= r.lat_max and box.lon_min >= r.lon_min and box.lon_max <= r.lon_max:
         return wc, str(Path(world_dir))
-    key = f"{lat:.2f}_{lon:.2f}".replace("-", "m")
+    key = hashlib.sha256(canonical_json(coordinates.model_dump()).encode("utf-8")).hexdigest()
     pdir = Path(data_root) / "points" / key
     cfg = Config(
         data_dir=str(pdir),

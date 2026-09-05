@@ -7,7 +7,12 @@ from pathlib import Path
 
 import numpy as np
 
-from agrocast.region.regions import REGIONS, grid_artifact_path, known, region_name, skill_artifact_path
+from agrocast.region.regions import REGIONS as REGIONS
+from agrocast.region.regions import grid_artifact_path, known, region_name, skill_artifact_path
+from agrocast.core.config import Config
+from agrocast.core.contracts import RegionFieldSpec, target_months
+from agrocast.core.jsoncodec import strict_json
+from agrocast.store.results import Releases, ResultCache, ResultIdentity, fingerprint
 
 TERCILE_KEYS = ("below", "normal", "above")
 FIELD_CELL = 0.25
@@ -28,14 +33,14 @@ def skill_path(world_dir, region="krai"):
     return skill_artifact_path(world_dir, region)
 
 
-def field_path(data_root, region="krai"):
+def legacy_field_path(data_root, region="krai"):
     if region == "krai":
         return Path(data_root) / KRAI_FIELD_RELPATH
     return Path(data_root) / "audit" / f"{region}_field.json"
 
 
-def field_age_s(data_root, region="krai"):
-    p = field_path(data_root, region)
+def legacy_field_age_s(data_root, region="krai"):
+    p = legacy_field_path(data_root, region)
     if not p.exists():
         return None
     return max(0.0, time.time() - p.stat().st_mtime)
@@ -58,18 +63,40 @@ def skill_payload(world_dir, region="krai"):
     return {"ok": True, "skill": json.loads(p.read_text(encoding="utf-8"))}
 
 
-def field_payload(data_root, region="krai"):
-    p = field_path(data_root, region)
-    if not p.exists():
-        return {"ok": False, "error": "поле ещё не рассчитано — нажмите «Рассчитать поле»", "region": region}
-    d = json.loads(p.read_text(encoding="utf-8"))
-    meta = dict(d.get("meta") or {})
-    meta["region"] = region
-    meta["region_name"] = region_name(region) if known_region(region) else region
-    age_s = field_age_s(data_root, region)
-    meta["age_s"] = int(age_s)
-    meta["stale"] = bool(age_s > FIELD_MAX_AGE_S)
-    return {"ok": True, "meta": meta, "points": d.get("points") or [], "field": d.get("field") or {}}
+def region_identity(start, world_dir, region="krai", releases=None):
+    request = RegionFieldSpec(start=start, region=region)
+    releases = releases or Releases.from_file()
+    grid = strict_json(grid_path(world_dir, request.region).read_text(encoding="utf-8"))
+    configuration = Config.load(Path(world_dir) / "config.json").to_dict()
+    defaults = Config().to_dict()
+    for settings in (configuration, defaults):
+        for key in ("data_dir", "shared_zarr"):
+            settings.pop(key, None)
+    settings = {
+        "world_configuration": configuration, "point_defaults": defaults,
+        "grid_cell_deg": FIELD_CELL, "kriging_detrend": False, "algorithm": "regional-field-v2",
+    }
+    return ResultIdentity.regional(request, releases, settings, grid)
+
+
+def field_path(data_root, identity):
+    return ResultCache(data_root).path(identity)
+
+
+def field_age_s(data_root, identity):
+    cached = ResultCache(data_root).read(identity)
+    return cached.age_s if cached else None
+
+
+def field_payload(data_root, identity, max_age=FIELD_MAX_AGE_S):
+    cached = ResultCache(data_root).read(identity, max_age=max_age)
+    if cached is None:
+        return None
+    payload = cached.payload
+    meta = dict(payload.get("meta") or {})
+    meta["age_s"] = cached.age_s
+    meta["stale"] = False
+    return {"ok": True, "cache_key": identity.key(), "meta": meta, "points": payload.get("points", []), "field": payload.get("field", {})}
 
 
 def dominant_counts(payload):
@@ -97,19 +124,19 @@ def region_block(world_dir, data_root, region="krai"):
     g = json.loads(gp.read_text(encoding="utf-8"))
     lines.append(f"сетка: {g['n_cells']} ячеек 0.5° ({g['bounds']['lat_min']}–{g['bounds']['lat_max']}°N, "
                  f"{g['bounds']['lon_min']}–{g['bounds']['lon_max']}°E)")
-    fp = field_path(data_root, region)
+    fp = legacy_field_path(data_root, region)
     if fp.exists():
         d = json.loads(fp.read_text(encoding="utf-8"))
         meta = d.get("meta") or {}
         months = meta.get("months") or []
         if months:
             head, tail = str(months[0]), str(months[-1])
-            lines.append(f"поле: месяцы {head}–{tail}" + (f", выпуск по данным {meta.get('issue_through')}" if meta.get("issue_through") else ""))
+            lines.append(f"архив без ключа результата; поле: месяцы {head}–{tail}" + (f", выпуск по данным {meta.get('issue_through')}" if meta.get("issue_through") else ""))
         dc = dominant_counts(d)
         if any(dc.values()):
             lines.append("доминирующая терцель (ячейки 0.25°): " + ", ".join(
                 f"{k} {v}" for k, v in dc.items() if v))
-        age = field_age_s(data_root, region)
+        age = legacy_field_age_s(data_root, region)
         if age is not None:
             lines.append(f"поле рассчитано {int(age // 3600)} ч назад")
     else:
@@ -149,6 +176,8 @@ def _forecast_cell(args_):
         raise RuntimeError(f"{pid}: прогноз без блока осадков")
     probs = it["tp"]["tercile_probs"]
     months = it.get("months") or []
+    if payload.get("start") != start or months != target_months(start, 3):
+        raise ValueError("cell forecast does not match the requested period")
     return {
         "id": pid, "lat": float(lat), "lon": float(lon),
         "target": months[0] if months else start,
@@ -162,20 +191,36 @@ def _forecast_cell(args_):
     }
 
 
-def build_field(start, world_dir, data_root, region="krai", workers=2, log=None):
+def build_field(start, world_dir, data_root, region="krai", workers=2, log=None, releases=None):
     from agrocast.region.kriging import ordinary_kriging
 
     if not known_region(region):
         raise ValueError(f"неизвестный регион: {region}")
+    if type(workers) is not int or not 1 <= workers <= 2:
+        raise ValueError("regional workers must be 1 or 2")
+    releases = releases or Releases.from_file()
+    identity = region_identity(start, world_dir, region, releases)
+    cache = ResultCache(data_root)
+    if cache.read(identity, max_age=600) is not None:
+        return cache.path(identity)
     say = log or (lambda m: None)
-    art = json.loads(grid_path(world_dir, region).read_text(encoding="utf-8"))
+    art = strict_json(grid_path(world_dir, region).read_text(encoding="utf-8"))
+    if fingerprint(art) != identity.grid_sha256:
+        raise ValueError("regional grid changed before computation")
     cells = art["cells"]
+    if not cells:
+        raise ValueError("regional grid is empty")
     jobs = [(c["id"], float(c["lat"]), float(c["lon"]), start, str(world_dir), str(data_root))
             for c in cells]
     t0 = time.time()
     results = []
     with ProcessPoolExecutor(max_workers=int(workers)) as ex:
-        for r in ex.map(_forecast_cell, jobs):
+        for expected, r in zip(jobs, ex.map(_forecast_cell, jobs), strict=True):
+            if (r.get("id"), r.get("lat"), r.get("lon")) != expected[:3] or r.get("target") != start or r.get("months") != target_months(start, 3):
+                raise ValueError("regional cell result does not match its request")
+            probabilities = [r.get(key) for key in TERCILE_KEYS]
+            if not all(type(value) in (int, float) and np.isfinite(value) and 0 <= value <= 1 for value in probabilities) or abs(sum(probabilities) - 1) > 0.02:
+                raise ValueError("regional cell probabilities are invalid")
             results.append(r)
             say(f"{r['id']} ({r['lat']:.2f},{r['lon']:.2f}): "
                 f"{r['below']:.2f}/{r['normal']:.2f}/{r['above']:.2f} "
@@ -224,14 +269,14 @@ def build_field(start, world_dir, data_root, region="krai", workers=2, log=None)
             "dominant_cells": doms,
             "runtime_s": {"forecast": round(time.time() - t0, 1), "kriging": round(time.time() - t1, 1)},
             "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "disclaimer": f"Навык осадков на сетке региона не подтверждён (уровень климатологии); поле — связность прогноза продукта, не подтверждённый навык.",
+            "disclaimer": "Навык осадков на сетке региона не подтверждён (уровень климатологии); поле — связность прогноза продукта, не подтверждённый навык.",
         },
         "points": results,
         "field": field,
     }
-    fp = field_path(data_root, region)
-    fp.parent.mkdir(parents=True, exist_ok=True)
-    fp.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+    if region_identity(start, world_dir, region, releases) != identity:
+        raise ValueError("regional inputs changed during computation")
+    fp = cache.write(identity, payload)
     say(f"поле {len(lats) * len(lons)} ячеек 0.25° за {time.time() - t1:.1f}s; доминирующая терцель: "
         + ", ".join(f"{k} {v}" for k, v in doms.items()))
     return fp

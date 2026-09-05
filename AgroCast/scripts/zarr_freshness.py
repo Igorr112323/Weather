@@ -43,7 +43,7 @@ def region_freshness(world, data_root):
             print(f"region/{tag}: age={age}d, limit={REGION_ARTIFACT_MAX_DAYS}d -> {status}")
             if age > REGION_ARTIFACT_MAX_DAYS:
                 alerts.append(f"{tag} ({age}d > {REGION_ARTIFACT_MAX_DAYS}d)")
-        age = region_mod.field_age_s(data_root, rid)
+        age = region_mod.legacy_field_age_s(data_root, rid)
         if age is None:
             print(f"region/{rid} поле: отсутствует -> предупреждение (data/ не в git; рассчитайте поле)")
             continue

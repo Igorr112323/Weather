@@ -55,7 +55,7 @@ def main(argv=None):
     sp.add_argument("--mode", default="monthly", choices=["monthly", "seasonal"])
     sp.add_argument("--season-len", type=int, default=3)
 
-    sp = sub.add_parser("serve")
+    sp = sub.add_parser("serve", help="Закрытый пилот с личными аккаунтами; настройки AGROCAST_*")
     sp.add_argument("--host", default="0.0.0.0")
     sp.add_argument("--port", type=int, default=8000)
 
@@ -64,6 +64,13 @@ def main(argv=None):
     sub.add_parser("skill")
 
     args = p.parse_args(argv)
+    if args.cmd == "serve":
+        import uvicorn
+        from agrocast.serve.product import app
+
+        uvicorn.run(app, host=args.host, port=args.port)
+        return
+
     cfg = _load_config(args.data_dir)
     cfg.save()
 
@@ -121,12 +128,6 @@ def main(argv=None):
             Path(args.out).write_text(text)
         else:
             print(text)
-
-    elif args.cmd == "serve":
-        import uvicorn
-        from agrocast.serve.api import app
-
-        uvicorn.run(app, host=args.host, port=args.port)
 
     elif args.cmd == "autopilot":
         from agrocast.autopilot.cycle import schedule

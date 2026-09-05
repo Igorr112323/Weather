@@ -1,13 +1,55 @@
 # Weather
 
-Сезонный агропрогноз **AgroCast** для России: собственные расчёты на открытых
-данных, ансамбль из 9 моделей (+2 сезонные на осадки), честный
-вероятностный прогноз с публичным реестром навыка.
+Исследовательская система сезонного агропрогноза **AgroCast**: собственные
+расчёты на открытых данных и экспериментальный ансамбль моделей.
 
-Продукт: папка [`AgroCast`](AgroCast) — запуск `python app.py` (Python 3.11+),
-подробности в [`AgroCast/README_ЗАПУСК.txt`](AgroCast/README_ЗАПУСК.txt).
+Код: [`AgroCast`](AgroCast), Python 3.11+. Текущий HTTP-режим — **закрытый
+пилот с личными аккаунтами; новые прогнозы отключены**.
+[Настройка входа, PostgreSQL и запуск](docs/production/IDENTITY.md).
 
-## Что внутри (коротко)
+## Готовность к продакшену
+
+По результатам аудита от **2026-09-05** проект пока не готов к открытому
+промышленному использованию. На исходном срезе тесты и мини-аудит проходили, но найдены
+блокирующие проблемы безопасности, сохранности состояния, свежести данных
+и методики проверки прогнозного навыка. Приведённые ниже оценки навыка и
+заявления о гарантиях требуют повторной проверки; не следует считать их
+независимо подтверждёнными production-характеристиками.
+
+- [План работ: этапы, приоритеты, зависимости и критерии приёмки](docs/production/PLAN.md).
+- [Технический аудит с результатами проверок и ссылками на код](docs/production/AUDIT.md).
+- [Чек-лист выпуска и эксплуатационных проверок](docs/production/RELEASE_CHECKLIST.md).
+
+**T01–T04 реализованы и локально проверены:** ограниченный scope, личные
+аккаунты, роли reader/operator/admin, серверные сессии и PostgreSQL.
+Добавлены безопасный DOM, enforced CSP, локальный Leaflet, типизированный
+HTTP-контракт и параметризованный региональный кэш.
+Свои поля и неактивные настройки подписок доступны по правам; справочник —
+только внутри организации. Новый forecast, hindcast и агрорекомендации
+остаются отключёнными даже для admin. Собственные поля и справочник доступны
+на `/workspace`, свои сохранённые записи — через защищённый просмотр отчёта.
+
+Общий пароль T01 больше не предоставляет доступ. Нужны PostgreSQL, миграция
+и аккаунт, созданный администратором. Без готовой identity защищённые API
+отвечают 503, а без корректной сессии — 401. Production-релиз пока не разрешён.
+
+[Прогресс реализации и проверки](docs/production/PROGRESS.md) ·
+[Матрица возможностей и настройка пилота](docs/production/PILOT.md) ·
+[DOM/CSP и браузерные проверки](docs/production/BROWSER_SECURITY.md) ·
+[HTTP-контракт, миграция crop revision и кэш](docs/production/API_CACHE.md).
+
+Новый и изменяемый код — строго без комментариев; пояснения и архитектурные
+решения оформляются в Markdown.
+
+<details>
+<summary>Историческое описание MVP и исходные метрики — не перепроверены</summary>
+
+Следующие разделы сохранены как описание исходного MVP до production-аудита.
+Они не являются действующей матрицей HTTP-возможностей или доказательством
+независимого навыка. В частности, утверждения о временной изоляции, совпадении
+LIVE с аудитом и гарантии покрытия не подтвердились при разборе реализации.
+
+## Что внутри исследовательского ядра
 
 - **Данные (свои, открытые, без чужих прогнозов):** ERA5-стиль региона,
   SST (OISST), ледовитость, снежный покров (NOAA CDR), стратосфера
@@ -51,7 +93,7 @@
   `agrocast/market`); офлайн — последний кэш/seed со значением даты,
   устаревшая цена (>3 дней) помечается в отчёте.
 
-## Проверенный навык (walk-forward 2005–2024, 50 точек, 48 000 верификаций)
+## Исходные оценки навыка (2005–2024, 50 точек, 48 000 верификаций)
 
 - **Температура (t2m)** — стабильный навык: сезонный RPSS ≈ +0.25 (hit ≈ 64%),
   месячный ≈ +0.14 (hit ≈ 52%). Часть навыка даёт адаптивная климатология
@@ -125,17 +167,38 @@
   не подтверждён — поле демонстрирует связность прогноза продукта,
   а не подтверждённый навык.
 
+</details>
+
 ## Тесты
 
-```
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -r AgroCast/requirements-test.txt
 cd AgroCast
-python -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
-.venv/bin/python -m pytest tests -q
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 ../.venv/bin/python -m pytest tests -q
+```
+
+После T04: небраузерный набор **443 passed, 2 PostgreSQL-only skipped**;
+отдельный PostgreSQL-прогон — **190 passed**, включая оба специальных случая;
+HTTPS browser regression Chromium — **10 passed**. Научные дефекты этим
+не закрыты. Новый runtime требует миграции **0002_crop_revision**; подробности
+в [контракте API/кэша](docs/production/API_CACHE.md).
+
+Браузерные проверки и проверка поставки Leaflet:
+
+```bash
+.venv/bin/python -m pip install -r AgroCast/requirements-browser.txt
+.venv/bin/python -m playwright install --with-deps chromium
+cd AgroCast
+npm ci --ignore-scripts
+npm run check:vendor
+npm run check:dom
+AGROCAST_BROWSER_TESTS=1 ../.venv/bin/python -m pytest tests/browser -q
 ```
 
 ## CI, деплой, мониторинг
 
-- **CI (GitHub Actions):** на каждый push/PR — `pytest` + **мини-аудит на 5
+- **CI (GitHub Actions):** на push в `main` и pull request — `pytest` + **мини-аудит на 5
   точках** (реальный recompute: precompute → 5 точек × 960 верификаций →
   отчёт → контроль: конформальное покрытие P10–P90 72–85%, RPSS/ECE/hit
   сезонного t2m в пределах нормы). Падение любого чек-а — красный билд.
@@ -149,14 +212,15 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
   Превышение — **АЛЕРТ** (exit 1, красный чек → уведомление GitHub).
   Локально: `cd AgroCast && python -m scripts.zarr_freshness`.
 - **Docker:** `Dockerfile` в корне (python 3.11-slim, uvicorn, healthcheck
-  по `/api/health`, логи в том `agrocast-data`).
+  по `/health/live`, только liveness, логи в том `agrocast-data`).
   Сборка: `docker build -t agrocast .`
 - **HTTPS:** `deploy/docker-compose.yml` + `deploy/Caddyfile` — Caddy
   ставит Let's Encrypt-сертификат автоматически на домен
   `AGROCAST_DOMAIN` (переменная окружения), TLS терминируется на Caddy,
-  приложение слушает 8501 внутри сети:
-  `cd deploy && AGROCAST_DOMAIN=agrocast.example.com docker compose up -d`.
-  Локальный запуск без домена: `python app.py` (http://127.0.0.1:8501).
+  приложение слушает 8501 внутри сети. Обязательны файлы секретов PostgreSQL:
+  [инструкция для локального запуска и Compose](docs/production/IDENTITY.md).
+  В T02 добавлены PostgreSQL и migration job. Docker/TLS deployment ещё не проверялся; healthcheck не заменяет
+  readiness, backup и остальные release gates.
 - **Логи:** приложение пишет в stdout (в Docker — в лог-драйвер) и в
   `AgroCast/data/logs/app.log` (ротация 5 МБ × 3). Уровень —
   `AGROCAST_LOG_LEVEL` (INFO по умолчанию). Логгируется: старт, каждый

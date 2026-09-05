@@ -8,8 +8,13 @@ from agrocast.core.timeutils import next_occurrence, month_period
 from agrocast.forecast.orchestrator import forecast_point
 from agrocast.store.zarrstore import ZarrStore
 from agrocast.ingest.registry import Registry
+from agrocast.serve.security import AccessGuard
 
-app = FastAPI(title="AgroCast Engine", version="0.1.0")
+app = FastAPI(
+    title="AgroCast Engine · retired", version="0.1.0",
+    docs_url=None, redoc_url=None, openapi_url=None,
+)
+app.add_middleware(AccessGuard, retired=True)
 
 
 def _jsonable(o):

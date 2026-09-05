@@ -1,15 +1,53 @@
 services:
+  database:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: agrocast
+      POSTGRES_USER: agrocast
+      POSTGRES_PASSWORD_FILE: /run/secrets/database_password
+    secrets:
+      - database_password
+    volumes:
+      - agrocast-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agrocast -d agrocast"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  migrate:
+    build:
+      context: ..
+    image: agrocast:local
+    restart: "no"
+    command: ["python", "-m", "agrocast.identity.cli", "migrate"]
+    environment:
+      AGROCAST_DATABASE_URL_FILE: /run/secrets/database_url
+      AGROCAST_PUBLIC_ORIGIN: https://${AGROCAST_DOMAIN:?Set the HTTPS domain}
+    secrets:
+      - database_url
+    depends_on:
+      database:
+        condition: service_healthy
   app:
     build:
       context: ..
+    image: agrocast:local
     container_name: agrocast-app
     restart: unless-stopped
     environment:
       AGROCAST_LOG_LEVEL: INFO
+      AGROCAST_DATABASE_URL_FILE: /run/secrets/database_url
+      AGROCAST_PUBLIC_ORIGIN: https://${AGROCAST_DOMAIN:?Set the HTTPS domain}
+    secrets:
+      - database_url
     volumes:
-      agrocast-data: /app/data
+      - agrocast-data:/app/data
     expose:
       - "8501"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
   caddy:
     image: caddy:2
     container_name: agrocast-caddy
@@ -18,16 +56,22 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      AGROCAST_DOMAIN: ${AGROCAST_DOMAIN:-agrocast.local}
+      AGROCAST_DOMAIN: ${AGROCAST_DOMAIN:?Set the HTTPS domain}
     volumes:
-      - ./Caddyfile: /etc/caddy/Caddyfile:ro
-      - caddy-data: /data
-      - caddy-config: /config
-      - caddy-logs: /var/log/caddy
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+      - caddy-logs:/var/log/caddy
     depends_on:
       - app
 volumes:
+  agrocast-db:
   agrocast-data:
   caddy-data:
   caddy-config:
   caddy-logs:
+secrets:
+  database_password:
+    file: ${AGROCAST_DB_PASSWORD_FILE:?Set the path to the database password file}
+  database_url:
+    file: ${AGROCAST_DATABASE_URL_FILE:?Set the path to the database URL file}

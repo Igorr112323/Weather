@@ -1,0 +1,33 @@
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#0f1a12;color:#e8f0e4;line-height:1.55;padding:0 0 60px}
+.wrap{max-width:1020px;margin:0 auto;padding:0 18px}
+.top{background:#13221a;border-bottom:1px solid #2a4030;padding:18px 0;margin-bottom:26px}
+.top .wrap{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap}
+h1{font-size:22px;color:#a4d65e;letter-spacing:.4px}
+h1 span{color:#6f8f57}
+a.home{color:#9dbd90;text-decoration:none;font-size:13.5px;border:1px solid #2e4a36;border-radius:8px;padding:7px 12px;white-space:nowrap}
+a.home:hover{border-color:#6fae3f;color:#c8e6b0}
+.sub{font-size:13px;color:#8fae86;margin-top:8px;line-height:1.6}
+.card{background:#1a2f20;border:1px solid #2e4a36;border-radius:12px;padding:16px 18px;margin-top:16px;overflow-x:auto}
+.card h2{font-size:16px;color:#c8e6b0;margin-bottom:4px}
+.card .desc{font-size:12.5px;color:#8fae86;margin-bottom:12px}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+th{color:#8fae86;font-weight:600;text-align:left;padding:7px 10px;border-bottom:1px solid #2e4a36;font-size:12px;letter-spacing:.2px}
+td{padding:6px 10px;border-bottom:1px solid #22382a;white-space:nowrap}
+tr:hover td{background:#1d3525}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.pos{color:#8fe388}
+.neg{color:#ff9d9d}
+.warnrow td{color:#c8a96e}
+.note{font-size:12.5px;color:#9dbd90;padding:5px 0 5px 22px;position:relative;line-height:1.65}
+.note:before{content:"›";position:absolute;left:6px;color:#6fae3f}
+.sumline{font-size:13.5px;color:#c8e6b0;margin:10px 0 4px}
+.errcard{background:#4a1e1e;border-color:#7a3030;color:#ffd9d9}
+.errcard code{background:#2e1414;padding:2px 7px;border-radius:6px;font-size:12.5px;color:#ffb9b9}
+.hint{font-size:12px;color:#7d9878;margin-top:10px;line-height:1.6}
+@media (max-width:720px){body{overflow-x:auto}.top .wrap{display:block}a.home{display:inline-block;margin-top:10px}}
+[hidden]{display:none!important}
+.literal{white-space:pre-wrap;overflow-wrap:anywhere}
+.season-heading{font-size:14px;color:#a4d65e;margin:14px 0 2px}
+td{white-space:normal;overflow-wrap:anywhere}
+a:focus-visible{outline:3px solid #e3b46c;outline-offset:3px}

@@ -4,61 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Паспорт навыка AgroCast</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,Arial,sans-serif;background:#0f1a12;color:#e8f0e4;line-height:1.55;padding:0 0 60px}
-.wrap{max-width:1020px;margin:0 auto;padding:0 18px}
-.top{background:#13221a;border-bottom:1px solid #2a4030;padding:18px 0;margin-bottom:26px}
-.top .wrap{display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap}
-h1{font-size:22px;color:#a4d65e;letter-spacing:.4px}
-h1 span{color:#6f8f57}
-a.home{color:#9dbd90;text-decoration:none;font-size:13.5px;border:1px solid #2e4a36;border-radius:8px;padding:7px 12px;white-space:nowrap}
-a.home:hover{border-color:#6fae3f;color:#c8e6b0}
-.sub{font-size:13px;color:#8fae86;margin-top:8px;line-height:1.6}
-.card{background:#1a2f20;border:1px solid #2e4a36;border-radius:12px;padding:16px 18px;margin-top:16px;overflow-x:auto}
-.card h2{font-size:16px;color:#c8e6b0;margin-bottom:4px}
-.card .desc{font-size:12.5px;color:#8fae86;margin-bottom:12px}
-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
-th{color:#8fae86;font-weight:600;text-align:left;padding:7px 10px;border-bottom:1px solid #2e4a36;font-size:12px;letter-spacing:.2px}
-td{padding:6px 10px;border-bottom:1px solid #22382a;white-space:nowrap}
-tr:hover td{background:#1d3525}
-.num{text-align:right;font-variant-numeric:tabular-nums}
-.pos{color:#8fe388}
-.neg{color:#ff9d9d}
-.warnrow td{color:#c8a96e}
-.note{font-size:12.5px;color:#9dbd90;padding:5px 0 5px 22px;position:relative;line-height:1.65}
-.note:before{content:"›";position:absolute;left:6px;color:#6fae3f}
-.sumline{font-size:13.5px;color:#c8e6b0;margin:10px 0 4px}
-.errcard{background:#4a1e1e;border-color:#7a3030;color:#ffd9d9}
-.errcard code{background:#2e1414;padding:2px 7px;border-radius:6px;font-size:12.5px;color:#ffb9b9}
-.hint{font-size:12px;color:#7d9878;margin-top:10px;line-height:1.6}
-@media (max-width:720px){body{overflow-x:auto}.top .wrap{display:block}a.home{display:inline-block;margin-top:10px}}
-</style>
+<link rel="stylesheet" href="/assets/value.css">
 </head>
 <body>
 <div class="top">
 <div class="wrap">
+<div class="card" id="pilot-warning" role="note">
+<h2>Закрытый пилот · результаты не перепроверены</h2>
+<p>{{PILOT_WARNING}}</p>
+</div>
 <h1>Паспорт навыка Agro<span>Cast</span></h1>
-<a class="home" href="/">← AgroCast: карта прогнозов</a>
+<a class="home" href="/">← Закрытый пилот</a>
 </div>
 </div>
 <div class="wrap">
 <div class="card">
-<h2 id="ttl">Паспорт навыка AgroCast (walk-forward 2005–2024, 28 точек юга России)</h2>
+<h2 id="ttl">Паспорт навыка AgroCast · исходный аудит 2005–2024, 28 точек</h2>
 <div class="sub" id="meta">загружаю отчёт…</div>
 </div>
-<div class="card errcard" id="errbox" style="display:none"><div id="errtxt"></div></div>
-<div id="body" style="display:none">
+<div class="card errcard" id="errbox" hidden><div id="errtxt"></div></div>
+<div id="body" hidden>
 
 <div class="card">
 <h2>Сегменты</h2>
-<div class="desc">RPSS против равномерной климатологии; «лучше климатологии» — доля отдельных прогнозов с RPS ниже климатического. Навык подтверждён только для температуры.</div>
+<div class="desc">RPSS против равномерной климатологии; «лучше климатологии» — доля отдельных прогнозов с RPS ниже климатического. Навык ни одной переменной пока не допущен как независимо подтверждённая production-характеристика.</div>
 <table id="segtable"></table>
 </div>
 
 <div class="card">
 <h2>По годам — сезонная t2m</h2>
-<div class="desc">Каждый год — честный walk-forward: прогноз только по прошлым годам, сверка с фактом.</div>
+<div class="desc">Исторические результаты исходной процедуры. Временная изоляция и локальные факты требуют исправления и повторной проверки.</div>
 <div class="sumline" id="y1sum"></div>
 <table id="y1table"></table>
 </div>
@@ -90,59 +65,13 @@ tr:hover td{background:#1d3525}
 </div>
 
 <div class="card">
-<h2>Честно</h2>
+<h2>Примечания исходного отчёта · не перепроверены</h2>
 <div id="notes"></div>
 </div>
 
 </div>
 <div class="hint">Отчёт строится из записей полного аудита «проверки прошлого» (scripts.audit_full grid, 28 ячеек 0.5° Краснодарского края, 2005–2024, 26 880 верификаций). Источник данных — открытые NOAA · NCEP · CPC; продукт не использует чужие прогнозы.</div>
 </div>
-<script>
-const TER_RU=['ниже нормы','около нормы','выше нормы'];
-const TER_KEY=['below','normal','above'];
-const SEG_RU={seasonal_t2m:'сезонный t2m',monthly_t2m:'месячный t2m',seasonal_tp:'сезонный tp',monthly_tp:'месячный tp'};
-const SEAS_RU={DJF:'зима (DJF)',MAM:'весна (MAM)',JJA:'лето (JJA)',SON:'осень (SON)'};
-const fmt4=x=>x==null?'—':Number(x).toFixed(4);
-const fmtSig=x=>x==null?'—':(Number(x)>0?'+':'')+Number(x).toFixed(4);
-const fmtPct=x=>x==null?'—':(100*Number(x)).toFixed(1)+'%';
-const cls=x=>x==null?'':(Number(x)>0?' pos':(Number(x)<0?' neg':''));
-const td=(v,c)=>'<td class="num'+(c||'')+'">'+v+'</td>';
-function el(id){return document.getElementById(id)}
-fetch('/api/value').then(r=>r.json()).then(d=>{
- if(!d.ok){el('body').style.display='none';el('errbox').style.display='block';el('errtxt').innerHTML='<b>Отчёт не построен.</b><br><br>На сервере нет артефакта value_report.json. Соберите его из записей аудита:<br><br><code>cd AgroCast && python -m scripts.audit_full grid --workers 2</code><br><code>python -m scripts.value_report</code>';return}
- const rep=d.report;
- el('meta').textContent=rep.n_points+' точек × '+rep.years_span+' (walk-forward) · '+Number(rep.verifications).toLocaleString('ru-RU')+' верификаций · сгенерировано '+rep.generated_at;
- el('body').style.display='block';
- const seg=rep.segments;
- el('segtable').innerHTML='<tr><th>сегмент</th><th>n</th><th>RPS</th><th>RPS клим</th><th>RPSS</th><th>hit</th><th>лучше климата</th><th>ECE</th><th>P10–P90</th></tr>'+
-  Object.keys(SEG_RU).map(k=>{
-   const s=seg[k];if(!s)return '';
-   const warn=(k.indexOf('tp')>=0)?' class="warnrow"':'';
-   const h='<tr'+warn+'><td>'+SEG_RU[k]+(k.indexOf('tp')>=0?' · навык не подтверждён':'')+'</td><td class="num">'+s.n+'</td>'+td(fmt4(s.rps))+td(fmt4(s.rps_clim))+td(fmtSig(s.rpss),cls(s.rpss))+td(fmt4(s.hit))+td(fmt4(s.win))+td(fmt4(s.ece))+td(fmtPct(s.coverage))+'</tr>';
-   return h;
-  }).join('');
- function years(block,sumId,tableId){
-  el(sumId).textContent='RPSS>0: '+block.positive_years+' из '+block.n_years+' лет · десятилетия '+fmtSig(block.first_decade_rpss)+' (2005–2014) → '+fmtSig(block.second_decade_rpss)+' (2015–2024) · лучший '+block.best.year+' ('+fmtSig(block.best.rpss)+') · худший '+block.worst.year+' ('+fmtSig(block.worst.rpss)+')';
-  el(tableId).innerHTML='<tr><th>год</th><th>n</th><th>RPSS</th><th>hit</th></tr>'+block.rows.map(r=>'<tr><td>'+r.year+'</td><td class="num">'+r.n+'</td>'+td(fmtSig(r.rpss),cls(r.rpss))+td(fmt4(r.hit))+'</tr>').join('');
- }
- years(rep.years.seasonal_t2m,'y1sum','y1table');
- years(rep.years.monthly_t2m,'y2sum','y2table');
- const dec=rep.decomposition.seasonal_t2m;
- const DL={uniform:'равномерная климатология [⅓, ⅓, ⅓]',greedy_warm:'жадный климат «всегда выше нормы» [0, 0, 1] — оценка вклада тёплого тренда',blend:'чистый ансамблевый бленд (без NN и калибровки)',product:'продукт: бленд + NN-mix + калибровка («проверка прошлого»)'};
- el('dectable').innerHTML='<tr><th>прогноз</th><th>средний RPS</th><th>RPSS против климата</th><th>выигрыш RPS</th></tr>'+Object.keys(DL).map(k=>{const s=dec[k];return '<tr><td>'+DL[k]+'</td>'+td(fmt4(s.rps))+td(fmtSig(s.rpss),cls(s.rpss))+td(fmt4(s.gain))+'</tr>'}).join('');
- const cal=seg.seasonal_t2m;
- el('caltable').innerHTML='<tr><th>терцель</th><th>заявленная вероятность</th><th>фактическая частота</th><th>вклад в ECE</th></tr>'+TER_KEY.map((k,i)=>'<tr><td>'+TER_RU[i]+' ('+k+')</td>'+td(fmt4(cal.claimed[k]))+td(fmt4(cal.freq[k]))+td(fmt4(cal.ece_parts[k]))+'</tr>').join('');
- el('calsum').textContent='ECE = '+fmt4(cal.ece)+' · покрытие конформного коридора P10–P90 = '+fmtPct(cal.coverage)+' (заявка продукта — 80%)';
- el('seasbox').innerHTML=Object.keys(rep.seasons).map(mode=>{
-  const m=mode==='seasonal'?'Сезонный режим':'Месячный режим';
-  const rows=Object.keys(SEAS_RU).map(sn=>{
-   const t=rep.seasons[mode][sn].t2m,p=rep.seasons[mode][sn].tp;
-   return '<tr><td>'+SEAS_RU[sn]+'</td><td class="num">'+t.n+'</td>'+td(fmtSig(t.rpss),cls(t.rpss))+td(fmt4(t.hit))+'<td class="num">'+p.n+'</td>'+td(fmtSig(p.rpss),cls(p.rpss))+td(fmt4(p.hit))+'</tr>';
-  }).join('');
-  return '<h3 style="font-size:13.5px;color:#a4d65e;margin:14px 0 2px">'+m+'</h3><table><tr><th>сезон</th><th>n (t2m)</th><th>RPSS t2m</th><th>hit t2m</th><th>n (tp)</th><th>RPSS tp</th><th>hit tp</th></tr>'+rows+'</table>';
- }).join('');
- el('notes').innerHTML=rep.notes.map(n=>'<div class="note">'+n+'</div>').join('');
-}).catch(e=>{el('errbox').style.display='block';el('errtxt').textContent='Сервер недоступен: '+e});
-</script>
+<script type="module" src="/assets/value.js"></script>
 </body>
 </html>

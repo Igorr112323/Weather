@@ -197,36 +197,61 @@ def crops_del(name: str):
 
 class RegionRefreshRequest(BaseModel):
     start: str = "2026-10"
+    region: str = "krai"
+
+
+def _unknown_region(region):
+    from agrocast.serve import region as region_mod
+
+    if region_mod.known_region(region):
+        return None
+    return JSONResponse({"error": f"неизвестный регион: {region}"}, status_code=400)
 
 
 @app.get("/api/region/grid")
-def region_grid():
+def region_grid(region: str = "krai"):
     from agrocast.serve import region as region_mod
 
-    return region_mod.grid_payload(WORLD)
+    bad = _unknown_region(region)
+    if bad is not None:
+        return bad
+    return region_mod.grid_payload(WORLD, region)
 
 
 @app.get("/api/region/skill")
-def region_skill():
+def region_skill(region: str = "krai"):
     from agrocast.serve import region as region_mod
 
-    return region_mod.skill_payload(WORLD)
+    bad = _unknown_region(region)
+    if bad is not None:
+        return bad
+    return region_mod.skill_payload(WORLD, region)
 
 
 @app.get("/api/region/field")
-def region_field():
+def region_field(region: str = "krai"):
     from agrocast.serve import region as region_mod
 
-    return _clean(region_mod.field_payload(DATA_ROOT))
+    bad = _unknown_region(region)
+    if bad is not None:
+        return bad
+    return _clean(region_mod.field_payload(DATA_ROOT, region))
 
 
-def _start_region_job(job, world_dir, data_root, start):
+@app.get("/api/region/regions")
+def region_regions():
+    from agrocast.region.regions import region_summary
+
+    return {"ok": True, "regions": region_summary(WORLD)}
+
+
+def _start_region_job(job, world_dir, data_root, start, region):
     def run():
         try:
             from agrocast.serve import region as region_mod
 
-            fp = region_mod.build_field(start, world_dir, data_root, workers=2, log=job.add)
-            job.result = {"field": str(fp)}
+            fp = region_mod.build_field(start, world_dir, data_root, region=region, workers=2, log=job.add)
+            job.result = {"field": str(fp), "region": region}
             job.status = "done"
             job.add("готово")
         except Exception as exc:
@@ -242,15 +267,18 @@ def region_refresh(req: RegionRefreshRequest):
     from agrocast.serve import region as region_mod
     from agrocast.serve.pipeline import Job
 
-    p = region_mod.field_path(DATA_ROOT)
+    bad = _unknown_region(req.region)
+    if bad is not None:
+        return bad
+    p = region_mod.field_path(DATA_ROOT, req.region)
     if p.exists() and time.time() - p.stat().st_mtime < 600:
-        return {"ok": True, "fresh": True, "job": None}
+        return {"ok": True, "fresh": True, "job": None, "region": req.region}
     job_id = uuid.uuid4().hex[:10]
-    job = Job(job_id, {"kind": "region_field", "start": req.start})
+    job = Job(job_id, {"kind": "region_field", "start": req.start, "region": req.region})
     JOBS[job_id] = job
-    log.info("region job %s: поле КРА, старт %s", job_id, req.start)
-    _start_region_job(job, WORLD, DATA_ROOT, req.start)
-    return {"ok": True, "fresh": False, "job": job_id}
+    log.info("region job %s: поле региона %s, старт %s", job_id, req.region, req.start)
+    _start_region_job(job, WORLD, DATA_ROOT, req.start, req.region)
+    return {"ok": True, "fresh": False, "job": job_id, "region": req.region}
 
 
 @app.get("/api/ledger")

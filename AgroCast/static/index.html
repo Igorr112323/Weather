@@ -118,8 +118,8 @@ label{font-size:12.5px;color:#9dbd90;display:block;margin:10px 0 5px}
 </div>
 
 <div class="card" id="regcard">
-<h3>Регион · Краснодарский край (Фаза 3)</h3>
-<div class="sub" style="margin-top:0">Сетка 28 ячеек 0.5° + кринг-поле терцилей осадков 0.25° (обыкновенный кринг: вариограмма, детрендинг, IDW-фолбэк). <b>Честно:</b> навык осадков в регионе аудитом 20 лет не подтверждён — поле показывает связность прогноза, не подтверждённый навык.</div>
+<h3 style="display:flex;align-items:center;gap:10px">Регион · юг России <select id="regsel" style="width:auto;min-width:180px;flex:1"></select></h3>
+<div class="sub" style="margin-top:0" id="regdesc">Сетка ячеек 0.5° + кринг-поле терцилей осадков 0.25° (обыкновенный кринг: вариограмма, детрендинг, IDW-фолбэк). <b>Честно:</b> навык осадков в регионе аудитом 20 лет не подтверждён — поле показывает связность прогноза, не подтверждённый навык.</div>
 <div style="display:flex;gap:8px;margin-top:8px">
 <button class="btn ghost" id="regshow" style="flex:1;margin-top:0">Показать на карте</button>
 <button class="btn ghost" id="regrefresh" style="flex:1;margin-top:0">Рассчитать поле</button>
@@ -292,7 +292,7 @@ el('c_save').onclick=async()=>{
 el('c_clear').onclick=()=>{['c_name','c_fao','c_gdd','c_vp','c_yield','c_area','c_breeder','c_sowf','c_sowt','c_ftol','c_ffat','c_notes'].forEach(i=>el(i).value='');el('cerr').textContent=''};
 cropLoad();
 
-let regLayers=null,regLegend=null;
+let regLayers=null,regLegend=null,REGMETA=[],curReg='krai';
 const TER_KEYS=['below','normal','above'];
 const TER_RU={below:'ниже нормы',normal:'около нормы',above:'выше нормы'};
 const TER_COLOR={below:'#3b7dd8',normal:'#6fae3f',above:'#d84b3b'};
@@ -311,13 +311,31 @@ function regLegendAdd(){
  };
  regLegend.addTo(map);
 }
+function regDesc(){
+ const m=REGMETA.find(x=>x.region===curReg)||REGMETA[0];
+ if(!m){return}
+ const sk=m.seasonal_t2m_rpss!=null?(' Навык t2m (сезон, аудит 20 лет): RPSS '+(m.seasonal_t2m_rpss>0?'+':'')+Number(m.seasonal_t2m_rpss).toFixed(3)+', попадания '+Math.round(100*(m.seasonal_t2m_hit||0))+'%.'):'';
+ el('regdesc').textContent=m.name+' — сетка '+(m.n_cells!=null?m.n_cells+' ячеек 0.5°':'')+'; кринг-поле терцилей осадков 0.25° (обыкновенный кринг: вариограмма, детрендинг, IDW-фолбэк). <b>Честно:</b> навык осадков в регионе аудитом 20 лет не подтверждён — поле показывает связность прогноза, не подтверждённый навык.'+sk;
+}
+async function regLoad(){
+ let r;
+ try{r=await(await fetch('/api/region/regions')).json()}catch(e){r=null}
+ REGMETA=((r&&r.regions)||[]).filter(x=>x.built);
+ const s=el('regsel');
+ if(!REGMETA.length){s.innerHTML='';s.disabled=true;el('regdesc').textContent='реестр регионов недоступен — сервер не отвечает';return}
+ s.disabled=false;
+ s.innerHTML=REGMETA.map(x=>'<option value="'+x.region+'">'+x.name+'</option>').join('');
+ if(!REGMETA.some(x=>x.region===curReg))curReg=REGMETA[0].region;
+ s.value=curReg;
+ regDesc();
+}
 async function regShow(){
  el('regstat').textContent='загружаю сетку…';
  let g;
- try{g=await(await fetch('/api/region/grid')).json()}catch(e){el('regstat').textContent='сервер недоступен';return}
+ try{g=await(await fetch('/api/region/grid?region='+curReg)).json()}catch(e){el('regstat').textContent='сервер недоступен';return}
  if(!g.ok){el('regstat').textContent=g.error;return}
  let f;
- try{f=await(await fetch('/api/region/field')).json()}catch(e){f={ok:false}}
+ try{f=await(await fetch('/api/region/field?region='+curReg)).json()}catch(e){f={ok:false}}
  regClear();
  const b=g.grid.bounds;
  map.fitBounds([[b.lat_min,b.lon_min],[b.lat_max,b.lon_max]],{padding:[24,24]});
@@ -349,12 +367,15 @@ async function regShow(){
  } else el('regstat').textContent=f.error||'поле не готово';
  regLegendAdd();
 }
+el('regsel').addEventListener('change',()=>{curReg=el('regsel').value;regDesc();regShow()});
 el('regshow').onclick=regShow;
 el('regrefresh').onclick=async()=>{
- el('regstat').textContent='запускаю расчёт (28 точек × полный путь продукта, ~4–5 мин)…';
+ const m=REGMETA.find(x=>x.region===curReg);
+ el('regstat').textContent='запускаю расчёт ('+((m&&m.n_cells)||'?')+' точек × полный путь продукта)…';
  let r;
- try{r=await(await fetch('/api/region/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:nextMonth()})})).json()}
+ try{r=await(await fetch('/api/region/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({start:nextMonth(),region:curReg})})).json()}
  catch(e){el('regstat').textContent='сервер недоступен';return}
+ if(r.error){el('regstat').textContent=r.error;return}
  if(!r.job){el('regstat').textContent='поле уже свежее — перерисовываю';regShow();return}
  const t=setInterval(async()=>{
   let st;
@@ -364,6 +385,7 @@ el('regrefresh').onclick=async()=>{
   if(st.status==='error'){clearInterval(t);el('regstat').textContent='ошибка: '+(st.error||'?')}
  },3000);
 };
+regLoad();
 </script>
 </body>
 </html>

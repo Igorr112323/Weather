@@ -1,0 +1,79 @@
+{
+ "name": "stavropol_grid",
+ "cell_deg": 0.5,
+ "bounds": {
+  "lat_min": 44.8,
+  "lat_max": 46.2,
+  "lon_min": 40.5,
+  "lon_max": 43.0
+ },
+ "min_coverage": 0.9,
+ "n_candidates": 10,
+ "n_cells": 8,
+ "cells": [
+  {
+   "lat": 45.75,
+   "lon": 40.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P01"
+  },
+  {
+   "lat": 45.75,
+   "lon": 41.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P02"
+  },
+  {
+   "lat": 45.75,
+   "lon": 41.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P03"
+  },
+  {
+   "lat": 45.75,
+   "lon": 42.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P04"
+  },
+  {
+   "lat": 45.25,
+   "lon": 40.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P05"
+  },
+  {
+   "lat": 45.25,
+   "lon": 41.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P06"
+  },
+  {
+   "lat": 45.25,
+   "lon": 41.75,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P07"
+  },
+  {
+   "lat": 45.25,
+   "lon": 42.25,
+   "coverage_t2m": 0.9986,
+   "coverage_tp": 0.9984,
+   "coverage": 0.9984,
+   "id": "P08"
+  }
+ ]
+}

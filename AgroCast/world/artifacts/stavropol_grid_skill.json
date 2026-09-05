@@ -1,0 +1,208 @@
+{
+ "source": "audit_full grid: точки Ставропольский край × 20 лет × 2 режима",
+ "region": "stavropol",
+ "region_name": "Ставропольский край",
+ "generated_at": "2026-09-04",
+ "n_points": 8,
+ "verifications": 7680,
+ "years": "2005-2024",
+ "note_tp": "навык осадков не подтверждён — уровень климатологии",
+ "seasonal_t2m": {
+  "rpss": 0.2544,
+  "hit": 0.6333,
+  "hit_ci95": [
+   0.6115,
+   0.6546
+  ],
+  "conformal_coverage": 0.8,
+  "seasons": {
+   "DJF": {
+    "rpss": 0.1499,
+    "hit": 0.45
+   },
+   "MAM": {
+    "rpss": 0.1973,
+    "hit": 0.6333
+   },
+   "JJA": {
+    "rpss": 0.4041,
+    "hit": 0.7833
+   },
+   "SON": {
+    "rpss": 0.2525,
+    "hit": 0.6667
+   }
+  }
+ },
+ "seasonal_tp": {
+  "rpss": -0.0598,
+  "hit": 0.3583,
+  "hit_ci95": [
+   0.3372,
+   0.38
+  ],
+  "conformal_coverage": 0.7833,
+  "seasons": {
+   "DJF": {
+    "rpss": -0.0531,
+    "hit": 0.3
+   },
+   "MAM": {
+    "rpss": -0.1249,
+    "hit": 0.3667
+   },
+   "JJA": {
+    "rpss": -0.0125,
+    "hit": 0.4833
+   },
+   "SON": {
+    "rpss": -0.0473,
+    "hit": 0.2833
+   }
+  }
+ },
+ "monthly_t2m": {
+  "rpss": 0.1198,
+  "hit": 0.5276,
+  "hit_ci95": [
+   0.5052,
+   0.5499
+  ],
+  "conformal_coverage": 0.7833,
+  "seasons": {
+   "DJF": {
+    "rpss": 0.1063,
+    "hit": 0.5312
+   },
+   "MAM": {
+    "rpss": 0.0416,
+    "hit": 0.4146
+   },
+   "JJA": {
+    "rpss": 0.2449,
+    "hit": 0.6167
+   },
+   "SON": {
+    "rpss": 0.0852,
+    "hit": 0.5479
+   }
+  }
+ },
+ "monthly_tp": {
+  "rpss": -0.0175,
+  "hit": 0.3167,
+  "hit_ci95": [
+   0.2962,
+   0.3378
+  ],
+  "conformal_coverage": 0.7917,
+  "seasons": {
+   "DJF": {
+    "rpss": -0.0321,
+    "hit": 0.3667
+   },
+   "MAM": {
+    "rpss": 0.0004,
+    "hit": 0.275
+   },
+   "JJA": {
+    "rpss": -0.0016,
+    "hit": 0.2812
+   },
+   "SON": {
+    "rpss": -0.0346,
+    "hit": 0.3438
+   }
+  }
+ },
+ "by_point": [
+  {
+   "id": "P01",
+   "lat": 45.75,
+   "lon": 40.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1234,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.019
+  },
+  {
+   "id": "P02",
+   "lat": 45.75,
+   "lon": 41.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1219,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0132
+  },
+  {
+   "id": "P03",
+   "lat": 45.75,
+   "lon": 41.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1215,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0157
+  },
+  {
+   "id": "P04",
+   "lat": 45.75,
+   "lon": 42.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1193,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0184
+  },
+  {
+   "id": "P05",
+   "lat": 45.25,
+   "lon": 40.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1198,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0139
+  },
+  {
+   "id": "P06",
+   "lat": 45.25,
+   "lon": 41.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1204,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0157
+  },
+  {
+   "id": "P07",
+   "lat": 45.25,
+   "lon": 41.75,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1176,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.0209
+  },
+  {
+   "id": "P08",
+   "lat": 45.25,
+   "lon": 42.25,
+   "coverage": 0.9984,
+   "seasonal_t2m_rpss": 0.2544,
+   "seasonal_t2m_hit": 0.6333,
+   "monthly_t2m_rpss": 0.1142,
+   "seasonal_tp_rpss": -0.0598,
+   "monthly_tp_rpss": -0.023
+  }
+ ]
+}

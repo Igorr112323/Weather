@@ -1,6 +1,8 @@
 {
- "source": "audit_full grid: точки КРА × 20 лет × 2 режима",
- "generated_at": "2026-09-04",
+ "source": "audit_full grid: точки Краснодарский край × 20 лет × 2 режима",
+ "region": "krai",
+ "region_name": "Краснодарский край",
+ "generated_at": "2026-09-05",
  "n_points": 28,
  "verifications": 26880,
  "years": "2005-2024",

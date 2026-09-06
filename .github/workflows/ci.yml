@@ -66,7 +66,7 @@ jobs:
       - name: Авторизация и владение на PostgreSQL
         run: |
           set -o pipefail
-          python -m pytest tests/test_identity_auth.py tests/test_identity_resources.py tests/test_identity_admin.py tests/test_identity_storage.py tests/test_pilot_access.py tests/test_api_contracts.py tests/test_contract_migration.py tests/test_result_cache.py tests/test_runtime_settings.py tests/test_state_migration.py tests/test_state_filesystem.py tests/test_state_cli.py tests/test_queue_migration.py tests/test_queue_core.py tests/test_queue_api.py tests/test_queue_worker.py -q 2>&1 | tee pytest-pg.log || { echo "::error::pytest-pg: $(grep -E '^(FAILED|ERROR)|Error|assert' pytest-pg.log | tail -c 3500 | tr '\n' '|')"; exit 1; }
+          python -m pytest tests/test_identity_auth.py tests/test_identity_resources.py tests/test_identity_admin.py tests/test_identity_storage.py tests/test_pilot_access.py tests/test_api_contracts.py tests/test_contract_migration.py tests/test_result_cache.py tests/test_runtime_settings.py tests/test_state_migration.py tests/test_state_filesystem.py tests/test_state_cli.py tests/test_queue_migration.py tests/test_queue_core.py tests/test_queue_api.py tests/test_queue_worker.py -q 2>&1 | tee pytest-pg.log || { echo "::error::pytest-pg: $( (grep -E '^(FAILED|ERROR)' pytest-pg.log; tail -c 2600 pytest-pg.log) | tr '\n' '|')"; exit 1; }
 
   browser-security:
     runs-on: ubuntu-latest

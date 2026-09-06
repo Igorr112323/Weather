@@ -56,7 +56,9 @@ jobs:
           print("desktop server smoke ok")
           PY
       - name: Сборка приложения
-        run: python -m PyInstaller --noconfirm desktop/AgroCast.spec
+        run: |
+          set -o pipefail
+          python -m PyInstaller --noconfirm desktop/AgroCast.spec 2>&1 | tee pyinstaller-output.log || { echo "::error::build: $(grep -E 'ERROR|Traceback|Exception|Syntax' pyinstaller-output.log | tail -c 3500 | tr '\n' '|')"; exit 1; }
       - uses: actions/upload-artifact@v4
         with:
           name: agrocast-desktop-${{ matrix.os }}

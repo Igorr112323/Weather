@@ -51,7 +51,8 @@ def start_server():
     listener.bind(("127.0.0.1", 0))
     listener.listen(2048)
     url = "http://127.0.0.1:%d/" % listener.getsockname()[1]
-    config = uvicorn.Config(application, fd=listener.fileno(), log_level=settings.log_level.lower(), lifespan="on")
+    inherited = socket.fromfd(listener.fileno(), socket.AF_INET, socket.SOCK_STREAM)
+    config = uvicorn.Config(application, sockets=[inherited], log_level=settings.log_level.lower(), lifespan="on")
     server = uvicorn.Server(config)
     errors = []
 

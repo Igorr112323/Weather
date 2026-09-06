@@ -153,6 +153,10 @@ def region_block(world_dir, data_root, region="krai"):
                 t += f", попадания {100 * hit:.0f}%"
             lines.append(t)
         note = s.get("note_tp") or "осадки: навык не подтверждён — уровень климатологии"
+        if s.get("schema") == "grid-skill-v2":
+            n_cells = s.get("n_points", "?")
+            n_ver = s.get("verifications", "?")
+            note = f"{note} (spatial v2: {n_cells} ячеек, {n_ver} верификаций, локальный baseline и терцильные границы по ячейке)"
         lines.append(note)
     else:
         lines.append("артефакт навыка отсутствует: навык t2m и осадков не подтверждён")

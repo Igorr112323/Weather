@@ -1,0 +1,233 @@
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from agrocast.backtest.metrics import rps_rows
+
+SCHEMA = "grid-skill-v2"
+METHOD = "moving-block bootstrap over consecutive target periods; spatial 2x2 cell-block resampling"
+BASELINE = "local empirical tercile climatology of each cell over the verified span"
+DEFAULT_BLOCK_LEN = {"monthly": 12, "seasonal": 6}
+SPATIAL_BLOCK_CELLS = 2
+
+
+def add_cell_frame(pipe, lat, lon, cell_id):
+    out = pipe.copy()
+    out["cell_lat"] = float(lat)
+    out["cell_lon"] = float(lon)
+    out["cell_id"] = str(cell_id)
+    return out
+
+
+def _baseline_probs(terciles, months):
+    base = {}
+    for m in range(1, 13):
+        vals = terciles[months == m]
+        if len(vals) == 0:
+            base[m] = np.array([1 / 3, 1 / 3, 1 / 3])
+            continue
+        counts = np.array([(vals == k).sum() for k in range(3)], float)
+        base[m] = (counts + 1.0) / (counts.sum() + 3.0)
+    return base
+
+
+def evaluate_combo(pipe, variable, lead):
+    g = pipe[(pipe["variable"] == variable) & (pipe["lead"] == int(lead))].copy()
+    if g.empty:
+        return None
+    g["period"] = pd.PeriodIndex(pd.to_datetime(g["target_start"].astype(str) + "-01"), freq="M")
+    g = g.sort_values(["period", "cell_lat", "cell_lon"]).reset_index(drop=True)
+    P = g[["p0", "p1", "p2"]].to_numpy(float)
+    obs = g["obs_tercile"].to_numpy(int)
+    rps = rps_rows(P, obs)
+    hit = (P.argmax(axis=1) == obs).astype(float)
+    phys_lo = (g["mu"] + g["sd"] * g["q10"]).to_numpy(float)
+    phys_hi = (g["mu"] + g["sd"] * g["q90"]).to_numpy(float)
+    obs_phys = (g["mu"] + g["sd"] * g["obs_z"]).to_numpy(float)
+    cover = ((obs_phys >= phys_lo) & (obs_phys <= phys_hi)).astype(float)
+    rps_base = np.full(len(g), np.nan)
+    for (_clat, _clon), sub in g.groupby(["cell_lat", "cell_lon"]):
+        months = np.asarray([p.month for p in sub["period"]])
+        base = _baseline_probs(sub["obs_tercile"].to_numpy(int), months)
+        Pb = np.array([base[p.month] for p in sub["period"]])
+        rps_base[sub.index.to_numpy()] = rps_rows(Pb, sub["obs_tercile"].to_numpy(int))
+    if not np.isfinite(rps_base).all():
+        rps_base = np.where(np.isfinite(rps_base), rps_base, float(np.nanmean(rps_base)))
+    return {"frame": g, "rps": rps, "hit": hit, "coverage": cover, "rps_base": rps_base}
+
+
+def _block_means(values, block_len):
+    arr = np.asarray(values, float)
+    n = len(arr)
+    if n == 0:
+        return np.zeros(0)
+    bl = max(1, int(block_len))
+    if bl >= n:
+        return arr.mean(keepdims=True)
+    starts = np.arange(n - bl + 1)
+    out = np.empty(len(starts))
+    for i, st in enumerate(starts):
+        out[i] = float(arr[st : st + bl].mean())
+    return out
+
+
+def _moving_block_bootstrap_ci(values, block_len, n_boot, seed):
+    values = np.asarray(values, float)
+    blocks = _block_means(values, block_len)
+    if len(blocks) == 0:
+        return {"ci95": [None, None], "n_time_blocks": 0, "block_len": int(block_len)}
+    k = max(1, int(np.ceil(len(values) / max(1, int(block_len)))))
+    point = float(values.mean())
+    if len(blocks) == 1:
+        return {"ci95": [point, point], "n_time_blocks": 1, "block_len": int(block_len)}
+    rng = np.random.default_rng(int(seed))
+    boot = np.empty(int(n_boot))
+    for b in range(int(n_boot)):
+        pick = rng.integers(0, len(blocks), size=k)
+        boot[b] = float(blocks[pick].mean())
+    lo, hi = np.quantile(boot, [0.025, 0.975])
+    return {"ci95": [float(lo), float(hi)], "n_time_blocks": k, "block_len": int(block_len), "bootstrap_point": point}
+
+
+def spatial_block_ids(lats, lons, cell_size=0.5, block_cells=SPATIAL_BLOCK_CELLS):
+    lat = np.asarray(lats, float)
+    lon = np.asarray(lons, float)
+    gi = np.floor((lat - lat.min()) / max(cell_size, 1e-9)).astype(int) // int(block_cells)
+    gj = np.floor((lon - lon.min()) / max(cell_size, 1e-9)).astype(int) // int(block_cells)
+    return np.char.add(np.char.add(gi.astype(str), ":"), gj.astype(str))
+
+
+def _spatial_ci(frame, values, n_boot, seed):
+    blocks = spatial_block_ids(frame["cell_lat"], frame["cell_lon"])
+    uniq = sorted(set(blocks.tolist()))
+    values = np.asarray(values, float)
+    if len(uniq) <= 1:
+        return {"ci95": [None, None], "n_spatial_blocks": len(uniq)}
+    means = np.array([values[blocks == u].mean() for u in uniq])
+    rng = np.random.default_rng(int(seed) + 17)
+    boot = np.array([means[rng.integers(0, len(means), size=len(means))].mean() for _ in range(int(n_boot))])
+    lo, hi = np.quantile(boot, [0.025, 0.975])
+    return {"ci95": [float(lo), float(hi)], "n_spatial_blocks": int(len(means))}
+
+
+def summarize(pipe, modes, leads, variables=("t2m", "tp"), n_boot=400, seed=7, block_len=None):
+    combos = {}
+    for mode in modes:
+        for lead in leads[mode]:
+            for v in variables:
+                ev = evaluate_combo(pipe, v, lead)
+                if ev is None:
+                    continue
+                frame = ev["frame"]
+                bl = int(DEFAULT_BLOCK_LEN[mode] if block_len is None else block_len)
+                mean_rps = float(ev["rps"].mean())
+                mean_base = float(ev["rps_base"].mean())
+                rpss = float(1.0 - mean_rps / mean_base) if mean_base > 0 else None
+                stat_t = _moving_block_bootstrap_ci(ev["rps"], bl, n_boot, seed)
+                stat_hit = _moving_block_bootstrap_ci(ev["hit"], bl, n_boot, seed)
+                stat_cov = _moving_block_bootstrap_ci(ev["coverage"], bl, n_boot, seed)
+                stat_space = _spatial_ci(frame, ev["rps"], n_boot, seed)
+                evaluation = "replay_revised"
+                if "evaluation" in frame.columns:
+                    evaluation = sorted(set(str(x) for x in frame["evaluation"].dropna()))[0] if frame["evaluation"].notna().any() else evaluation
+                combos[f"{mode}_{v}_l{int(lead)}"] = {
+                    "mode": mode,
+                    "variable": v,
+                    "lead": int(lead),
+                    "rpss": rpss,
+                    "rps": mean_rps,
+                    "baseline_rps": mean_base,
+                    "baseline": BASELINE,
+                    "hit": float(ev["hit"].mean()),
+                    "coverage80": float(ev["coverage"].mean()),
+                    "rps_ci95_time": stat_t["ci95"],
+                    "hit_ci95_time": stat_hit["ci95"],
+                    "coverage_ci95_time": stat_cov["ci95"],
+                    "rps_ci95_space": stat_space["ci95"],
+                    "n_rows": int(len(frame)),
+                    "n_cells": int(frame["cell_id"].nunique()),
+                    "n_periods": int(frame["period"].nunique()),
+                    "n_time_blocks": int(stat_t["n_time_blocks"]),
+                    "n_spatial_blocks": int(stat_space["n_spatial_blocks"]),
+                    "block_len_months": bl,
+                    "method": METHOD,
+                    "evaluation": evaluation,
+                }
+    return combos
+
+
+def legacy_blocks(combos, years):
+    out = {}
+    for name, key in (
+        ("seasonal_t2m", "seasonal_t2m_l1"),
+        ("seasonal_tp", "seasonal_tp_l1"),
+        ("monthly_t2m", "monthly_t2m_l1"),
+        ("monthly_tp", "monthly_tp_l1"),
+    ):
+        c = combos.get(key)
+        if c is None:
+            continue
+        out[name] = {
+            "rpss": c["rpss"],
+            "hit": c["hit"],
+            "hit_ci95": c["hit_ci95_time"],
+            "conformal_coverage": c["coverage80"],
+            "coverage_ci95": c["coverage_ci95_time"],
+            "n": c["n_rows"],
+            "years": years,
+        }
+    return out
+
+
+def per_point_summary(pipe):
+    rows = []
+    for (cid, lat, lon), g in pipe.groupby(["cell_id", "cell_lat", "cell_lon"], sort=True):
+        row = {"id": str(cid), "lat": float(lat), "lon": float(lon)}
+        for mode in sorted(set(g["mode"].tolist())) if "mode" in g.columns else ["monthly"]:
+            sub = g[g["mode"] == mode]
+            for v in ("t2m", "tp"):
+                sv = sub[(sub["variable"] == v) & (sub["lead"] == 1)]
+                if sv.empty:
+                    continue
+                P = sv[["p0", "p1", "p2"]].to_numpy(float)
+                obs = sv["obs_tercile"].to_numpy(int)
+                row[f"{mode}_{v}_l1_hit"] = float((P.argmax(axis=1) == obs).mean())
+                row[f"{mode}_{v}_l1_rps"] = float(rps_rows(P, obs).mean())
+        rows.append(row)
+    return rows
+
+
+def build_skill_artifact(combos, by_point, region, region_name, years, n_points, source_note, mode_map=None):
+    art = {
+        "schema": SCHEMA,
+        "source": source_note,
+        "region": region,
+        "region_name": region_name,
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "years": years,
+        "n_points": int(n_points),
+        "verifications": int(sum(c["n_rows"] for c in combos.values())),
+        "combos": combos,
+        "by_point": by_point,
+        "spatial": {
+            "method": METHOD,
+            "baseline": BASELINE,
+            "block_cells": SPATIAL_BLOCK_CELLS,
+            "block_len_months": {m: int(DEFAULT_BLOCK_LEN[m]) for m in sorted(set(c["mode"] for c in combos.values()))},
+            "n_spatial_blocks": max((c["n_spatial_blocks"] for c in combos.values()), default=0),
+            "n_time_blocks": {k: c["n_time_blocks"] for k, c in combos.items()},
+            "evaluation": sorted({c["evaluation"] for c in combos.values()}),
+        },
+    }
+    art.update(legacy_blocks(combos, years))
+    return art
+
+
+def write_artifact(path, payload):
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+    return p

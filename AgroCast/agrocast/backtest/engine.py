@@ -26,7 +26,7 @@ def pipeline_table_name(mode):
     return f"backtest_pipeline_{mode}.parquet"
 
 
-def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None, years=None, lat=None, lon=None, point=None, mode="monthly", season_len=3, half_life_years=0.0, save_artifacts=True, publication_delay_days=None):
+def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None, years=None, lat=None, lon=None, point=None, mode="monthly", season_len=3, half_life_years=0.0, save_artifacts=True, publication_delay_days=None, return_pipeline=False):
     delay = int(config.publication_delay_days if publication_delay_days is None else publication_delay_days)
     store = config.zarr_store()
     reg = Registry(config.registry_path)
@@ -121,6 +121,8 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
                             "q90": float(calc["qz"][2]),
                             "obs_z": obs_z,
                             "obs_tercile": obs_terc,
+                            "mu": float(calc["mu"]),
+                            "sd": float(calc["sd"]),
                         }
                     )
     records = pd.DataFrame(rows)
@@ -129,8 +131,11 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
         return records
     vint = {i: vintages_available(config, i) for i in sorted(set(records["issue"]))}
     records["evaluation"] = [EVAL_PROSPECTIVE if vint[i] else EVAL_REPLAY_REVISED for i in records["issue"]]
+    pipe = pd.DataFrame(rows_final) if rows_final else pd.DataFrame()
+    if not pipe.empty:
+        pipe["evaluation"] = [vint[i] and EVAL_PROSPECTIVE or EVAL_REPLAY_REVISED for i in pipe["issue"]]
     if save_artifacts and rows_final:
-        pd.DataFrame(rows_final).to_parquet(config.artifact_dir / pipeline_table_name(mode))
+        pipe.to_parquet(config.artifact_dir / pipeline_table_name(mode))
     if save_artifacts:
         records.to_parquet(config.artifact_dir / records_name(mode))
         blender = Blender(half_life_years=half_life_years).fit(records)
@@ -159,6 +164,8 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
             smap.append({"variable": v, "target_month": int(tm), "lead": int(ld), "rpss": float(rpss(probs, obs)), "n": len(g), "skill_source": skill_source})
         pd.DataFrame(smap).to_parquet(config.artifact_dir / skill_name(mode))
     reg.log_event("backtest", f"mode={mode} rows={len(records)} years={years[0]}..{years[-1]}")
+    if return_pipeline:
+        return records, pipe
     return records
 
 

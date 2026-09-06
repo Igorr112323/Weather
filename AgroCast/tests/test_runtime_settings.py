@@ -200,8 +200,9 @@ def test_offline_job_snapshot_survives_new_process_without_resuming(isolated_set
     assert stored["ownership"] == "unassigned_offline"
     assert stored["result"] == {"saved": True}
     assert stored["status"] == "done"
-    assert snapshot.stat().st_mode & 0o777 == 0o600
-    result = subprocess.run([sys.executable, "-c", "import json,sys; d=json.load(open(sys.argv[1])); print(d['status'])", str(snapshot)], capture_output=True, text=True, timeout=10)
+    if os.name == "posix":
+        assert snapshot.stat().st_mode & 0o777 == 0o600
+    result = subprocess.run([sys.executable, "-X", "utf8", "-c", "import json,sys; d=json.load(open(sys.argv[1], encoding='utf-8')); print(d['status'])", str(snapshot)], capture_output=True, text=True, encoding="utf-8", timeout=10)
     assert result.stdout.strip() == "done"
     assert not hasattr(product, "JOBS")
     assert not hasattr(pipeline, "start_job")

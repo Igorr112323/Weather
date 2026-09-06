@@ -42,6 +42,17 @@ def test_local_owner_is_provisioned_once(desktop_client, desktop_settings):
     assert rows[0].role == "admin"
 
 
+def test_desktop_icon_is_bundled_linked_and_served(desktop_client):
+    from agrocast.serve import browser_policy
+    assert (browser_policy.STATIC / "agrocast.png").exists()
+    assert "agrocast.png" in browser_policy.ASSET_NAMES
+    page = desktop_client.get("/")
+    assert '<link rel="icon" type="image/png" href="/assets/agrocast.png">' in page.text
+    icon = desktop_client.get("/assets/agrocast.png")
+    assert icon.status_code == 200
+    assert icon.headers["content-type"].startswith("image/png")
+
+
 def test_desktop_serves_app_page_without_login(desktop_client):
     response = desktop_client.get("/")
     assert response.status_code == 200

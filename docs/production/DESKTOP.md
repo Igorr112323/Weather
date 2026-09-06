@@ -60,6 +60,11 @@
   QtWebEngine), внутрь укладываются `static/`, `world/` (≈60 МБ бандла) и `migrations/`;
   `psycopg`/Qt-конкуренты исключены. Итог: папка `dist/AgroCast` с бинарником; для Windows
   это `AgroCast.exe` в той же папке (рядом — Qt/Chromium рантайм; запускать ярлыком).
+- Иконка: `desktop/icon-source.png` (источник), из него собираются `desktop/agrocast.ico`
+  (Windows), `desktop/agrocast.icns` (macOS) — подставляются в EXE через `icon=` в спеке, и
+  `static/agrocast.png` — иконка окна Qt (`setWindowIcon`), вкладок и значок приложения на
+  Linux. Пересборка форматов: `python -c "...PIL resize/save..."` — размеры ico 16–256; либо
+  `iconutil` на macOS из `iconset`.
 - Запуск из исходников (для разработчиков): `python -m agrocast.desktop`. Без установленного
   PySide6 сервер всё равно поднимается и пишет URL в stderr — полезная деградация и база для
   headless-смоуков.

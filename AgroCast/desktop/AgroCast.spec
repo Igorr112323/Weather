@@ -37,6 +37,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name="AgroCast",
+    icon=[str(ROOT / "desktop" / "agrocast.ico"), str(ROOT / "desktop" / "agrocast.icns")],
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

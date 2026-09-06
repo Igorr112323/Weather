@@ -70,6 +70,7 @@ def main(argv=None):
         return 78
     try:
         from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QIcon
         from PySide6.QtWidgets import QApplication
         from PySide6.QtWebEngineWidgets import QWebEngineView
     except ImportError:
@@ -83,6 +84,9 @@ def main(argv=None):
     else:
         app = QApplication([])
         app.setApplicationName("AgroCast")
+        icon = bundled_root() / "static" / "agrocast.png"
+        if icon.exists():
+            app.setWindowIcon(QIcon(str(icon)))
         view = QWebEngineView()
         view.setWindowTitle("AgroCast — локальные прогнозы")
         view.setUrl(QUrl(url))

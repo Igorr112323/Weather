@@ -226,10 +226,40 @@ AGROCAST_TEST_DATABASE_URL_FILE=/secure/test-only/database_url OPENBLAS_NUM_THRE
 отклоняется 422), `test_region_ops`/`test_pilot_deployment` с восстановленным
 `region_freshness` и валидным compose; полный набор SQLite — 594 passed / 13 skipped / 0
 failed, список job'а `identity-postgresql` локально на PostgreSQL — зелёный, CI
-desktop-builds — зелёный на Windows/macOS/Ubuntu (с `test_readiness.py` в отборе). Красный
-`identity-postgresql` в CI — предсуществующий дефект worker-песочницы T06, не регрессия T07
-(детали — в «Что пока не завершено»). Научный допуск и приём веб-заданий не изменялись:
+desktop-builds — зелёный на Windows/macOS/Ubuntu (с `test_readiness.py` в отборе),
+`identity-postgresql` в CI — зелёный (дефект песочницы T06 исправлен, секция ниже).
+Научный допуск и приём веб-заданий не изменялись:
 readiness готовит честный вход, gates T06/T14 остаются закрытыми.
+
+## Исправление: песочница worker'а и job `identity-postgresql` (2026-09-06)
+
+Job краснел с прогонов T06 на runner ubuntu-24.04: compute-потомок умирал с SIGSEGV до
+первой строки протокола, stderr был в DEVNULL. Диагностика: worker теперь объединяет stderr
+потомка со stdout и пишет непустые не-JSON строки в лог задачи (кап 500 строк, `LOG_LINES_CAP`),
+плюс `PYTHONFAULTHANDLER=1`; CI-шаг job'а пишет pytest в tee-лог и публикует `::error::`
+аннотацию (анонсы FAILED и хвост вывода). faulthandler-трейс из аннотации указал на
+модульный импорт `agrocast/queue/exec.py` — до `emit("sandbox")`.
+
+Корень: `apply_syscall_denylist` объявлял `seccomp_init.restype = c_void_p`, но не объявлял
+`argtypes` для `seccomp_rule_add`/`seccomp_load`/`seccomp_release` — ctypes передавал 64-битный
+адрес контекста как C int. На локальных ядрах куча ложилась ниже 2³² и всё «работало»;
+на ubuntu-24.04 с усиленным ASLR адрес выходит за диапазон, усечённый указатель —
+SIGSEGV внутри libseccomp. Исправление: полный ABI libseccomp и аргументы
+`sethostname(char*, size_t)` объявлены в `agrocast/queue/sandbox.py`.
+
+Фикс вскрыл второй дефицит: проба `test_child_runs_in_the_hardened_sandbox...` требует
+границу RLIMIT_NOFILE, но `apply_limits` её не выставлял (на dev-машине soft 1024 —
+условие проходило само, на GH runner дефолт 65536 — падал). Теперь soft ограничивается
+`sandbox.NOFILE_CAP = 1024` с учётом host soft/hard; лимит входит в отчёт `applied`.
+
+Новые проверки `tests/test_queue_sandbox.py`: контрактный тест полноты ABI (RecordingLibrary —
+все указательные параметры `c_void_p`, контекст доходит до rule_add без усечения) и два
+субпроцесс-теста на Linux (применение denylist в child, кап NOFILE ниже щедрого host-дефолта).
+
+Проверено: полный SQLite-сьют 597 passed / 13 skipped; `identity-postgresql` зелёный в CI
+(run 34043038679, вместе с audit и обоими browser-job'ами); локальный список job'а на
+PostgreSQL — зелёный. Это инфраструктурный fix T06-контурa: научный допуск и приём
+веб-заданий не затронуты.
 
 ## Десктоп-контур D · D01–D03 (2026-09-06)
 
@@ -258,12 +288,6 @@ AF_UNIX в лаунчере uvicorn, Pillow для иконки EXE). Подро
 - Научный допуск расчётов не открыт: очередь T06 реализована как инфраструктура с закрытым приёмом (`queue_intake=false`), включение требует научных и release gates (T08/T13/T14).
 - Временные/пространственные утечки, независимая калибровка и допуск агрорекомендаций. Свежесть
   predictor frame закрыта инфраструктурно (T07: readiness + gate выпуска), научная часть — T08/T10.
-- Дефект CI, предшествующий T07: в job `identity-postgresql` красны `tests/test_queue_worker.py`
-  (тот же шаг падал на прогоне T06 до коммитов десктопа). На runner ubuntu-24.04 compute-потомок
-  умирает с SIGSEGV до первой строки протокола, а worker направляет stderr потомка в DEVNULL —
-  диагностика с CI невозможна. Локально (SQLite и PostgreSQL, полный набор и список job'а
-  дословно) — все 16 файлов зелёные; audit-job с тем же sandbox — зелёный. Требуется отдельное
-  исследование: сначала передавать stderr потомка в лог задачи (правка T06-кода), затем разбор.
 - Immutable bundles, release registry, data pipeline, backup/restore, production least privilege, эксплуатационные SLO и юридические gates.
 
 Отсутствие этих результатов не скрывается новым логином. [Release checklist](RELEASE_CHECKLIST.md) остаётся незакрытым.

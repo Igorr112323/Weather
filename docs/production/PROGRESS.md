@@ -301,8 +301,7 @@ skill-map строился по in-sample blend — теперь walk-forward ф
 заново подгоняются Blender-веса, терцильная калибровка, conformal-квантили, режимная
 климатология (`fit_history(..., until_period=...)`) и shrink-навыки; каждая ledger-запись
 несёт `fold_train_until`; (4) skill-map бэктеста считается по walk-forward ledger, при
-сбое ledger — прежний путь с явной пометкой `skill_source="in_sample_fallback"`. Заодно
-job'у песочницы возвращена граница RLIMIT_AS не требуется — см. секцию исправления CI.
+сбое ledger — прежний путь с явной пометкой `skill_source="in_sample_fallback"`.
 
 Каждая бэктест-запись содержит проверяемые интервалы `issue/observation_cutoff/train_until/
 train_n/target_start/target_end` и поле `evaluation`. Ключевые проверки: два прогона бэктеста

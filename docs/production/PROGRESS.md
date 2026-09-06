@@ -282,6 +282,48 @@ sqlite-состоянием в `~/.agrocast`, предзаполненным в�
 дефектов переносимости (directory fsync, cp1251 в тестовых подпроцессах, права 0600,
 AF_UNIX в лаунчере uvicorn, Pillow для иконки EXE). Подробности и границы — `DESKTOP.md`.
 
+## Сквозной as-of и устранение утечек · T08 (2026-09-06)
+
+Контракт `asof-v1` (`agrocast/forecast/asof.py`): контекст выпуска с `observation_cutoff`,
+`train_cutoff`, задержкой публикации (`publication_delay_days`, по умолчанию 5 дней →
+консервативный сдвиг на полный месяц), доступностью источников и меткой оценки
+`replay_revised`/`prospective` по наличию винтажей (`vintages_dir`). LIVE-ответ
+оркестратора содержит блок `as_of` (проверка `validate_context` до публикации), а
+`issue_data_through` теперь равен месяцу фактической доступности наблюдений.
+
+Устранены подтверждённые аудитом утечки: (1) сезонные обучающие окна обрезались по
+началу цели — `training_data` учитывает `span`/`embargo` и отсекает окно, чей конец
+заходит за cutoff (сезон декабрь–февраль физически не попадает в train в декабре);
+(2) строка предикторов и все постпроцессоры LIVE берутся из cutoff, а не из формального
+issue; (3) ledger использовал LOYO по «остальным» годам, включая будущие, и годовой
+skill-map строился по in-sample blend — теперь walk-forward фолды
+(`walk_forward_masks`: target_end < начало фолда − эмбарго `span−1`), и для каждого фолда
+заново подгоняются Blender-веса, терцильная калибровка, conformal-квантили, режимная
+климатология (`fit_history(..., until_period=...)`) и shrink-навыки; каждая ledger-запись
+несёт `fold_train_until`; (4) skill-map бэктеста считается по walk-forward ledger, при
+сбое ledger — прежний путь с явной пометкой `skill_source="in_sample_fallback"`. Заодно
+job'у песочницы возвращена граница RLIMIT_AS не требуется — см. секцию исправления CI.
+
+Каждая бэктест-запись содержит проверяемые интервалы `issue/observation_cutoff/train_until/
+train_n/target_start/target_end` и поле `evaluation`. Ключевые проверки: два прогона бэктеста
+на синтетическом хранилище и на его префиксе + будущие месяцы дают побитово равные таблицы
+(данные после cutoff не меняют прогнозы до cutoff); маски фолдов отсекают сезоны через
+границу fold; все строки ledger имеют `fold_train_until` строго до начала года фолда.
+
+Аудит «чистого» сохранён в [ASOF.md](ASOF.md): адаптивная климатология (≤ year−1), SST EOF
+на фиксированном базовом периоде, `PooledNN(max_target_year)`, LIM до января года,
+trailing `window_skill`, ospr по строке предикторов, станочная калибровка ≤ `calib_end_year`.
+Измеренный навык после ужесточения может измениться — это ожидаемое следствие честной оценки,
+научный допуск по-прежнему закрыт (T13/T14); единый pipeline артефактов — T09, локальные
+факты и block bootstrap — T10/T11.
+
+Проверено: новые `tests/test_asof.py` (9 тестов, включая инвариантность к будущим данным на
+синтетическом zarr-хранилище), расширенный дым LIVE-теста (блок `as_of`), полный SQLite-сьют
+— 606 passed / 13 skipped / 0 failed; затронутые наборы (`test_ledger`, `test_conformal`,
+`test_season_ridge`, `test_deep_analog`, `test_forecast_smoke`, `test_desktop`,
+`test_api_contracts`) — зелёные. CI-вердикты `identity-postgresql`, `audit` и
+`desktop-builds` по этому коммиту — ниже после пуша.
+
 ## Что пока не завершено
 
 - Единые settings и persistence реализованы в T05; фактический container rollout/recreation остаётся непроверенным. Дальнейшие browser/UX сценарии — T18/T21.

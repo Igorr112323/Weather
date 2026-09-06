@@ -10,6 +10,7 @@ from agrocast.core.timeutils import now_period
 from agrocast.features.dataset import PointDataset, training_data, make_test_row, feature_columns_for
 from agrocast.features.climatology import adaptive
 from agrocast.models import build_models
+from agrocast.forecast.asof import effective_cutoff, release_context, validate_context
 from agrocast.blend.blender import Blender
 from agrocast.backtest.engine import load_skill_map, blender_name, skill_name
 from agrocast.blend.calibration import TercileCalibrator
@@ -109,19 +110,22 @@ def _skill_lookup(smap, variable, target_month, lead):
     return float(g["rpss"].iloc[0])
 
 
-def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, issue, blender, smap, calib=None, mode="monthly", pcal=None, nstack=None, ccal=None, rcal=None, mz=None, terc_map=None, sctx=None, ospr=None, mon=None):
+def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, issue, blender, smap, calib=None, mode="monthly", pcal=None, nstack=None, ccal=None, rcal=None, mz=None, terc_map=None, sctx=None, ospr=None, mon=None, span=1):
     a = adaptive(series_raw, tgt.year, tgt.month, config.clim_window, config.clim_half_life)
     if a is None:
+        return None
+    cutoff = effective_cutoff(issue, getattr(config, "publication_delay_days", 0))
+    if cutoff not in pf.index:
         return None
     mu, sd = a["mu"], a["sd"]
     e1 = (a["q"][0.33] - mu) / sd
     e2 = (a["q"][0.67] - mu) / sd
     use_cols = feature_columns_for(pf, variable, mode=mode)
-    X, yv, meta = training_data(pf, std, variable, sm, lead, until=issue, use_cols=use_cols)
+    X, yv, meta = training_data(pf, std, variable, sm, lead, until=cutoff, use_cols=use_cols, span=span)
     if len(X) < 18:
         return None
     w = exp_weights(len(X), config.clim_half_life)
-    x_test = make_test_row(pf, issue, lead, tgt, use_cols=use_cols)
+    x_test = make_test_row(pf, cutoff, lead, tgt, use_cols=use_cols)
     preds = {}
     analogs = []
     for m in build_models(config, variable=variable, mode=mode):
@@ -130,7 +134,7 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
             if mode == "seasonal" and getattr(m, "season_months", None) and len(m.season_months) > 1:
                 Xparts, yparts, mparts = [], [], []
                 for s2 in m.season_months:
-                    Xs, ys, ms = training_data(pf, std, variable, s2, lead, until=issue, use_cols=use_cols)
+                    Xs, ys, ms = training_data(pf, std, variable, s2, lead, until=cutoff, use_cols=use_cols, span=span)
                     if len(Xs):
                         Xparts.append(Xs)
                         yparts.append(ys)
@@ -152,7 +156,7 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
     P, Q = blender.combine(variable, tgt.month, preds)
     if nstack is not None:
         nn, a, pool = nstack
-        Pn = nn.probs_for(pf, issue, pool, tgt.month, lead)
+        Pn = nn.probs_for(pf, cutoff, pool, tgt.month, lead)
         if Pn is not None and a > 0:
             P = (1.0 - a) * P + a * Pn
             P = P / P.sum()
@@ -162,16 +166,16 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
     if mon is not None:
         from agrocast.blend import regime_guard
 
-        if regime_guard.shifted(mon, std, variable, mode, issue, tgt if mode == "seasonal" else None, config=config):
+        if regime_guard.shifted(mon, std, variable, mode, cutoff, tgt if mode == "seasonal" else None, config=config):
             P = P_unc
     if rcal is not None:
         group = season_of(tgt.month) if mode == "seasonal" else f"m{int(tgt.month)}"
-        if issue in pf.index:
-            iprev = issue - 3
+        if cutoff in pf.index:
+            iprev = cutoff - 3
             x = rcal.feature_vector(
                 variable,
-                pf.loc[issue],
-                issue,
+                pf.loc[cutoff],
+                cutoff,
                 mz,
                 pf.loc[iprev] if iprev in pf.index else None,
                 (terc_map or {}).get(variable),
@@ -183,8 +187,8 @@ def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, is
         Q = ccal.transform(Q, variable, lead)
     if ospr is not None and "series" in ospr:
         _s = ospr["series"]
-        if issue in _s.index:
-            _sv = float(_s.loc[issue])
+        if cutoff in _s.index:
+            _sv = float(_s.loc[cutoff])
             if np.isfinite(_sv):
                 _u = min(1.0, max(0.0, (_sv - ospr["min"]) / max(ospr["max"] - ospr["min"], 1e-9)))
                 _w = config.ospr_weight * _u
@@ -273,6 +277,9 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
         vcrop = None
     horizon = int(min(max(int(horizon), 1), config.horizon_max))
     start, issue = align_issue(start, pf.index)
+    obs_cutoff = effective_cutoff(issue, getattr(config, "publication_delay_days", 0))
+    as_of = release_context(config, issue, observation_cutoff=obs_cutoff)
+    validate_context(as_of)
     blender = Blender.load(config.artifact_path(blender_name(mode))) or Blender.default(variables)
     pcalib = {}
     ccalib = {}
@@ -371,7 +378,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
             pcal = pcalib.get(v)
             nstack = nnstack.get(v)
             ccal = ccalib.get(v)
-            res = _fit_predict_target(config, pf, stds[v], raws[v], v, tgt, sm, lead, issue, blender, smap, apply_calib, mode=mode, pcal=pcal, nstack=nstack, ccal=ccal, rcal=rcalib, mz=mz, terc_map=terc_map, sctx=sctx_map.get(v), ospr=(ospr_data if v == "tp" else None), mon=monthly[v])
+            res = _fit_predict_target(config, pf, stds[v], raws[v], v, tgt, sm, lead, issue, blender, smap, apply_calib, mode=mode, pcal=pcal, nstack=nstack, ccal=ccal, rcal=rcalib, mz=mz, terc_map=terc_map, sctx=sctx_map.get(v), ospr=(ospr_data if v == "tp" else None), mon=monthly[v], span=season_len if mode == "seasonal" else 1)
             if res is None:
                 continue
             block, phys = res
@@ -501,7 +508,8 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
         "grid_point": {"lat": point.grid_lat, "lon": point.grid_lon},
         "start": str(start),
         "horizon": horizon,
-        "issue_data_through": str(issue),
+        "issue_data_through": str(obs_cutoff),
+        "as_of": as_of,
         "variables": list(variables),
         "models": [m for m in MODEL_NAMES],
         "station_calibration": calib,

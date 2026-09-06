@@ -35,6 +35,12 @@ def test_forecast_seasonal(cfg):
 
     fc = forecast_point(cfg, 45.03, 39.07, start=pd.Period("2025-12", "M"), horizon=1, variables=("t2m", "tp"), save=False, mode="seasonal", season_len=3)
     assert fc["mode"] == "seasonal"
+    from agrocast.forecast.asof import ASOF_SCHEMA, validate_context
+
+    assert fc["as_of"]["schema"] == ASOF_SCHEMA
+    assert fc["as_of"]["train_cutoff"] <= fc["as_of"]["observation_cutoff"] <= fc["as_of"]["issue_month"]
+    assert fc["issue_data_through"] == fc["as_of"]["observation_cutoff"]
+    assert validate_context(fc["as_of"])
     seas = fc["seasons"]
     assert len(seas) == 1
     s0 = seas[0]

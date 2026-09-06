@@ -99,7 +99,7 @@ class RegimeClimatology:
         self.history = history or {}
 
     @classmethod
-    def fit_history(cls, mode, point, leads=(1, 2, 3, 4, 5, 6)):
+    def fit_history(cls, mode, point, leads=(1, 2, 3, 4, 5, 6), until_period=None):
         out = cls(mode)
         spec_map = SPECS.get(mode, {})
         if not spec_map:
@@ -120,6 +120,8 @@ class RegimeClimatology:
             std = point.seasonal_std(v, 3)
             rows = []
             for dt, r in std.iterrows():
+                if until_period is not None and dt > until_period:
+                    break
                 tm = int(dt.month)
                 y = int(dt.year)
                 if mode == "seasonal":

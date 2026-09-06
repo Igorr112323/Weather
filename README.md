@@ -42,7 +42,8 @@ app factory, read-only bundle и проверяемый перенос/backup/re
 [Settings, read-only world, migration и recovery](docs/production/STATE.md) ·
 [Очередь вычислений, leases, квоты и runbook worker'а](docs/production/QUEUE.md) ·
 [Десктоп-версия: локальный режим, экран данных и сборка](docs/production/DESKTOP.md) ·
-[Readiness, лимиты источников и gate честного выпуска](docs/production/FRESHNESS.md).
+[Readiness, лимиты источников и gate честного выпуска](docs/production/FRESHNESS.md) ·
+[Сквозной as-of и устранение временных утечек](docs/production/ASOF.md).
 
 Новый и изменяемый код — строго без комментариев; пояснения и архитектурные
 решения оформляются в Markdown.

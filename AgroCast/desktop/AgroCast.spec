@@ -26,7 +26,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["tkinter", "PyQt5", "PyQt6", "psycopg", "psycopg2"],
+    excludes=["tkinter", "PyQt5", "PyQt6", "psycopg", "psycopg2", "PIL"],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

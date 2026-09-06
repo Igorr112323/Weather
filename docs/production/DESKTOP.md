@@ -63,7 +63,10 @@
 - Иконка: `desktop/icon-source.png` (источник), из него собираются `desktop/agrocast.ico`
   (Windows), `desktop/agrocast.icns` (macOS) — подставляются в EXE через `icon=` в спеке, и
   `static/agrocast.png` — иконка окна Qt (`setWindowIcon`), вкладок и значок приложения на
-  Linux. Пересборка форматов: `python -c "...PIL resize/save..."` — размеры ico 16–256; либо
+  Linux. Конвертацию значков в EXE выполняет PyInstaller, ему для `.ico` нужен Pillow —
+  он добавлен в `requirements-desktop.txt` и исключён из самой сборки (`excludes`).
+  Пятым дефектом переносимости стал именно этот дефицит: сборка Windows падала с
+  `ModuleNotFoundError: No module named 'PIL'` на шаге укладки иконки. Пересборка форматов: `python -c "...PIL resize/save..."` — размеры ico 16–256; либо
   `iconutil` на macOS из `iconset`.
 - Запуск из исходников (для разработчиков): `python -m agrocast.desktop`. Без установленного
   PySide6 сервер всё равно поднимается и пишет URL в stderr — полезная деградация и база для

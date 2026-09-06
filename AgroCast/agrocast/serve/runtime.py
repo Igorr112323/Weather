@@ -5,6 +5,7 @@ from uuid import uuid4
 from agrocast.core.settings import ConfigurationError
 from agrocast.identity.credentials import passwords
 from agrocast.identity.service import IdentityService
+from agrocast.queue.service import JobQueue
 
 
 def runtime_lifespan(settings, injected=None):
@@ -35,6 +36,7 @@ def runtime_lifespan(settings, injected=None):
             logger.addHandler(handler)
             application.state.config = configuration
             application.state.identity = identity
+            application.state.queue = JobQueue(identity.engine, settings, identity)
             application.state.logger = logger
             application.state.started = True
         except Exception:

@@ -1,5 +1,4 @@
 import hashlib
-import threading
 import traceback
 import time
 from uuid import UUID, uuid4
@@ -325,8 +324,4 @@ def run_job(job, world_dir, data_root):
         persist()
 
 
-def start_job(job, world_dir, data_root):
-    job.config_snapshot = world_config(world_dir, data_root).to_dict()
-    t = threading.Thread(target=run_job, args=(job, world_dir, data_root), daemon=True)
-    t.start()
-    return job
+

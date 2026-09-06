@@ -4,11 +4,11 @@ from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from agrocast.core.contracts import ForecastSpec, RegionFieldSpec
-from agrocast.identity.schema import crops
-from agrocast.serve import pipeline, product, region
+from agrocast.identity.schema import crops, jobs
+from agrocast.serve import product, region
 from agrocast.serve.errors import ErrorResponse
 from agrocast.serve.responses import accepted_job_response
 
@@ -18,9 +18,15 @@ VALID_POINT = {"lat": 46.25, "lon": 38.25, "point_id": "P01", "start": "2026-10"
 @pytest.fixture
 def no_worker(monkeypatch):
     worker = Mock(side_effect=AssertionError("request validation must precede computation"))
-    monkeypatch.setattr(pipeline, "start_job", worker)
+    monkeypatch.setattr(product, "admit_point", worker)
+    monkeypatch.setattr(product, "admit_region", worker)
     monkeypatch.setattr(region, "build_field", worker)
     return worker
+
+
+def _queue_rows(identity_engine):
+    with identity_engine.connect() as connection:
+        return connection.execute(select(func.count()).select_from(jobs).where(jobs.c.queue_kind.is_not(None))).scalar_one()
 
 
 @pytest.mark.parametrize("updates", [
@@ -54,13 +60,13 @@ def test_invalid_region_contract_rejected_before_worker(clients, no_worker, upda
 
 @pytest.mark.parametrize("path,payload", [("/api/prepare", VALID_POINT), ("/api/region/refresh", {"start": "2026-03"})])
 @pytest.mark.parametrize("username", ["reader_a", "operator_a", "admin_a"])
-def test_valid_shapes_do_not_enable_computation(clients, no_worker, path, payload, username):
-    before = dict(product.JOBS)
+def test_valid_shapes_do_not_enable_computation(clients, no_worker, path, payload, username, identity_engine):
+    before = _queue_rows(identity_engine)
     response = clients(username).post(path, json=payload)
     assert response.status_code == 403
     code = "role_forbidden" if username.startswith("reader") else "pilot_operation_disabled"
     assert response.json()["code"] == code
-    assert product.JOBS == before
+    assert _queue_rows(identity_engine) == before
     no_worker.assert_not_called()
 
 

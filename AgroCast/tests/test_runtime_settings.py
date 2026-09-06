@@ -203,7 +203,8 @@ def test_offline_job_snapshot_survives_new_process_without_resuming(isolated_set
     assert snapshot.stat().st_mode & 0o777 == 0o600
     result = subprocess.run([sys.executable, "-c", "import json,sys; d=json.load(open(sys.argv[1])); print(d['status'])", str(snapshot)], capture_output=True, text=True, timeout=10)
     assert result.stdout.strip() == "done"
-    assert job.id not in product.JOBS
+    assert not hasattr(product, "JOBS")
+    assert not hasattr(pipeline, "start_job")
 
 
 def test_point_reads_common_writable_inputs_before_bundle_without_reusing_world_models(isolated_settings):

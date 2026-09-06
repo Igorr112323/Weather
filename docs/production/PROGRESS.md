@@ -1,12 +1,12 @@
 # Прогресс реализации production-плана
 
-[План](PLAN.md) · [Scope пилота](PILOT.md) · [Identity и запуск](IDENTITY.md) · [DOM/CSP](BROWSER_SECURITY.md) · [HTTP/кэш](API_CACHE.md) · [Settings/state](STATE.md) · [Исходный аудит](AUDIT.md) · [Release gates](RELEASE_CHECKLIST.md)
+[План](PLAN.md) · [Scope пилота](PILOT.md) · [Identity и запуск](IDENTITY.md) · [DOM/CSP](BROWSER_SECURITY.md) · [HTTP/кэш](API_CACHE.md) · [Settings/state](STATE.md) · [Очередь](QUEUE.md) · [Исходный аудит](AUDIT.md) · [Release gates](RELEASE_CHECKLIST.md)
 
-## Состояние на 2026-09-05
+## Состояние на 2026-09-06
 
-**T01–T05 реализованы и локально проверены. T06–T24 ещё не завершены. Container rollout/recreation для T05 не проверены; production-релиз не разрешён.**
+**T01–T06 реализованы и локально проверены. T07–T24 ещё не завершены. Container rollout/recreation для T05 и фактический Docker-запуск worker'а для T06 не проверены; production-релиз не разрешён.**
 
-Работа идёт по одному пункту с проверкой результата. T05 добавляет единые settings, явный lifespan, разделённое хранение и проверяемый перенос/restore. Это не очередь T06, readiness T07 или выполнение всех deployment/CI gates.
+Работа идёт по одному пункту с проверкой результата. T06 добавляет persistent очередь с leases, dedup, квотами, retries/deadline, изолированным worker-процессом и идемпотентной публикацией; приём заданий закрыт (`AGROCAST_QUEUE_INTAKE=false`) и научный gate не затронут. Это не readiness T07 и не допуск расчётов.
 
 | Пункт | Статус | Результат |
 |---|---|---|
@@ -15,7 +15,54 @@
 | T03 · DOM / CSP | Реализован; Chromium-проверки пройдены | Текстовые DOM-узлы, enforced CSP, локальный Leaflet, реальные HTTPS browser tests |
 | T04 · HTTP / cache | Реализован; локальные проверки пройдены | Строгие модели/ошибки, crop revision, полный ключ и атомарный региональный cache |
 | T05 · Settings / persistent state | Реализован; локально проверен; Docker-приёмка не выполнена | Общие settings, factory/lifespan, read-only bundle, migration/quarantine, DB/runtime backup и restore |
-| T06–T24 | Ожидают исполнения | Подготовительные изменения не закрывают соответствующие задачи |
+| T06 · Устойчивая очередь | Реализован; проверен на PostgreSQL и SQLite; Docker не запускался | Persistent state machine, outbox-публикации, lease/heartbeat, retries/deadline, quotas/dedup, retention, изолированный worker; intake закрыт |
+| T07–T24 | Ожидают исполнения | Подготовительные изменения не закрывают соответствующие задачи |
+
+## T06 · Реализованный результат
+
+Очередь (`agrocast/queue/`) переведена с потокового `JOBS`-реестра на persistent state machine:
+`jobs` расширен 14 queue-колонками миграцией `0004_durable_queue` (upgrade/downgrade roundtrip
+покрыт тестом), события — append-only `queue_events` с монотонным sequence, выпуск —
+идемпотентный `publications`-outbox (один на задание). Admission `POST /api/prepare` и
+`POST /api/region/refresh` возвращают `202` с `Location` на `/api/jobs/<id>`; `GET
+/api/queue/jobs/<id>`, `GET /api/jobs/<id>/events`, `POST /api/jobs/<id>/cancel` и admin
+`GET /api/queue/stats` дополняют контур; CSRF/roles/owner-scope наследуются T02,
+legacy-строки `jobs` очередью не видятся. Дедупликация — partial unique индекс
+`(organization_id, dedup_sha256)` среди `queued/running` по полному identity-ключу результата;
+гонка реплик закрыта повторной проверкой при `IntegrityError`. Квоты: пер-юзер и глобальные
+слоты, глубина очереди — `429 job_quota_exceeded` / `503 queue_saturated` с `Retry-After`.
+Worker (`python -m agrocast.queue.worker`) исполняет каждое задание отдельным процессом
+`agrocast.queue.exec` в собственной process group с `PR_SET_NO_NEW_PRIVS`, seccomp-denylist,
+RLIMIT CPU/FSIZE/NOFILE (опционально AS), BLAS-потоками `=1` и без доступа к БД и
+`AGROCAST_*`-переменным; результат — strict JSON ≤ 2 MiB через staging-файл 0600 с проверкой
+checksum; отменa/deadline убивают группу целиком, поздний результат отбрасывается; lease
+истекает — задание возвращается в очередь с backoff. Retention — `sweep`: staging и
+терминальные строки старше `queue_retention_days`, кэш результатов сохраняется. Compose
+получил сервис `worker` (read-only rootfs, tmpfs, `cap_drop: ALL`, `no-new-privileges`,
+world ro / data rw). CI-джоб `identity-postgresql` расширен четырьмя queue-файлами.
+
+**Фактические прогоны (эта машина, PostgreSQL из `pgserver` только на Unix socket):**
+полный non-browser набор `python -m pytest tests -q` — **568 passed, 13 skipped, 0 failed**
+(184 с, SQLite; skipped — browser/policy без playwright); целевая батарея на PostgreSQL —
+**376 passed, 0 failed** (190 с): queue-файлы целиком (core 17, api 13, worker 7, migration 4),
+identity-набор, contracts, access, state migration; очередь на SQLite прогнана 6+ раз подряд
+без flaky; worker-тесты поднимают отдельный `pgserver` и реальный subprocess-воркер
+(kill -9 посреди задачи ⇒ requeue с тем же id; cancel не оставляет дочерних процессов —
+проверено по `/proc`; seccomp/RLIMIT/BLAS проверены в ребёнке; идемпотентный повторный
+выпуск из кэша не дублирует публикацию). `ruff check --select F,E9` чистый; новые и
+изменённые py-файлы без комментариев и docstring (ast-скан). Найденные по ходу реальные баги
+исправлены: `ensure_point` в `region_cell`, `ProcessLookupError` при terminate уже мёртвой
+группы, `JobRecord.extra="forbid"` падал на queue-колонках, верификация legacy-импорта
+сравнивала строки целиком вместо известных колонок, текстовый stdout-пайп ребёнка — переход на
+non-blocking `os.read`.
+
+**Что это не закрывает:** Docker в среде нет — compose-сервис проверен декларативно (YAML +
+согласованность env), фактический контейнерный rollout, systemd-юниты и seccomp-профиль Docker
+не выполнялись. Приём (`x-pilot-computation-enabled`) остаётся закрытым; worker готовит и
+публикует только принятые admission-задания. Region-поле через реальный worker (cells/merge
+через песочницу) проверено на уровне coordinator/first-wins, полный 28-точечный регион-прогон в
+песочнице не выполнялся из-за стоимости; `region_cell`/`region_merge` идут через те же пути.
+Нагрузочного SLO-теста очереди не было (число 200 в depth — конфигурация, не измерение).
 
 ## T05 · Реализованный результат
 
@@ -159,7 +206,7 @@ AGROCAST_TEST_DATABASE_URL_FILE=/secure/test-only/database_url OPENBLAS_NUM_THRE
 ## Что пока не завершено
 
 - Единые settings и persistence реализованы в T05; фактический container rollout/recreation остаётся непроверенным. Дальнейшие browser/UX сценарии — T18/T21.
-- Допуск научных контрактов к исполнению и ограниченная durable queue T06. T05 сохраняет/мигрирует snapshots, но не запускает очередь и не подменяет недостающую карту владельцев.
+- Научный допуск расчётов не открыт: очередь T06 реализована как инфраструктура с закрытым приёмом (`queue_intake=false`), включение требует научных и release gates (T08/T13/T14).
 - Свежесть predictor frame, временные/пространственные утечки, независимая калибровка и допуск агрорекомендаций.
 - Immutable bundles, release registry, data pipeline, backup/restore, production least privilege, эксплуатационные SLO и юридические gates.
 

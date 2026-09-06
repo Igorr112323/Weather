@@ -162,6 +162,15 @@ class EmptyQuery(Contract):
     pass
 
 
+class QueueEventsQuery(Contract):
+    since: Annotated[StrictInt, Field(ge=0)] = 0
+    limit: Annotated[StrictInt, Field(ge=1, le=500)] = 200
+
+
+class JobCancelBody(Contract):
+    reason: Annotated[str, StringConstraints(strict=True, max_length=80)] | None = None
+
+
 class DraftTiming(Timing):
     start_month: Month
     active: StrictBool = False

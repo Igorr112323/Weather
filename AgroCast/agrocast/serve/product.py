@@ -19,22 +19,23 @@ from agrocast.core.contracts import (
 from agrocast.core.jsoncodec import strict_json
 from agrocast.identity.credentials import IdentityError
 from agrocast.core.settings import RuntimeSettings
+from agrocast.queue.admission import admit_point, admit_region
 from agrocast.serve.runtime import runtime_lifespan
 from agrocast.identity.service import IdentityService
 from agrocast.serve.accounts import Actor, router as account_router
 from agrocast.serve.browser_policy import ASSETS, BROWSER_HEADERS
 from agrocast.serve.errors import APIError, ERROR_RESPONSES, error_response, invalid_request
 from agrocast.serve.pilot import PILOT_REGION, PILOT_WARNING, historical_result, pilot_capabilities, pilot_points
+from agrocast.serve.queue_api import router as queue_router
 from agrocast.serve.responses import (
     AcceptedJob, CapabilitiesResponse, DiagnosticResponse, GridResponse, LivenessResponse,
-    RegionFieldResponse, RegionsResponse, SkillResponse, ValueResponse,
+    RegionFieldResponse, RegionsResponse, SkillResponse, ValueResponse, accepted_job_response,
 )
 from agrocast.serve.security import AccessGuard, PUBLIC_GET_PATHS
 
 STATIC = Path(__file__).resolve().parents[2] / "static"
 PrepareRequest = ForecastSpec
 RegionRefreshRequest = RegionFieldSpec
-JOBS = {}
 NoQuery = Annotated[EmptyQuery, Query()]
 
 
@@ -70,15 +71,27 @@ def validate_pilot_target(request):
 
 
 @router.post("/api/prepare", response_model=AcceptedJob, status_code=202)
-def prepare(req: PrepareRequest):
+def prepare(req: PrepareRequest, request: Request, actor: Actor):
     validate_pilot_target(req)
-    disabled()
+    if not request.app.state.settings.queue_intake:
+        disabled()
+    result = admit_point(request.app.state.queue, request.app.state.identity, request.app.state.settings, actor, req)
+    response = accepted_job_response(result["job_id"])
+    response.headers["X-Deduplicated"] = "true" if result["deduplicated"] else "false"
+    response.headers["X-Cached"] = "true" if result.get("cached") else "false"
+    return response
 
 
 @router.post("/api/region/refresh", response_model=AcceptedJob, status_code=202)
-def region_refresh(req: RegionRefreshRequest):
+def region_refresh(req: RegionRefreshRequest, request: Request, actor: Actor):
     validate_pilot_target(req)
-    disabled()
+    if not request.app.state.settings.queue_intake:
+        disabled()
+    result = admit_region(request.app.state.queue, request.app.state.settings, actor, req)
+    response = accepted_job_response(result["job_id"])
+    response.headers["X-Deduplicated"] = "true" if result["deduplicated"] else "false"
+    response.headers["X-Cached"] = "true" if result.get("cached") else "false"
+    return response
 
 
 @router.get("/api/region/field", response_model=RegionFieldResponse)
@@ -191,8 +204,14 @@ def liveness(query: NoQuery = EmptyQuery()):
 
 
 @router.get("/api/capabilities", response_model=CapabilitiesResponse)
-def capabilities(query: NoQuery = EmptyQuery()):
-    return pilot_capabilities()
+def capabilities(request: Request, query: NoQuery = EmptyQuery()):
+    out = pilot_capabilities()
+    intake = bool(request.app.state.settings.queue_intake)
+    out["operations"]["durable_queue"] = True
+    out["operations"]["queue_intake"] = intake
+    out["operations"]["region_refresh"] = intake
+    out["operations"]["hindcast"] = intake
+    return out
 
 
 @router.get("/pilot.js", include_in_schema=False)
@@ -229,6 +248,7 @@ def create_app(identity: IdentityService | None = None, settings: RuntimeSetting
     application.state.logger = log
     application.state.started = False
     application.include_router(account_router)
+    application.include_router(queue_router)
     application.include_router(router)
 
     @application.exception_handler(Exception)
@@ -278,9 +298,11 @@ def create_app(identity: IdentityService | None = None, settings: RuntimeSetting
                         operation["security"] = [{"SessionCookie": [], **({"CSRF": []} if method not in {"get", "head"} else {})}]
                     if method not in {"get", "head"}:
                         operation.setdefault("parameters", []).append({"name": "Origin", "in": "header", "required": True, "schema": {"type": "string", "description": "Exact configured HTTPS origin"}})
+            admission = "enabled" if settings.queue_intake else "disabled"
             for path in ("/api/prepare", "/api/region/refresh"):
-                schema["paths"][path]["post"]["x-pilot-admission"] = "disabled"
+                schema["paths"][path]["post"]["x-pilot-admission"] = admission
             schema["x-pilot-computation-enabled"] = False
+            schema["x-durable-queue"] = {"admission": admission, "states": ["queued", "running", "succeeded", "failed", "cancelled"]}
             application.openapi_schema = schema
         return application.openapi_schema
 

@@ -56,6 +56,37 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+  worker:
+    build:
+      context: ..
+    image: agrocast:local
+    container_name: agrocast-worker
+    restart: unless-stopped
+    command: ["python", "-m", "agrocast.queue.worker", "run"]
+    environment:
+      AGROCAST_LOG_LEVEL: INFO
+      AGROCAST_STATE_DIR: /app/data
+      AGROCAST_WORLD_DIR: /app/world
+      AGROCAST_DATABASE_URL_FILE: /run/secrets/database_url
+      AGROCAST_PUBLIC_ORIGIN: https://${AGROCAST_DOMAIN:?Set the HTTPS domain}
+      AGROCAST_QUEUE_GLOBAL_SLOTS: ${AGROCAST_QUEUE_GLOBAL_SLOTS:-1}
+      AGROCAST_QUEUE_MAX_RSS_MB: ${AGROCAST_QUEUE_MAX_RSS_MB:-2560}
+    secrets:
+      - database_url
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - agrocast-data:/app/data
+      - ../AgroCast/world:/app/world:ro
+    mem_limit: 3g
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
   caddy:
     image: caddy:2
     container_name: agrocast-caddy

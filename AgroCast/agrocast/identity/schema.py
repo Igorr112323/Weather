@@ -1,9 +1,9 @@
 from sqlalchemy import (
     BigInteger, Boolean, CheckConstraint, Column, ForeignKey, ForeignKeyConstraint,
-    Integer, JSON, MetaData, String, Table, UniqueConstraint,
+    Index, Integer, JSON, MetaData, String, Table, UniqueConstraint, text,
 )
 
-REVISION = "0003_persistent_state"
+REVISION = "0004_durable_queue"
 metadata = MetaData()
 organizations = Table(
     "organizations", metadata,
@@ -82,6 +82,29 @@ jobs.append_column(Column("status", String(16), nullable=False))
 jobs.append_constraint(CheckConstraint(
     "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')", name="ck_jobs_status",
 ))
+jobs.append_column(Column("queue_kind", String(32)))
+jobs.append_column(Column("dedup_sha256", String(64)))
+jobs.append_column(Column("attempts", Integer, nullable=False, server_default="0"))
+jobs.append_column(Column("max_attempts", Integer, nullable=False, server_default="3"))
+jobs.append_column(Column("next_retry_at", BigInteger))
+jobs.append_column(Column("lease_owner", String(128)))
+jobs.append_column(Column("lease_expires_at", BigInteger))
+jobs.append_column(Column("heartbeat_at", BigInteger))
+jobs.append_column(Column("deadline_at", BigInteger))
+jobs.append_column(Column("cancel_requested_at", BigInteger))
+jobs.append_column(Column("parent_id", String(36), ForeignKey("jobs.id", ondelete="CASCADE")))
+jobs.append_column(Column("started_at", BigInteger))
+jobs.append_column(Column("finished_at", BigInteger))
+jobs.append_column(Column("result_checksum", String(64)))
+jobs.append_constraint(CheckConstraint("attempts >= 0", name="ck_jobs_attempts"))
+jobs.append_constraint(CheckConstraint("max_attempts BETWEEN 1 AND 5", name="ck_jobs_max_attempts"))
+ACTIVE_QUEUE_FILTER = "queue_kind IS NOT NULL AND status IN ('queued', 'running')"
+Index("uq_jobs_active_dedup", jobs.c.organization_id, jobs.c.dedup_sha256, unique=True,
+      sqlite_where=text(ACTIVE_QUEUE_FILTER), postgresql_where=text(ACTIVE_QUEUE_FILTER))
+Index("ix_jobs_claim", jobs.c.status, jobs.c.next_retry_at, jobs.c.created_at, jobs.c.id,
+      sqlite_where=text("queue_kind IS NOT NULL"), postgresql_where=text("queue_kind IS NOT NULL"))
+Index("ix_jobs_lease_expiry", jobs.c.status, jobs.c.lease_expires_at,
+      sqlite_where=text("status = 'running'"), postgresql_where=text("status = 'running'"))
 publications = owned_table("publications")
 publications.append_column(Column("job_id", String(36), nullable=False))
 publications.append_column(Column("checksum", String(64), nullable=False))
@@ -89,6 +112,17 @@ publications.append_constraint(ForeignKeyConstraint(
     ["job_id", "owner_id", "organization_id"], ["jobs.id", "jobs.owner_id", "jobs.organization_id"], name="fk_publications_job_owner",
 ))
 publications.append_constraint(UniqueConstraint("job_id", name="uq_publications_job"))
+queue_events = Table(
+    "queue_events", metadata,
+    Column("id", String(36), primary_key=True),
+    Column("job_id", String(36), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("sequence", Integer, nullable=False),
+    Column("kind", String(32), nullable=False),
+    Column("payload", JSON, nullable=False),
+    Column("created_at", BigInteger, nullable=False),
+    UniqueConstraint("job_id", "sequence", name="uq_queue_event_sequence"),
+    CheckConstraint("sequence >= 1", name="ck_queue_event_sequence"),
+)
 migration_runs = Table(
     "migration_runs", metadata,
     Column("id", String(36), primary_key=True),

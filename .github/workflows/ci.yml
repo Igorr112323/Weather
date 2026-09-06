@@ -64,7 +64,7 @@ jobs:
           printf '%s\n' 'postgresql+psycopg://postgres@127.0.0.1:5432/agrocast_test' > data/identity-ci/database_url
           printf 'AGROCAST_TEST_DATABASE_URL_FILE=%s/data/identity-ci/database_url\n' "$PWD" >> "$GITHUB_ENV"
       - name: Авторизация и владение на PostgreSQL
-        run: python -m pytest tests/test_identity_auth.py tests/test_identity_resources.py tests/test_identity_admin.py tests/test_identity_storage.py tests/test_pilot_access.py tests/test_api_contracts.py tests/test_contract_migration.py tests/test_result_cache.py tests/test_runtime_settings.py tests/test_state_migration.py tests/test_state_filesystem.py tests/test_state_cli.py -q
+        run: python -m pytest tests/test_identity_auth.py tests/test_identity_resources.py tests/test_identity_admin.py tests/test_identity_storage.py tests/test_pilot_access.py tests/test_api_contracts.py tests/test_contract_migration.py tests/test_result_cache.py tests/test_runtime_settings.py tests/test_state_migration.py tests/test_state_filesystem.py tests/test_state_cli.py tests/test_queue_migration.py tests/test_queue_core.py tests/test_queue_api.py tests/test_queue_worker.py -q
 
   browser-security:
     runs-on: ubuntu-latest

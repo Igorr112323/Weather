@@ -76,6 +76,20 @@ class SubscriptionRecord(OwnedRecord[SubscriptionBody]):
 
 class JobRecord(OwnedRecord[dict[str, JsonValue]]):
     status: JobStatus
+    queue_kind: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*$")] | None = None
+    dedup_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    attempts: StrictInt | None = None
+    max_attempts: StrictInt | None = None
+    next_retry_at: Timestamp | None = None
+    lease_owner: str | None = None
+    lease_expires_at: Timestamp | None = None
+    heartbeat_at: Timestamp | None = None
+    deadline_at: Timestamp | None = None
+    cancel_requested_at: Timestamp | None = None
+    parent_id: UUID | None = None
+    started_at: Timestamp | None = None
+    finished_at: Timestamp | None = None
+    result_checksum: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
 
     @field_validator("data")
     @classmethod
@@ -160,6 +174,55 @@ class AcceptedJob(Contract):
         if self.status_url != f"/api/jobs/{self.job}":
             raise ValueError("status URL must identify the accepted job")
         return self
+
+
+class DurableJobView(Contract):
+    id: UUID
+    status: JobStatus
+    queue_kind: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*$")]
+    attempts: StrictInt
+    max_attempts: StrictInt
+    next_retry_at: Timestamp | None = None
+    deadline_at: Timestamp | None = None
+    lease_active: StrictBool
+    cancel_requested: StrictBool
+    started_at: Timestamp | None = None
+    finished_at: Timestamp | None = None
+    result_checksum: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    error_code: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*$")] | None = None
+    parent_id: UUID | None = None
+    log: list[str]
+
+
+class DurableJobResponse(Contract):
+    job: DurableJobView
+
+
+class QueueEventRecord(Contract):
+    id: UUID
+    job_id: UUID
+    sequence: StrictInt
+    kind: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*$")]
+    payload: dict[str, JsonValue]
+    created_at: Timestamp
+
+
+class QueueEventsResponse(Contract):
+    events: list[QueueEventRecord]
+
+
+class QueueStatsResponse(Contract):
+    queued: StrictInt
+    running: StrictInt
+    succeeded: StrictInt
+    failed: StrictInt
+    cancelled: StrictInt
+    expired_leases: StrictInt
+    global_slots: StrictInt
+    max_queued: StrictInt
+    max_active_per_user: StrictInt
+    oldest_queued_age_s: StrictInt | None = None
+    intake_enabled: StrictBool
 
 
 class LivenessResponse(Contract):
@@ -278,8 +341,8 @@ class ForecastCapabilities(Contract):
 
 
 class Operations(Contract):
-    hindcast: Literal[False]
-    region_refresh: Literal[False]
+    hindcast: StrictBool
+    region_refresh: StrictBool
     crop_mutation: StrictBool
     field_management: StrictBool
     subscription_preferences: StrictBool
@@ -287,6 +350,8 @@ class Operations(Contract):
     job_access: StrictBool
     agro_recommendations: Literal[False]
     legacy_api: Literal[False]
+    durable_queue: StrictBool
+    queue_intake: StrictBool
 
 
 class CapabilitiesResponse(Historical):

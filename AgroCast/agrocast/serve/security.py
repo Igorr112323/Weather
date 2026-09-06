@@ -39,8 +39,10 @@ def allowed_roles(method, path):
     if method in {"GET", "HEAD"}:
         if path in PILOT_READ_PATHS:
             return ALL_ROLES
-        if path in {"/api/health", "/api/admin/users", "/api/admin/events"}:
+        if path in {"/api/health", "/api/admin/users", "/api/admin/events", "/api/queue/stats"}:
             return ADMIN_ROLES
+        if re.fullmatch(rf"/api/jobs/{RESOURCE_ID}/events", path) or re.fullmatch(rf"/api/queue/jobs/{RESOURCE_ID}", path):
+            return ALL_ROLES
         if re.fullmatch(rf"/api/(fields|crops|subscriptions|jobs|publications)(/{RESOURCE_ID})?", path) or re.fullmatch(rf"/api/job/{RESOURCE_ID}", path):
             return ALL_ROLES
     if method == "POST" and path in {"/api/auth/logout", "/api/auth/password"}:
@@ -50,6 +52,8 @@ def allowed_roles(method, path):
     if method == "PATCH" and re.fullmatch(rf"/api/admin/users/{RESOURCE_ID}", path):
         return ADMIN_ROLES
     if method == "POST" and path in {"/api/fields", "/api/subscriptions", "/api/prepare", "/api/region/refresh"}:
+        return WRITE_ROLES
+    if method == "POST" and re.fullmatch(rf"/api/jobs/{RESOURCE_ID}/cancel", path):
         return WRITE_ROLES
     if method in {"PUT", "DELETE"} and re.fullmatch(rf"/api/(fields|subscriptions)/{RESOURCE_ID}", path):
         return WRITE_ROLES

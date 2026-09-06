@@ -39,7 +39,8 @@ app factory, read-only bundle и проверяемый перенос/backup/re
 [Матрица возможностей и настройка пилота](docs/production/PILOT.md) ·
 [DOM/CSP и браузерные проверки](docs/production/BROWSER_SECURITY.md) ·
 [HTTP-контракт, миграция crop revision и кэш](docs/production/API_CACHE.md) ·
-[Settings, read-only world, migration и recovery](docs/production/STATE.md).
+[Settings, read-only world, migration и recovery](docs/production/STATE.md) ·
+[Очередь вычислений, leases, квоты и runbook worker'а](docs/production/QUEUE.md).
 
 Новый и изменяемый код — строго без комментариев; пояснения и архитектурные
 решения оформляются в Markdown.

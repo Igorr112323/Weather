@@ -347,8 +347,10 @@ fail-closed: битый JSON, чужая схема или модель вне `
 независимо от файла, t2m-альфа работает; fail-closed загрузчики (включая corrupt blender в
 bundle → ошибка, не тихий default); hindcast == ledger-строки; API отклоняет leads вне 1–6
 и несогласованные mode/season_len (422); save пишет валидируемую схему. Полный SQLite-сьют
-607 passed / 20 skipped (новые skip — только pgserver/browser флаги). CI-вердикты по коммиту
-— ниже после пуша. Научные gates не затронуты; refit-скрипты используют тот же ledger.
+607 passed / 20 skipped (новые skip — только pgserver/browser флаги). CI по пушу зелёный:
+`identity-postgresql`, `audit` (полный сьют на SQLite, run 34049169198) и `desktop-builds`
+(Windows/macOS/Ubuntu, run 34049166817). Научные gates не затронуты; refit-скрипты
+используют тот же ledger.
 
 ## Что пока не завершено
 

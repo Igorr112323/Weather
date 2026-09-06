@@ -320,8 +320,9 @@ trailing `window_skill`, ospr по строке предикторов, стан
 синтетическом zarr-хранилище), расширенный дым LIVE-теста (блок `as_of`), полный SQLite-сьют
 — 606 passed / 13 skipped / 0 failed; затронутые наборы (`test_ledger`, `test_conformal`,
 `test_season_ridge`, `test_deep_analog`, `test_forecast_smoke`, `test_desktop`,
-`test_api_contracts`) — зелёные. CI-вердикты `identity-postgresql`, `audit` и
-`desktop-builds` по этому коммиту — ниже после пуша.
+`test_api_contracts`) — зелёные. CI после пуша: `identity-postgresql`, `audit` (полный
+сьют на SQLite вместе с `test_asof`) и оба browser-job — зелёные (run 34045951363);
+`desktop-builds` (Win/macOS/Ubuntu) — зелёный (run 34045938313).
 
 ## Что пока не завершено
 

@@ -43,7 +43,8 @@ app factory, read-only bundle и проверяемый перенос/backup/re
 [Очередь вычислений, leases, квоты и runbook worker'а](docs/production/QUEUE.md) ·
 [Десктоп-версия: локальный режим, экран данных и сборка](docs/production/DESKTOP.md) ·
 [Readiness, лимиты источников и gate честного выпуска](docs/production/FRESHNESS.md) ·
-[Сквозной as-of и устранение временных утечек](docs/production/ASOF.md).
+[Сквозной as-of и устранение временных утечек](docs/production/ASOF.md) ·
+[Единый расчётный pipeline LIVE/hindcast/audit/refit](docs/production/PIPELINE.md).
 
 Новый и изменяемый код — строго без комментариев; пояснения и архитектурные
 решения оформляются в Markdown.

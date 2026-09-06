@@ -139,10 +139,7 @@ def ensure_point(cfg, world_dir, log):
 
 
 def run_hindcast(cfg, lat, lon, start, mode, horizon, log):
-    from agrocast.blend.blender import Blender, blended_records
-    from agrocast.blend.calibration import gated_calibrator
-    from agrocast.blend.nn_stack import load_alpha, mix, nn_map, row_keys
-    from agrocast.features.dataset import PointDataset
+    from agrocast.skill.ledger import load_ledger
 
     start = pd.Period(str(start), "M")
     horizon = int(horizon)
@@ -155,77 +152,37 @@ def run_hindcast(cfg, lat, lon, start, mode, horizon, log):
     if targets[0] < pd.Period("2004-01", "M"):
         raise ValueError("проверка на истории доступна с 2004 года")
     log(f"проверка на истории: старт {start}, режим {mode}, целей {len(targets)}")
-    rec = pd.read_parquet(cfg.artifact_path(f"backtest_records_{mode}.parquet"))
-    if mode == "monthly":
-        rec = rec[rec.lead == 1]
-    tyears = sorted({int(t.year) for t in targets})
-    frames = []
-    for t in targets:
-        g = rec[(rec.year == t.year) & (rec.target_month == t.month)]
-        if not g.empty:
-            frames.append(g)
-    if not frames:
-        raise ValueError("для этой даты нет записей проверки")
-    cur = pd.concat(frames, ignore_index=True)
-    pt = PointDataset(cfg, lat, lon, cfg.zarr_store())
-    stds = {}
-    for v in ("t2m", "tp"):
-        stds[v] = pt.seasonal_std(v, 3) if mode == "seasonal" else pt.standardized(v)
-    from agrocast.blend import regime_guard
+    led, _ = load_ledger(cfg, mode)
+    if led is None or led.empty:
+        rec_path = cfg.artifact_path(f"backtest_records_{mode}.parquet")
+        if not rec_path.exists():
+            raise ValueError("нет walk-forward ledger: сначала пересоберите бэктест (agrocast backtest) для режима " + mode)
+        from agrocast.skill.ledger import build_ledger
 
-    mon = pt.monthly()
-    alphas = {}
-    nnmaps = {}
-    for v in ("t2m", "tp"):
-        alphas[v] = load_alpha(cfg, mode, v)
-        if alphas[v] > 0:
-            nnmaps[v] = nn_map(pt, v, mode, sorted(int(y) for y in rec.year.unique()))
-    blend_by_year = {}
-    cals_by_year = {}
-    for y in tyears:
-        blend_by_year[y] = Blender(half_life_years=5.0).fit(rec[rec.year != y])
-        past = rec[rec.year < y]
-        c = {}
-        if not past.empty:
-            bt = blended_records(past, Blender(half_life_years=5.0).fit(past).weights)
-            for v in ("t2m", "tp"):
-                sub = bt[bt.variable == v]
-                Pp = sub[["p0", "p1", "p2"]].to_numpy(float)
-                if alphas[v] > 0:
-                    Pp = mix(Pp, row_keys(sub), nnmaps[v], alphas[v])
-                c[v] = gated_calibrator(Pp, sub.obs_tercile.to_numpy(), years=sub["year"].to_numpy())
-        cals_by_year[y] = c
-    log(f"нейроядро: alpha t2m={alphas['t2m']}, tp={alphas['tp']} (выбрано при обучении точки)")
+        log("ledger не найден в артефактах: пересчёт walk-forward folds по записям бэктеста")
+        led = build_ledger(pd.read_parquet(rec_path), mode=mode, config=cfg)
+    if led is None or led.empty:
+        raise ValueError("для этой даты нет записей проверки")
+    from agrocast.features.dataset import PointDataset
+
+    pt = PointDataset(cfg, lat, lon, cfg.zarr_store())
+    stds = {v: (pt.seasonal_std(v, 3) if mode == "seasonal" else pt.standardized(v)) for v in ("t2m", "tp")}
     items = []
     for t in targets:
-        cals = cals_by_year.get(int(t.year), {})
         block = {"year": int(t.year), "target_month": int(t.month)}
         for v in ("t2m", "tp"):
-            g = cur[(cur.variable == v) & (cur.year == t.year) & (cur.target_month == t.month)]
+            g = led[(led["variable"] == v) & (led["year"] == int(t.year)) & (led["target_month"] == int(t.month))]
             if g.empty:
                 continue
-            preds = {
-                name: (gg[["p0", "p1", "p2"]].to_numpy()[0], gg[["q10", "q50", "q90"]].to_numpy()[0])
-                for name, gg in g.groupby("model")
-            }
-            P, Q = blend_by_year[int(t.year)].combine(v, t.month, preds)
-            if alphas[v] > 0:
-                k = (int(t.year), int(t.month), 1)
-                if k in nnmaps[v]:
-                    P = (1 - alphas[v]) * P + alphas[v] * nnmaps[v][k]
-                    P = P / P.sum()
-            P_unc = P
-            if cals.get(v) is not None and cals[v].usable():
-                P = cals[v].transform(P.reshape(1, -1))[0]
-            if regime_guard.shifted(mon[v], stds[v], v, mode, t - 1, t if mode == "seasonal" else None, config=cfg):
-                P = P_unc
             std = stds[v]
             if t not in std.index:
                 continue
+            r = g.iloc[0]
             mu = float(std.loc[t, "mu"])
             sd = float(std.loc[t, "sd"])
             z = float(std.loc[t, "z"])
-            obs = int(g["obs_tercile"].iloc[0])
+            P = [float(r["p0"]), float(r["p1"]), float(r["p2"])]
+            obs = int(r["obs_tercile"])
             dom = int(np.argmax(P))
             block[v] = {
                 "probs": [round(float(x), 3) for x in P],
@@ -233,14 +190,16 @@ def run_hindcast(cfg, lat, lon, start, mode, horizon, log):
                 "obs": obs,
                 "hit": bool(dom == obs),
                 "fact": round(mu + sd * z, 1),
-                "p50": round(mu + sd * float(Q[1]), 1),
-                "p10": round(mu + sd * float(Q[0]), 1),
-                "p90": round(mu + sd * float(Q[2]), 1),
+                "p50": round(mu + sd * float(r["q50"]), 1),
+                "p10": round(mu + sd * float(r["q10"]), 1),
+                "p90": round(mu + sd * float(r["q90"]), 1),
                 "norm": round(mu, 1),
                 "unit": "c" if v == "t2m" else "mm",
             }
         if "t2m" in block or "tp" in block:
             items.append(block)
+    if not items:
+        raise ValueError("для этой даты нет записей проверки")
     summary = {}
     for v in ("t2m", "tp"):
         hits = [it[v]["hit"] for it in items if v in it]

@@ -130,9 +130,10 @@ def phase_precompute():
             rows.append(loyo.assign(audit_year=int(Y), audit_kind="cur_loyo"))
         pre = pd.concat(rows, ignore_index=True)
         pre.to_parquet(_output("cache") / f"precompute_{mode}.parquet")
+        from agrocast.blend.nn_stack import load_alpha
+
         for v in VARS_:
-            p = _config().artifact_path(f"stack_{mode}_{v}.json")
-            alphas[f"{mode}:{v}"] = float(json.loads(p.read_text()).get("alpha", 0.0)) if p.exists() else 0.0
+            alphas[f"{mode}:{v}"] = load_alpha(_config(), mode, v)
         log(f"precompute {mode}: {len(pre)} строк (past+cur), {time.time()-t0:.0f}s")
     (_output("cache") / "alphas.json").write_text(json.dumps(alphas, indent=1))
     log(f"precompute готов. alphas: {alphas}")
@@ -179,6 +180,11 @@ def process_point(pid, lat, lon):
     pt = PointDataset(cfg, lat, lon, cfg.zarr_store())
     pt.raw_daily()
     alphas = json.loads((_output("cache") / "alphas.json").read_text())
+    from agrocast.core.policy import nn_alpha_allowed
+
+    for key in list(alphas):
+        if not nn_alpha_allowed(key.split(":")[-1], _config()):
+            alphas[key] = 0.0
     rec_years = sorted(int(y) for y in pd.read_parquet(
         _config().artifact_path("backtest_records_seasonal.parquet")).year.unique())
 

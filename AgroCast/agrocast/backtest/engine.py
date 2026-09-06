@@ -1,13 +1,11 @@
-import numpy as np
 import pandas as pd
 
 from agrocast.core.geo import region_center
-from agrocast.core.mathutils import exp_weights
 from agrocast.ingest.registry import Registry
-from agrocast.features.dataset import PointDataset, training_data, make_test_row, feature_columns_for
+from agrocast.features.dataset import PointDataset
+from agrocast.forecast import pipeline
 from agrocast.forecast.asof import (EVAL_PROSPECTIVE, EVAL_REPLAY_REVISED, effective_cutoff, target_window_end,
                               vintages_available)
-from agrocast.models import build_models
 from agrocast.blend.blender import Blender, blended_records
 from agrocast.backtest.metrics import rpss
 
@@ -24,6 +22,10 @@ def skill_name(mode):
     return f"skill_map_{mode}.parquet"
 
 
+def pipeline_table_name(mode):
+    return f"backtest_pipeline_{mode}.parquet"
+
+
 def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None, years=None, lat=None, lon=None, point=None, mode="monthly", season_len=3, half_life_years=0.0, save_artifacts=True, publication_delay_days=None):
     delay = int(config.publication_delay_days if publication_delay_days is None else publication_delay_days)
     store = config.zarr_store()
@@ -34,15 +36,15 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
     pf = point.predictor_frame()
     monthly = point.monthly()
     if mode == "seasonal":
-        stds = {v: point.seasonal_std(v, season_len) for v in variables}
         leads = [1]
-    else:
-        stds = {v: point.standardized(v) for v in variables}
+    ctx = pipeline.prepare_artifacts(config, point, variables, mode, season_len)
+    stds = ctx["stds"]
     last_p = monthly.index[-1]
     years = list(years) if years is not None else list(range(config.backtest_start, last_p.year + 1))
     start_months = list(start_months) if start_months is not None else list(range(1, 13))
     leads = list(leads) if leads is not None else list(range(1, config.horizon_max + 1))
     rows = []
+    rows_final = []
     for y in years:
         for v in variables:
             std = stds[v]
@@ -62,35 +64,16 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
                     cutoff = effective_cutoff(issue, delay)
                     if cutoff not in pf.index:
                         continue
-                    use_cols = feature_columns_for(pf, v, mode=mode)
-                    X, yv, meta = training_data(pf, std, v, sm, lead, until=cutoff, use_cols=use_cols, span=span)
-                    if len(X) < 18:
+                    res = pipeline.predict_target(config, ctx, v, tgt, sm, lead, issue, first_year=start.year, extra=True)
+                    if res is None:
                         continue
-                    w = exp_weights(len(X), config.clim_half_life)
+                    block, _phys, preds, n_by_model, cutoff_used = res
+                    if cutoff_used != cutoff:
+                        continue
                     trow = std.loc[tgt]
-                    e1, e2 = float(trow["e1"]), float(trow["e2"])
-                    x_test = make_test_row(pf, cutoff, lead, tgt, use_cols=use_cols)
-                    models = build_models(config, variable=v, mode=mode)
-                    for m in models:
-                        try:
-                            Xf, yf, metaf, wf = X, yv, meta, w
-                            if mode == "seasonal" and getattr(m, "season_months", None) and len(m.season_months) > 1:
-                                Xparts, yparts, mparts = [], [], []
-                                for s2 in m.season_months:
-                                    Xs, ys, ms = training_data(pf, std, v, s2, lead, until=cutoff, use_cols=use_cols, span=span)
-                                    if len(Xs):
-                                        Xparts.append(Xs)
-                                        yparts.append(ys)
-                                        mparts.append(ms)
-                                if Xparts:
-                                    Xf = pd.concat(Xparts, ignore_index=True)
-                                    yf = np.concatenate(yparts)
-                                    metaf = pd.concat(mparts, ignore_index=True)
-                                    wf = exp_weights(len(Xf), config.clim_half_life)
-                            m.fit(Xf, yf, w=wf, edges=metaf[["e1", "e2"]].to_numpy(), years=metaf["year"].to_numpy())
-                            p, q = m.predict(x_test, e1, e2)
-                        except Exception:
-                            continue
+                    obs_z = float(trow["z"])
+                    obs_terc = int(0 if obs_z < float(trow["e1"]) else (1 if obs_z <= float(trow["e2"]) else 2))
+                    for m_name, (mp, mq) in preds.items():
                         rows.append(
                             {
                                 "variable": v,
@@ -98,31 +81,56 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
                                 "lead": int(lead),
                                 "target_month": int(tgt.month),
                                 "year": int(y),
-                                "model": m.name,
+                                "model": m_name,
                                 "issue": str(issue),
                                 "observation_cutoff": str(cutoff),
                                 "train_until": str(cutoff),
-                                "train_n": int(len(Xf)),
+                                "train_n": int(n_by_model.get(m_name, 0)),
                                 "target_start": str(tgt),
                                 "target_end": str(tgt_end),
-                                "p0": float(p[0]),
-                                "p1": float(p[1]),
-                                "p2": float(p[2]),
-                                "q10": float(q[0]),
-                                "q50": float(q[1]),
-                                "q90": float(q[2]),
-                                "obs_z": float(trow["z"]),
-                                "obs_tercile": int(0 if trow["z"] < e1 else (1 if trow["z"] <= e2 else 2)),
+                                "p0": float(mp[0]),
+                                "p1": float(mp[1]),
+                                "p2": float(mp[2]),
+                                "q10": float(mq[0]),
+                                "q50": float(mq[1]),
+                                "q90": float(mq[2]),
+                                "obs_z": obs_z,
+                                "obs_tercile": obs_terc,
                                 "mu": float(trow["mu"]),
                                 "sd": float(trow["sd"]),
                             }
                         )
+                    calc = block["_calc"]
+                    rows_final.append(
+                        {
+                            "variable": v,
+                            "start_month": int(sm),
+                            "lead": int(lead),
+                            "target_month": int(tgt.month),
+                            "year": int(y),
+                            "issue": str(issue),
+                            "observation_cutoff": str(cutoff),
+                            "train_until": str(cutoff),
+                            "target_start": str(tgt),
+                            "target_end": str(tgt_end),
+                            "p0": float(calc["P"][0]),
+                            "p1": float(calc["P"][1]),
+                            "p2": float(calc["P"][2]),
+                            "q10": float(calc["qz"][0]),
+                            "q50": float(calc["qz"][1]),
+                            "q90": float(calc["qz"][2]),
+                            "obs_z": obs_z,
+                            "obs_tercile": obs_terc,
+                        }
+                    )
     records = pd.DataFrame(rows)
     if records.empty:
         reg.log_event("backtest", f"no records mode={mode}")
         return records
     vint = {i: vintages_available(config, i) for i in sorted(set(records["issue"]))}
     records["evaluation"] = [EVAL_PROSPECTIVE if vint[i] else EVAL_REPLAY_REVISED for i in records["issue"]]
+    if save_artifacts and rows_final:
+        pd.DataFrame(rows_final).to_parquet(config.artifact_dir / pipeline_table_name(mode))
     if save_artifacts:
         records.to_parquet(config.artifact_dir / records_name(mode))
         blender = Blender(half_life_years=half_life_years).fit(records)

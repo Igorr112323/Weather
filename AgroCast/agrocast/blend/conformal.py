@@ -12,8 +12,6 @@ Romano et al. 2019):  P(obs ∈ [q10', q90']) ≥ 80%  — независимо 
 (L1 / L2-3 / L4+), т.к. смещение растёт с горизонтом; при нехватке
 наблюдений — по всем горизонтам.
 """
-import json
-from pathlib import Path
 
 import numpy as np
 
@@ -104,16 +102,17 @@ class ConformalQuantileCalibrator:
         }
 
     def save(self, path):
-        p = Path(path)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps({"n": self.n, "deltas": self.deltas}))
+        from agrocast.core.artifacts import CONFORMAL_SCHEMA, write_artifact
+
+        write_artifact(path, {"n": self.n, "deltas": self.deltas}, CONFORMAL_SCHEMA)
 
     @classmethod
     def load(cls, path):
-        p = Path(path)
-        if not p.exists():
+        from agrocast.core.artifacts import CONFORMAL_SCHEMA, read_artifact
+
+        data = read_artifact(path, schema=CONFORMAL_SCHEMA, name="conformal calibration")
+        if data is None:
             return None
-        data = json.loads(p.read_text())
         c = cls()
         c.n = int(data.get("n", 0))
         c.deltas = data.get("deltas", {})

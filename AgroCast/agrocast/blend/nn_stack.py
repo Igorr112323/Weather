@@ -1,4 +1,3 @@
-import json
 
 import numpy as np
 
@@ -12,19 +11,22 @@ def stack_path(config, mode, variable):
 
 
 def load_alpha(config, mode, variable):
-    if variable == "tp":
+    from agrocast.core.artifacts import STACK_SCHEMA, read_artifact
+    from agrocast.core.policy import nn_alpha_allowed
+
+    if not nn_alpha_allowed(variable, config):
         return 0.0
     p = config.artifact_path(f"stack_{mode}_{variable}.json")
-    if not p.exists():
+    data = read_artifact(p, schema=STACK_SCHEMA, name="nn stack")
+    if data is None:
         return 0.0
-    try:
-        return float(json.loads(p.read_text()).get("alpha", 0.0))
-    except Exception:
-        return 0.0
+    return float(data.get("alpha", 0.0))
 
 
 def save_alpha(config, mode, variable, alpha):
-    stack_path(config, mode, variable).write_text('{"alpha": %s}' % round(float(alpha), 3))
+    from agrocast.core.artifacts import STACK_SCHEMA, write_artifact
+
+    write_artifact(stack_path(config, mode, variable), {"alpha": round(float(alpha), 3)}, STACK_SCHEMA)
 
 
 def nn_map(pt, v, mode, years):

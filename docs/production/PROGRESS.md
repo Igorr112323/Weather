@@ -324,6 +324,32 @@ trailing `window_skill`, ospr по строке предикторов, стан
 сьют на SQLite вместе с `test_asof`) и оба browser-job — зелёные (run 34045951363);
 `desktop-builds` (Win/macOS/Ubuntu) — зелёный (run 34045938313).
 
+## Единый pipeline для LIVE, hindcast, audit и refit · T09 (2026-09-06)
+
+Расчётное ядро вынесено в `agrocast/forecast/pipeline.py`: `prepare_artifacts` (единственная
+загрузка blender/калибровок/режимной климатологии/skill-map/shrink/ospr/станций),
+`predict_target` (fit model set под as-of T08, blend, постпроцессоры, конвертация в °C/mm) и
+`nn_for` (NN-ядро с кэшем). `forecast_point` и бэктест-движок теперь вызывают одно и то же:
+records — сырые `preds` того же вызова, плюс новая таблица `backtest_pipeline_<mode>.parquet`
+с финальным blend той же конфигурации. `run_hindcast` (serve) больше не содержит четвёртой
+копии pipeline — читает walk-forward ledger (в内存 build_ledger по records, если файла нет).
+`audit_full` получает альфы через общий `load_alpha`.
+
+Политика `core/policy.nn_alpha_allowed` запрещает NN-альфу для tp на inference-пути
+(конфиг `allow_tp_nn_alpha=False` по умолчанию): подсунутый вручную `stack_*_tp.json`
+обнуляется независимо от JSON, и то же в консоли AUDIT. Артефакты помечены схемами
+(`blender-v2`, `stack-v1`, `calib-v1`, `conformal-v1`), загрузчик `core/artifacts.py`
+fail-closed: битый JSON, чужая схема или модель вне `MODEL_NAMES` — `ArtifactError` вместо
+тихого дефолта (раньше `load_alpha` проглатывал ошибки).
+
+Проверено: новые `tests/test_pipeline_single.py` (8): LIVE API == движок-таблица по P/Q
+(атол 1e-12) и `model_probs` == records; интервалы записей из общего ядра; tp-политика
+независимо от файла, t2m-альфа работает; fail-closed загрузчики (включая corrupt blender в
+bundle → ошибка, не тихий default); hindcast == ledger-строки; API отклоняет leads вне 1–6
+и несогласованные mode/season_len (422); save пишет валидируемую схему. Полный SQLite-сьют
+607 passed / 20 skipped (новые skip — только pgserver/browser флаги). CI-вердикты по коммиту
+— ниже после пуша. Научные gates не затронуты; refit-скрипты используют тот же ledger.
+
 ## Что пока не завершено
 
 - Единые settings и persistence реализованы в T05; фактический container rollout/recreation остаётся непроверенным. Дальнейшие browser/UX сценарии — T18/T21.

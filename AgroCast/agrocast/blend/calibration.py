@@ -1,5 +1,3 @@
-import json
-from pathlib import Path
 
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
@@ -46,16 +44,18 @@ class TercileCalibrator:
         return self.n >= MIN_CAL_N
 
     def save(self, path):
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        from agrocast.core.artifacts import CALIB_SCHEMA, write_artifact
+
         data = {"n": self.n, "curves": [{"x": list(c.x), "y": list(c.y)} for c in (self.curves or [])]}
-        Path(path).write_text(json.dumps(data))
+        write_artifact(path, data, CALIB_SCHEMA)
 
     @classmethod
     def load(cls, path):
-        p = Path(path)
-        if not p.exists():
+        from agrocast.core.artifacts import CALIB_SCHEMA, read_artifact
+
+        data = read_artifact(path, schema=CALIB_SCHEMA, name="calibration")
+        if data is None:
             return None
-        data = json.loads(p.read_text())
         c = cls()
         c.n = data["n"]
         c.curves = [MonoCurve(np.asarray(d["x"], float), np.asarray(d["y"], float)) for d in data["curves"]]

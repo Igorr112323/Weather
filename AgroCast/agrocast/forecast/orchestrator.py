@@ -11,6 +11,7 @@ from agrocast.features.dataset import PointDataset, training_data, make_test_row
 from agrocast.features.climatology import adaptive
 from agrocast.models import build_models
 from agrocast.forecast.asof import effective_cutoff, release_context, validate_context
+from agrocast.forecast import pipeline
 from agrocast.blend.blender import Blender
 from agrocast.backtest.engine import load_skill_map, blender_name, skill_name
 from agrocast.blend.calibration import TercileCalibrator
@@ -94,144 +95,6 @@ def _what_to_do(agro):
     return out[:3]
 
 
-def _confidence(rpss_val):
-    if rpss_val is None or not np.isfinite(rpss_val):
-        return {"rpss": None, "level": "unknown", "no_skill": False}
-    level = "low" if rpss_val < 0.02 else ("medium" if rpss_val < 0.06 else "high")
-    return {"rpss": _r(rpss_val, 4), "level": level, "no_skill": bool(rpss_val <= 0.0)}
-
-
-def _skill_lookup(smap, variable, target_month, lead):
-    if smap is None:
-        return None
-    g = smap[(smap["variable"] == variable) & (smap["target_month"] == target_month) & (smap["lead"] == lead)]
-    if len(g) == 0:
-        return None
-    return float(g["rpss"].iloc[0])
-
-
-def _fit_predict_target(config, pf, std, series_raw, variable, tgt, sm, lead, issue, blender, smap, calib=None, mode="monthly", pcal=None, nstack=None, ccal=None, rcal=None, mz=None, terc_map=None, sctx=None, ospr=None, mon=None, span=1):
-    a = adaptive(series_raw, tgt.year, tgt.month, config.clim_window, config.clim_half_life)
-    if a is None:
-        return None
-    cutoff = effective_cutoff(issue, getattr(config, "publication_delay_days", 0))
-    if cutoff not in pf.index:
-        return None
-    mu, sd = a["mu"], a["sd"]
-    e1 = (a["q"][0.33] - mu) / sd
-    e2 = (a["q"][0.67] - mu) / sd
-    use_cols = feature_columns_for(pf, variable, mode=mode)
-    X, yv, meta = training_data(pf, std, variable, sm, lead, until=cutoff, use_cols=use_cols, span=span)
-    if len(X) < 18:
-        return None
-    w = exp_weights(len(X), config.clim_half_life)
-    x_test = make_test_row(pf, cutoff, lead, tgt, use_cols=use_cols)
-    preds = {}
-    analogs = []
-    for m in build_models(config, variable=variable, mode=mode):
-        try:
-            Xf, yf, metaf, wf = X, yv, meta, w
-            if mode == "seasonal" and getattr(m, "season_months", None) and len(m.season_months) > 1:
-                Xparts, yparts, mparts = [], [], []
-                for s2 in m.season_months:
-                    Xs, ys, ms = training_data(pf, std, variable, s2, lead, until=cutoff, use_cols=use_cols, span=span)
-                    if len(Xs):
-                        Xparts.append(Xs)
-                        yparts.append(ys)
-                        mparts.append(ms)
-                if Xparts:
-                    Xf = pd.concat(Xparts, ignore_index=True)
-                    yf = np.concatenate(yparts)
-                    metaf = pd.concat(mparts, ignore_index=True)
-                    wf = exp_weights(len(Xf), config.clim_half_life)
-            m.fit(Xf, yf, w=wf, edges=metaf[["e1", "e2"]].to_numpy(), years=metaf["year"].to_numpy())
-            p, q = m.predict(x_test, e1, e2)
-        except Exception:
-            continue
-        preds[m.name] = (p, q)
-        if m.name == "analog":
-            analogs = m.analogs(x_test, k=8)
-    if not preds:
-        return None
-    P, Q = blender.combine(variable, tgt.month, preds)
-    if nstack is not None:
-        nn, a, pool = nstack
-        Pn = nn.probs_for(pf, cutoff, pool, tgt.month, lead)
-        if Pn is not None and a > 0:
-            P = (1.0 - a) * P + a * Pn
-            P = P / P.sum()
-    P_unc = P
-    if pcal is not None and pcal.usable():
-        P = pcal.transform(P.reshape(1, -1))[0]
-    if mon is not None:
-        from agrocast.blend import regime_guard
-
-        if regime_guard.shifted(mon, std, variable, mode, cutoff, tgt if mode == "seasonal" else None, config=config):
-            P = P_unc
-    if rcal is not None:
-        group = season_of(tgt.month) if mode == "seasonal" else f"m{int(tgt.month)}"
-        if cutoff in pf.index:
-            iprev = cutoff - 3
-            x = rcal.feature_vector(
-                variable,
-                pf.loc[cutoff],
-                cutoff,
-                mz,
-                pf.loc[iprev] if iprev in pf.index else None,
-                (terc_map or {}).get(variable),
-            )
-            P = rcal.transform(P, variable, group, tgt.year, x)
-    if sctx is not None:
-        P = sctx.apply(P, tgt.month, tgt.year)
-    if ccal is not None and ccal.usable():
-        Q = ccal.transform(Q, variable, lead)
-    if ospr is not None and "series" in ospr:
-        _s = ospr["series"]
-        if cutoff in _s.index:
-            _sv = float(_s.loc[cutoff])
-            if np.isfinite(_sv):
-                _u = min(1.0, max(0.0, (_sv - ospr["min"]) / max(ospr["max"] - ospr["min"], 1e-9)))
-                _w = config.ospr_weight * _u
-                if _w > 0:
-                    P = (1.0 - _w) * P + _w * np.array([1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0])
-                    P = P / P.sum()
-                    Q = (1.0 - _w) * np.asarray(Q, float)
-    phys = mu + sd * Q
-    bias, ratio = 0.0, 1.0
-    if calib is not None:
-        if variable == "t2m" and calib.get("t2m_bias") is not None:
-            bias = float(calib["t2m_bias"])
-        if variable == "tp" and calib.get("tp_ratio") is not None:
-            ratio = float(calib["tp_ratio"])
-    mu = mu * ratio + bias
-    phys = phys * ratio + bias
-    unit = "c" if variable == "t2m" else "mm"
-    block = {
-        "tercile_probs": {k: _r(P[i], 3) for i, k in enumerate(TERCILE_KEYS)},
-        f"quantiles_{unit}": {"p10": _r(phys[0], 1), "p50": _r(phys[1], 1), "p90": _r(phys[2], 1)},
-        f"normal_{unit}": _r(mu, 1),
-        "model_probs": {name: [_r(pv[0][i], 3) for i in range(3)] for name, pv in preds.items()},
-        "confidence": _confidence(_skill_lookup(smap, variable, tgt.month, lead)),
-        "analog_years": [
-            {"year": int(a_["year"]), "value": _r(mu + sd * a_["z"], 1), "weight": _r(a_["weight"], 3)}
-            for a_ in analogs
-        ],
-        "_calc": {
-            "mu": float(mu),
-            "sd": float(sd),
-            "e1": float(e1),
-            "e2": float(e2),
-            "P": [float(x) for x in P],
-            "qz": [float(x) for x in Q],
-        },
-    }
-    if variable == "t2m":
-        block["anomaly_c"] = _r(sd * Q[1], 1)
-    else:
-        block["percent_of_normal"] = _r(100.0 * phys[1] / max(mu, 1e-6), 0)
-    return block, phys
-
-
 def _sat_crop(v):
     if not v or not v.get("gdd"):
         return None
@@ -280,68 +143,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
     obs_cutoff = effective_cutoff(issue, getattr(config, "publication_delay_days", 0))
     as_of = release_context(config, issue, observation_cutoff=obs_cutoff)
     validate_context(as_of)
-    blender = Blender.load(config.artifact_path(blender_name(mode))) or Blender.default(variables)
-    pcalib = {}
-    ccalib = {}
-    for v in variables:
-        pc = TercileCalibrator.load(config.artifact_path(f"calib_{mode}_{v}.json"))
-        if pc is not None:
-            pcalib[v] = pc
-        cc = ConformalQuantileCalibrator.load(config.artifact_path(f"conformal_{mode}_{v}.json"))
-        if cc is not None and cc.usable():
-            ccalib[v] = cc
-    rcalib = RegimeClimatology.load(config.artifact_path(f"regimeclim_{mode}.json"))
-    mz = {}
-    terc_map = {}
-    for v, spec in SPECS.get(mode, {}).items():
-        for k in spec["mems"]:
-            mz["z" + ("t" if v == "t2m" else "p") + str(k)] = memory_z(monthly, v, k)
-        for vx, k in spec.get("xmems", ()):
-            mz["z" + ("t" if vx == "t2m" else "p") + str(k)] = memory_z(monthly, vx, k)
-        if "h1" in spec["feats"]:
-            terc_map[v] = tercile_grid(point, v)
-    smap = load_skill_map(config, mode)
-    sctx_map = {}
-    try:
-        from agrocast.blend.shrink import ShrinkContext, year_skills
-        from agrocast.skill.ledger import load_ledger
-
-        led_, _ = load_ledger(config, mode)
-        if led_ is not None and not led_.empty:
-            for v in variables:
-                g = led_[led_["variable"] == v]
-                if len(g) < 30:
-                    continue
-                sctx_map[v] = ShrinkContext(
-                    mode,
-                    point,
-                    v,
-                    year_skills(g[["p0", "p1", "p2"]].to_numpy(float), g["obs_tercile"].to_numpy(int), g["year"].to_numpy(int)),
-                )
-    except Exception:
-        sctx_map = {}
-    ospr_data = {}
-    if config.ospr_enabled:
-        try:
-            _spr = point.ocean_spread(lead=3)
-            if _spr is not None and len(_spr) >= 20:
-                ospr_data = {"series": _spr, "min": float(_spr.min()), "max": float(_spr.max())}
-        except Exception:
-            ospr_data = {}
-    calib = None
-    try:
-        from agrocast.ingest.stations import calibration_for_point
-
-        calib = calibration_for_point(config, lat, lon, monthly)
-    except Exception:
-        calib = None
-    apply_calib = None if point.fixed_calibration_active else calib
-    if mode == "seasonal":
-        stds = {v: point.seasonal_std(v, season_len) for v in variables}
-        raws = {v: point.seasonal_raw(v, season_len) for v in variables}
-    else:
-        stds = {v: point.standardized(v) for v in variables}
-        raws = {v: monthly[v] for v in variables}
+    ctx = pipeline.prepare_artifacts(config, point, variables, mode, season_len)
     out_items = []
     phys_store = {}
     if mode == "seasonal":
@@ -349,19 +151,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
         targets = [(start + season_len * k, k + 1) for k in range(n_seas)]
     else:
         targets = [(start + i, i + 1) for i in range(horizon)]
-    nnstack = {}
-    for v in variables:
-        sp = config.artifact_path(f"stack_{mode}_{v}.json")
-        if sp.exists():
-            import json as _json
-
-            a = float(_json.loads(sp.read_text()).get("alpha", 0.0))
-            if a > 0:
-                pool = feature_columns_for(pf, v, mode=mode)
-                first_tgt_year = min(t[0].year for t in targets)
-                nn = PooledNN().fit(pf, stds[v], pool, mode, first_tgt_year)
-                if nn.usable():
-                    nnstack[v] = (nn, a, pool)
+    first_year = min(t[0].year for t in targets)
     for tgt, display_lead in targets:
         lead = display_lead if mode == "monthly" else 1
         entry = {
@@ -375,10 +165,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
         got_any = False
         sm = start.month if mode == "monthly" else tgt.month
         for v in variables:
-            pcal = pcalib.get(v)
-            nstack = nnstack.get(v)
-            ccal = ccalib.get(v)
-            res = _fit_predict_target(config, pf, stds[v], raws[v], v, tgt, sm, lead, issue, blender, smap, apply_calib, mode=mode, pcal=pcal, nstack=nstack, ccal=ccal, rcal=rcalib, mz=mz, terc_map=terc_map, sctx=sctx_map.get(v), ospr=(ospr_data if v == "tp" else None), mon=monthly[v], span=season_len if mode == "seasonal" else 1)
+            res = pipeline.predict_target(config, ctx, v, tgt, sm, lead, issue, first_year=first_year)
             if res is None:
                 continue
             block, phys = res
@@ -512,9 +299,9 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
         "as_of": as_of,
         "variables": list(variables),
         "models": [m for m in MODEL_NAMES],
-        "station_calibration": calib,
+        "station_calibration": ctx["calib"],
         "targets_station_calibrated": bool(point.fixed_calibration_active),
-        "weights": {v: {s: {k: _r(w, 4) for k, w in dd.items()} for s, dd in d.items()} for v, d in blender.weights.items()},
+        "weights": {v: {s: {k: _r(w, 4) for k, w in dd.items()} for s, dd in d.items()} for v, d in ctx["blender"].weights.items()},
         "months" if mode == "monthly" else "seasons": out_items,
         "agro": agro,
     }

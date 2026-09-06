@@ -25,9 +25,11 @@ def prepare_environment(home=None):
     return state, root
 
 
-def _wait_until_ready(url, timeout=45.0):
+def _wait_until_ready(url, errors, timeout=120.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        if errors:
+            return False
         try:
             with urllib.request.urlopen(url + "health/live", timeout=1.5) as response:
                 if response.status == 200:
@@ -51,13 +53,22 @@ def start_server():
     url = "http://127.0.0.1:%d/" % listener.getsockname()[1]
     config = uvicorn.Config(application, fd=listener.fileno(), log_level=settings.log_level.lower(), lifespan="on")
     server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True, name="agrocast-local-server")
+    errors = []
+
+    def _serve():
+        try:
+            server.run()
+        except BaseException as error:
+            errors.append(error)
+
+    thread = threading.Thread(target=_serve, daemon=True, name="agrocast-local-server")
     thread.start()
-    if not _wait_until_ready(url):
+    if not _wait_until_ready(url, errors):
         server.should_exit = True
         thread.join(timeout=10)
         listener.close()
-        raise RuntimeError("Local AgroCast server did not start; check %s logs" % settings.state_dir)
+        detail = repr(errors[0]) if errors else "startup timed out"
+        raise RuntimeError("Local AgroCast server did not start: %s; check %s logs" % (detail, settings.state_dir))
     return server, thread, listener, url
 
 

@@ -41,7 +41,7 @@ jobs:
       - name: Смоук встроенного сервера без GUI
         run: |
           set -o pipefail
-          python - <<'PY' 2>&1 | tee smoke-output.log || { echo "::error::smoke: $(tail -c 4000 smoke-output.log | tr '\n' '|')"; exit 1; }
+          python - <<'PY' 2>&1 | tee smoke-output.log || { echo "::error::smoke: $(grep -E 'Traceback|Error|error|failed|assert' smoke-output.log | tail -c 3500 | tr '\n' '|')"; exit 1; }
           import json, urllib.request
           from agrocast.desktop.app import prepare_environment, start_server
           prepare_environment("build-smoke")

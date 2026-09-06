@@ -194,6 +194,45 @@ class DurableJobView(Contract):
     log: list[str]
 
 
+class FileRecord(Contract):
+    path: str
+    size_bytes: Timestamp
+    modified_at: Timestamp | None = None
+
+
+class DirectoryReport(Contract):
+    files: list[FileRecord]
+    file_count: StrictInt
+    total_bytes: Timestamp
+    truncated: StrictBool
+
+
+class CacheEntry(Contract):
+    key: str
+    size_bytes: Timestamp
+    stored_at: Timestamp | None = None
+    payload_sha256: str | None = None
+
+
+class LocalInputsResponse(Contract):
+    generated_at: Timestamp
+    state_dir: str
+    world_dir: str
+    bundle: DirectoryReport
+    bundle_manifest: dict
+    observations: DirectoryReport
+    results_cache: dict
+    releases: dict | None = None
+
+
+class LocalForecastResponse(Contract):
+    cached: StrictBool
+    payload: dict
+    identity: dict
+    computed_at: Timestamp | None = None
+    log: list[str]
+
+
 class DurableJobResponse(Contract):
     job: DurableJobView
 
@@ -352,6 +391,7 @@ class Operations(Contract):
     legacy_api: Literal[False]
     durable_queue: StrictBool
     queue_intake: StrictBool
+    local_mode: StrictBool
 
 
 class CapabilitiesResponse(Historical):

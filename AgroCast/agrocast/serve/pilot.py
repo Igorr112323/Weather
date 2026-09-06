@@ -66,6 +66,7 @@ def pilot_capabilities() -> dict:
             "legacy_api": False,
             "durable_queue": False,
             "queue_intake": False,
+            "local_mode": False,
         },
         "permissions": {
             "reader": ["historical_read", "own_resources_read", "organization_crops_read"],

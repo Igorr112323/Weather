@@ -1,6 +1,4 @@
 from dataclasses import dataclass, field
-from pathlib import Path
-
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, text
@@ -35,7 +33,9 @@ class IdentitySettings:
 
 def migrate(engine: Engine, revision: str = "head"):
     config = Config()
-    config.set_main_option("script_location", str(Path(__file__).resolve().parents[2] / "migrations"))
+    from agrocast.core.settings import bundle_migrations_dir
+
+    config.set_main_option("script_location", str(bundle_migrations_dir()))
     with engine.begin() as connection:
         if connection.dialect.name == "postgresql":
             connection.execute(text("SELECT pg_advisory_xact_lock(482076011)"))

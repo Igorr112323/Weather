@@ -28,12 +28,14 @@ from agrocast.serve.errors import APIError, ERROR_RESPONSES, error_response, inv
 from agrocast.serve.pilot import PILOT_REGION, PILOT_WARNING, historical_result, pilot_capabilities, pilot_points
 from agrocast.serve.queue_api import router as queue_router
 from agrocast.serve.responses import (
-    AcceptedJob, CapabilitiesResponse, DiagnosticResponse, GridResponse, LivenessResponse,
-    RegionFieldResponse, RegionsResponse, SkillResponse, ValueResponse, accepted_job_response,
+    AcceptedJob, CapabilitiesResponse, DiagnosticResponse, GridResponse, LivenessResponse, LocalForecastResponse,
+    LocalInputsResponse, RegionFieldResponse, RegionsResponse, SkillResponse, ValueResponse, accepted_job_response,
 )
 from agrocast.serve.security import AccessGuard, PUBLIC_GET_PATHS
 
-STATIC = Path(__file__).resolve().parents[2] / "static"
+from agrocast.core.settings import bundle_static_dir
+
+STATIC = bundle_static_dir()
 PrepareRequest = ForecastSpec
 RegionRefreshRequest = RegionFieldSpec
 NoQuery = Annotated[EmptyQuery, Query()]
@@ -167,8 +169,45 @@ def health(request: Request, query: NoQuery = EmptyQuery()):
     return out
 
 
+@router.get("/api/local/inputs", response_model=LocalInputsResponse)
+def local_inputs(request: Request, query: NoQuery = EmptyQuery()):
+    settings = request.app.state.settings
+    if not settings.desktop_mode:
+        raise APIError("desktop_only", 403, "Локальные входные данные доступны только в десктоп-версии")
+    from agrocast.serve.local import collect_inputs
+
+    return collect_inputs(settings)
+
+
+@router.post("/api/local/forecast", response_model=LocalForecastResponse)
+def local_forecast(request: Request, spec: ForecastSpec):
+    settings = request.app.state.settings
+    if not settings.desktop_mode:
+        raise APIError("desktop_only", 403, "Локальный расчёт доступен только в десктоп-версии")
+    config = request.app.state.config
+    region = config.region
+    if not (region.lat_min <= spec.lat <= region.lat_max and region.lon_min <= spec.lon <= region.lon_max):
+        raise APIError("point_outside_region", 422, "Точка вне покрытия локального набора данных")
+    from agrocast.serve.local import run_forecast
+
+    principal = getattr(request.state, "principal", None)
+    try:
+        return run_forecast(settings, spec, principal)
+    except ValueError:
+        raise APIError("compute_failed", 500, "Локальный расчёт не завершился; входные данные и кэш сохранены") from None
+
+
+@router.get("/desktop.html", response_class=HTMLResponse, include_in_schema=False)
+def desktop_page(request: Request):
+    if not request.app.state.settings.desktop_mode:
+        raise APIError("desktop_only", 403)
+    return (STATIC / "desktop.html").read_text(encoding="utf-8")
+
+
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
-def index():
+def index(request: Request):
+    if request.app.state.settings.desktop_mode:
+        return (STATIC / "desktop.html").read_text(encoding="utf-8")
     return (STATIC / "pilot.html").read_text(encoding="utf-8")
 
 
@@ -208,6 +247,7 @@ def capabilities(request: Request, query: NoQuery = EmptyQuery()):
     out = pilot_capabilities()
     intake = bool(request.app.state.settings.queue_intake)
     out["operations"]["durable_queue"] = True
+    out["operations"]["local_mode"] = bool(request.app.state.settings.desktop_mode)
     out["operations"]["queue_intake"] = intake
     out["operations"]["region_refresh"] = intake
     out["operations"]["hindcast"] = intake

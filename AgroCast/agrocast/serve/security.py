@@ -68,11 +68,94 @@ def identity_error(error):
     return error_response(error)
 
 
+DESKTOP_DENIED_PREFIXES = ("/api/auth/", "/api/admin/")
+DESKTOP_DENIED_PATHS = frozenset({"/login", "/login.js", "/api/prepare", "/api/region/refresh"})
+DESKTOP_WRITE_PATHS = frozenset({"/api/fields", "/api/subscriptions", "/api/crops"})
+
+
+def desktop_allowed_roles(method, path):
+    if path in DESKTOP_DENIED_PATHS or path.startswith(DESKTOP_DENIED_PREFIXES):
+        return frozenset()
+    if method in {"GET", "HEAD"}:
+        return ALL_ROLES
+    if method == "POST" and (path.startswith("/api/local/") or path in DESKTOP_WRITE_PATHS):
+        return ADMIN_ROLES
+    if method in {"PUT", "PATCH", "DELETE"} and re.fullmatch(rf"/api/(fields|subscriptions|crops)/{RESOURCE_ID}", path):
+        return ADMIN_ROLES
+    if method == "POST" and re.fullmatch(rf"/api/jobs/{RESOURCE_ID}/cancel", path):
+        return ADMIN_ROLES
+    if method == "DELETE" and re.fullmatch(rf"/api/jobs/{RESOURCE_ID}", path):
+        return ADMIN_ROLES
+    return frozenset()
+
+
 class AccessGuard:
     def __init__(self, app, identity=None, retired=False):
         self.app = app
         self.identity = identity
         self.retired = retired
+
+    async def _desktop(self, scope, receive, secure_send, method, path, headers):
+        state = scope["app"].state
+        principal = getattr(state, "desktop_principal", None)
+        if principal is None:
+            await identity_error(IdentityError("identity_unavailable", 503))(scope, receive, secure_send)
+            return
+        roles = desktop_allowed_roles(method, path)
+        if not roles:
+            await error_response(APIError("desktop_operation_disabled", 403))(scope, receive, secure_send)
+            return
+        if principal.role not in roles:
+            await error_response(APIError("role_forbidden", 403))(scope, receive, secure_send)
+            return
+        scope.setdefault("state", {})["principal"] = principal
+        if path.startswith("/api/region/"):
+            regions = QueryParams(scope.get("query_string", b"")).getlist("region")
+            if any(region != PILOT_REGION for region in regions):
+                await error_response(APIError("pilot_region_disabled", 403))(scope, receive, secure_send)
+                return
+        query_pairs = QueryParams(scope.get("query_string", b"")).multi_items()
+        if len({key for key, _ in query_pairs}) != len(query_pairs):
+            await error_response(APIError("invalid_request", 422, "Duplicate query parameters are not allowed"))(scope, receive, secure_send)
+            return
+        if method in {"GET", "HEAD"}:
+            await self.app(scope, receive, secure_send)
+            return
+        length = headers.getlist("content-length")
+        if len(length) > 1 or (length and (len(length[0]) > 8 or not length[0].isdigit() or int(length[0]) > BODY_LIMIT)):
+            await error_response(APIError("request_too_large", 413))(scope, receive, secure_send)
+            return
+        if headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+            await error_response(APIError("json_required", 415))(scope, receive, secure_send)
+            return
+        data = bytearray()
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            data.extend(message.get("body", b""))
+            if len(data) > BODY_LIMIT:
+                await error_response(APIError("request_too_large", 413))(scope, receive, secure_send)
+                return
+            if not message.get("more_body", False):
+                break
+        if data:
+            try:
+                strict_json(data.decode("utf-8"))
+            except (ValueError, RecursionError):
+                await error_response(APIError("invalid_request", 422, detail=[{"loc": ["body"], "type": "json_invalid", "msg": "JSON must use UTF-8, unique keys and finite numbers"}]))(scope, receive, secure_send)
+                return
+
+        delivered = False
+
+        async def replay():
+            nonlocal delivered
+            if not delivered:
+                delivered = True
+                return {"type": "http.request", "body": bytes(data), "more_body": False}
+            return await receive()
+
+        await self.app(scope, replay, secure_send)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "websocket":
@@ -97,6 +180,11 @@ class AccessGuard:
         headers = Headers(scope=scope)
         if method in {"GET", "HEAD"} and path in PUBLIC_GET_PATHS:
             await self.app(scope, receive, secure_send)
+            return
+        app = scope.get("app")
+        app_settings = getattr(getattr(app, "state", None), "settings", None) if app is not None else None
+        if app_settings is not None and app_settings.desktop_mode:
+            await self._desktop(scope, receive, secure_send, method, path, headers)
             return
         identity = self.identity or getattr(scope.get("app").state, "identity", None)
         if identity is None:

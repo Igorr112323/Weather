@@ -13,6 +13,18 @@ DEFAULT_WORLD = BASE / "world"
 DEFAULT_STATE = BASE / "data"
 
 
+def bundle_static_dir():
+    return Path(os.environ.get("AGROCAST_STATIC_DIR") or BASE / "static")
+
+
+def bundle_migrations_dir():
+    return Path(os.environ.get("AGROCAST_MIGRATIONS_DIR") or BASE / "migrations")
+
+
+def desktop_state_dir():
+    return Path.home() / ".agrocast"
+
+
 class ConfigurationError(ValueError):
     pass
 
@@ -93,6 +105,7 @@ class RuntimeSettings:
     queue_log_lines: int = 500
     queue_blas_threads: int = 1
     queue_max_rss_mb: int = 0
+    desktop_mode: bool = False
 
     def __post_init__(self):
         for name in ("world_dir", "state_dir", "config_file", "database_url_file", "release_manifest_file"):
@@ -118,6 +131,8 @@ class RuntimeSettings:
             raise ConfigurationError("AGROCAST_OSPR_W must be finite and between 0 and 1")
         if type(self.queue_intake) is not bool:
             raise ConfigurationError("AGROCAST_QUEUE_INTAKE must be boolean")
+        if type(self.desktop_mode) is not bool:
+            raise ConfigurationError("AGROCAST_DESKTOP must be boolean")
         _integer(self.queue_max_queued, "AGROCAST_QUEUE_MAX_QUEUED", 1, 10000)
         _integer(self.queue_max_active_per_user, "AGROCAST_QUEUE_MAX_ACTIVE_PER_USER", 1, 100)
         _integer(self.queue_global_slots, "AGROCAST_QUEUE_GLOBAL_SLOTS", 1, 16)
@@ -151,6 +166,7 @@ class RuntimeSettings:
             regime_guard=_boolean(_option(env, "AGROCAST_REGIME_GUARD", ("REGIME_GUARD",)), "AGROCAST_REGIME_GUARD"),
             ospr_enabled=_boolean(env.get("AGROCAST_OSPR"), "AGROCAST_OSPR"), ospr_weight=weight,
             queue_intake=_boolean(env.get("AGROCAST_QUEUE_INTAKE"), "AGROCAST_QUEUE_INTAKE") or False,
+            desktop_mode=_boolean(env.get("AGROCAST_DESKTOP"), "AGROCAST_DESKTOP") or False,
             queue_max_queued=_environment_integer(env, "AGROCAST_QUEUE_MAX_QUEUED", 1, 10000, 200),
             queue_max_active_per_user=_environment_integer(env, "AGROCAST_QUEUE_MAX_ACTIVE_PER_USER", 1, 100, 2),
             queue_global_slots=_environment_integer(env, "AGROCAST_QUEUE_GLOBAL_SLOTS", 1, 16, 2),

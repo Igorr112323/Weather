@@ -1,8 +1,9 @@
-from pathlib import Path
+from agrocast.core.settings import bundle_static_dir
 
-STATIC = Path(__file__).resolve().parents[2] / "static"
+STATIC = bundle_static_dir()
 ASSET_NAMES = (
     "dom.js", "client.js", "index.js", "index.css", "report.js", "report.css", "value.js", "value.css",
+    "desktop.js", "desktop.css",
     "vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css", "vendor/leaflet/LICENSE.txt",
     "vendor/leaflet/images/layers.png", "vendor/leaflet/images/layers-2x.png",
     "vendor/leaflet/images/marker-icon.png", "vendor/leaflet/images/marker-icon-2x.png", "vendor/leaflet/images/marker-shadow.png",

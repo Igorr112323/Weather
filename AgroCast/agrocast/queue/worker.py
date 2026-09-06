@@ -22,6 +22,7 @@ from agrocast.store.results import fingerprint
 
 KILL_GRACE_SECONDS = 5.0
 PUMP_TIMEOUT_SECONDS = 0.25
+LOG_LINES_CAP = 500
 POLL_INTERVAL_SECONDS = 1.0
 CHILD_RESULT_DIR = "queue-staging"
 
@@ -74,6 +75,7 @@ class ComputeWorker:
             "HOME": str(self.state_dir),
             "PYTHONHASHSEED": "0",
             "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
+            "PYTHONFAULTHANDLER": "1",
             "AGROCAST_LOG_LEVEL": self.settings.log_level,
         }
         executor_module = os.environ.get("AGROCAST_QUEUE_EXECUTOR_MODULE")
@@ -82,7 +84,7 @@ class ComputeWorker:
         started = time.monotonic()
         process = subprocess.Popen(
             [sys.executable, "-m", "agrocast.queue.exec", "--input", str(input_path)],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
             cwd=str(Path(__file__).resolve().parents[2]), env=environment, start_new_session=True,
         )
         stdout_fd = process.stdout.fileno()
@@ -112,8 +114,15 @@ class ComputeWorker:
                     buffer += chunk
                 while b"\n" in buffer:
                     raw, buffer = buffer.split(b"\n", 1)
+                    text = raw.decode("utf-8", "replace").strip()
+                    if not text:
+                        continue
+                    if not text.startswith("{"):
+                        if len(log_lines) < LOG_LINES_CAP:
+                            log_lines.append("exec-stderr: " + text[:500])
+                        continue
                     try:
-                        event = strict_json(raw.decode("utf-8", "replace"))
+                        event = strict_json(text)
                     except (ValueError, RecursionError):
                         continue
                     if not isinstance(event, dict):

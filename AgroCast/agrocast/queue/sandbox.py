@@ -55,8 +55,16 @@ def set_no_new_privileges():
 def apply_syscall_denylist(denied=DENIED_SYSCALLS):
     require_linux()
     library = libseccomp()
+    library.seccomp_init.argtypes = [ctypes.c_uint32]
     library.seccomp_init.restype = ctypes.c_void_p
+    library.seccomp_syscall_resolve_name.argtypes = [ctypes.c_char_p]
     library.seccomp_syscall_resolve_name.restype = ctypes.c_int
+    library.seccomp_rule_add.argtypes = [ctypes.c_void_p, ctypes.c_uint32, ctypes.c_int, ctypes.c_uint]
+    library.seccomp_rule_add.restype = ctypes.c_int
+    library.seccomp_load.argtypes = [ctypes.c_void_p]
+    library.seccomp_load.restype = ctypes.c_int
+    library.seccomp_release.argtypes = [ctypes.c_void_p]
+    library.seccomp_release.restype = None
     context = library.seccomp_init(SCMP_ACT_ALLOW)
     if not context:
         raise SandboxUnavailable("seccomp_init failed")
@@ -81,6 +89,7 @@ def apply_syscall_denylist(denied=DENIED_SYSCALLS):
 
 def verify_denylist():
     libc = ctypes.CDLL(None, use_errno=True)
+    libc.sethostname.argtypes = [ctypes.c_char_p, ctypes.c_size_t]
     libc.sethostname.restype = ctypes.c_int
     buffer = ctypes.create_string_buffer(b"agrocast-sandbox-probe")
     ctypes.set_errno(0)

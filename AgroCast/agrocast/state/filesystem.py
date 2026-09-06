@@ -5,7 +5,7 @@ from pathlib import Path
 
 from agrocast.core.jsoncodec import strict_json
 from agrocast.state.backup import MAX_BACKUP_BYTES, StateError, file_checksum
-from agrocast.store.atomic import write_json
+from agrocast.store.atomic import fsync_directory, write_json
 from agrocast.store.results import fingerprint
 
 
@@ -21,11 +21,7 @@ def _copy_file(source, target):
 def _sync_directories(root):
     directories = [root, *[path for path in root.rglob("*") if path.is_dir()]]
     for directory in reversed(directories):
-        descriptor = os.open(directory, os.O_RDONLY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
+        fsync_directory(directory)
 
 
 def backup_runtime(settings, directory):
@@ -127,9 +123,5 @@ def restore_runtime(settings, directory):
                 raise StateError("runtime restore content does not match")
         _sync_directories(stage)
         os.rename(stage, target)
-        descriptor = os.open(target.parent, os.O_RDONLY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
+        fsync_directory(target.parent)
     return {"runtime_restored": str(target), "files": manifest["count"], "checksum": manifest["checksum"]}

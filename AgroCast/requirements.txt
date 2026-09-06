@@ -12,3 +12,7 @@ requests>=2.31
 fastapi>=0.110
 uvicorn>=0.29
 apscheduler>=3.10
+SQLAlchemy==2.0.52
+alembic==1.19.2
+psycopg[binary]==3.3.5
+argon2-cffi==25.1.0

@@ -1,13 +1,11 @@
 import numpy as np
 import pandas as pd
 
-from agrocast.core.config import Config
 from agrocast.core.geo import region_center
 from agrocast.core.mathutils import exp_weights
 from agrocast.ingest.registry import Registry
 from agrocast.features.dataset import PointDataset, training_data, make_test_row, feature_columns_for
 from agrocast.models import build_models
-from agrocast.store.zarrstore import ZarrStore
 from agrocast.blend.blender import Blender, blended_records
 from agrocast.backtest.metrics import rpss
 
@@ -140,12 +138,12 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
 
 
 def load_records(config, mode="monthly"):
-    p = config.artifact_dir / records_name(mode)
+    p = config.artifact_path(records_name(mode))
     return pd.read_parquet(p) if p.exists() else None
 
 
 def load_skill_map(config, mode="monthly"):
-    p = config.artifact_dir / skill_name(mode)
+    p = config.artifact_path(skill_name(mode))
     return pd.read_parquet(p) if p.exists() else None
 
 

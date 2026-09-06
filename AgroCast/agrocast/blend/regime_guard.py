@@ -1,5 +1,3 @@
-import os
-
 import numpy as np
 import pandas as pd
 
@@ -10,8 +8,8 @@ REF_S = 80
 SEASON_STARTS = (1, 4, 7, 10)
 
 
-def enabled():
-    return os.environ.get("REGIME_GUARD", "1") != "0"
+def enabled(config=None):
+    return config.regime_guard if config is not None else True
 
 
 def _terc(z, e1, e2):
@@ -97,16 +95,16 @@ def _modal_flip(series, std, v, mode, issue, tgt):
     return int(np.argmax(q)) != int(np.argmax(h))
 
 
-def shifted(series, std, v, mode, issue, tgt=None):
-    if not enabled():
+def shifted(series, std, v, mode, issue, tgt=None, config=None):
+    if not enabled(config):
         return False
     return _modal_flip(series, std, v, mode, issue, tgt)
 
 
-def shifted_rows(series, std, v, mode, rows):
+def shifted_rows(series, std, v, mode, rows, config=None):
     n = len(rows)
     out = np.zeros(n, dtype=bool)
-    if not enabled():
+    if not enabled(config):
         return out
     years = rows["year"].to_numpy(int)
     tms = rows["target_month"].to_numpy(int)

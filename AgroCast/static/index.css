@@ -1,0 +1,32 @@
+:root {color-scheme: dark; font-family: system-ui, sans-serif; color: #e8f0e4; background: #101d15;}
+* {box-sizing: border-box;}
+[hidden] {display: none !important;}
+body {margin: 0; display: grid; grid-template-columns: minmax(360px, 560px) minmax(300px, 1fr);}
+#side {padding: 24px; min-width: 0;}
+h1 {font-size: 24px; color: #bee99c; margin: 0 0 16px;}
+h2 {font-size: 18px; margin: 0 0 10px; color: #d2e9be;}
+p {line-height: 1.6; font-size: 14px;}
+nav, .actions {display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px;}
+a {color: #c2e3aa; text-underline-offset: 4px;}
+.card, .notice {padding: 20px; background: #1a2f20; border: 1px solid #3b553e; border-radius: 12px; margin-top: 20px;}
+.notice {background: #362b1a; border-color: #aa8253;}
+fieldset {border: 1px solid #486244; border-radius: 8px; margin-top: 18px; padding: 16px; min-width: 0;}
+legend {padding: 0 6px; color: #c2e3aa;}
+label {display: block; margin: 12px 0 6px; font-size: 13px;}
+input, textarea, select {width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #64835b; background: #101e15; color: #f0f5e9; font: inherit; min-width: 0;}
+button {border: 1px solid #64835b; border-radius: 7px; background: #31502c; color: #f0f5e9; padding: 9px 12px; font: inherit; cursor: pointer;}
+button:disabled, fieldset:disabled {opacity: 0.6; cursor: not-allowed;}
+input:focus-visible, textarea:focus-visible, select:focus-visible, a:focus-visible, button:focus-visible {outline: 3px solid #e3b46c; outline-offset: 3px;}
+.columns {display: grid; grid-template-columns: 1fr 1fr; gap: 10px;}
+.table-wrap {overflow-x: auto;}
+table {width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px;}
+th, td {padding: 9px 7px; text-align: left; border-bottom: 1px solid #395037; vertical-align: top;}
+th {color: #bdd1ac; font-size: 12px;}
+.literal, td {overflow-wrap: anywhere; white-space: pre-wrap;}
+.status {color: #efcb9e; min-height: 22px;}
+#map-panel {position: sticky; top: 0; padding: 28px; height: 100vh; display: flex; flex-direction: column; min-width: 0;}
+#map {flex: 1; min-height: 380px; background: #182e20; border: 1px solid #59764c; border-radius: 14px;}
+#map-panel p {color: #bbceb0;}
+.leaflet-popup-content, .leaflet-tooltip {color: #20311b; overflow-wrap: anywhere; white-space: pre-wrap; max-width: 280px;}
+.leaflet-popup-content p {font-size: 13px;}
+@media (max-width: 880px) {body {display: flex; flex-direction: column;} #map-panel {position: static; height: 450px; order: -1;} #side {padding: 16px;} #map {min-height: 280px;}}

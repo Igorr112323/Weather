@@ -48,11 +48,10 @@ def main():
     from agrocast.blend.calibration import TercileCalibrator
     from agrocast.blend.conformal import ConformalQuantileCalibrator
     from agrocast.blend.nn_stack import load_alpha, mix, nn_map, row_keys
-    from agrocast.backtest.metrics import clim_rps, rps_rows
     from agrocast.features.dataset import PointDataset
     from agrocast.serve.pipeline import world_config
 
-    wc = world_config("world")
+    wc = world_config()
     pt = PointDataset(wc, 43.5, 37.5, wc.zarr_store())
     results = {}
     for mode, leads in (("seasonal", [1]), ("monthly", list(range(1, 7)))):
@@ -70,7 +69,7 @@ def main():
         )
         bad = [(mode, int(y), int(m)) in PARTIAL for y, m in zip(rec.year, rec.target_month)]
         rec = rec[~pd.Series(bad, index=rec.index)].copy()
-        out_dir = BASE / "data" / "audit"
+        out_dir = Path(wc.runtime_dir) / "audit"
         out_dir.mkdir(parents=True, exist_ok=True)
         rec.to_parquet(out_dir / f"live_records_{mode}.parquet")
         if mode == "seasonal":
@@ -84,7 +83,7 @@ def main():
                 seq = " ".join(f"{int(r.obs_tercile)}" for r in gg.itertuples(index=False))
                 print(f"  model={name:14s} obs_seq(lead1, 2025-01..2026-07): {seq}")
             print(f"  obs tercile counts (all leads): {dict(rec[rec.variable == 't2m']['obs_tercile'].value_counts().sort_index())}")
-        b = Blender.load(wc.artifact_dir / f"blender_{mode}.json")
+        b = Blender.load(wc.artifact_path(f"blender_{mode}.json"))
         blend = attach_obs(blended_records(rec, b.weights), rec)
         stds = {v: pt.seasonal_std(v, 3) if mode == "seasonal" else pt.standardized(v) for v in ("t2m", "tp")}
         for v in ("t2m", "tp"):
@@ -97,7 +96,7 @@ def main():
             if a > 0:
                 nnmap = nn_map(pt, v, mode, sorted(int(y) for y in sub["year"].unique()))
                 P = mix(P, row_keys(sub), nnmap, a)
-            cal = TercileCalibrator.load(wc.artifact_dir / f"calib_{mode}_{v}.json")
+            cal = TercileCalibrator.load(wc.artifact_path(f"calib_{mode}_{v}.json"))
             P_unc = P
             if cal is not None and cal.usable():
                 P = cal.transform(P)
@@ -107,7 +106,7 @@ def main():
             if mask.any():
                 P = P.copy()
                 P[mask] = P_unc[mask]
-            cc = ConformalQuantileCalibrator.load(wc.artifact_dir / f"conformal_{mode}_{v}.json")
+            cc = ConformalQuantileCalibrator.load(wc.artifact_path(f"conformal_{mode}_{v}.json"))
             if cc is not None and cc.usable():
                 Q = np.array([cc.transform(q, v, int(l)) for q, l in zip(Q, sub["lead"].to_numpy(int))])
             m = _metrics(mode, v, sub, P, Q, stds[v])

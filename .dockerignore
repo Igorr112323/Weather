@@ -7,3 +7,8 @@ AgroCast/data
 AgroCast/tests
 deploy
 *.md
+**/.env
+**/.env.*
+**/secrets
+**/node_modules
+AgroCast/web

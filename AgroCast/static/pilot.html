@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AgroCast · закрытый пилот</title>
+<link rel="stylesheet" href="/pilot.css">
+<script src="/pilot.js" defer></script>
+</head>
+<body>
+<main>
+<header>
+<p class="eyebrow">AGROCAST · ЗАКРЫТЫЙ ПИЛОТ</p>
+<h1>Сначала проверка.<br>Затем прогноз.</h1>
+<p>Кукуруза на зерно · Краснодарский край · личная учётная запись.</p>
+</header>
+<section class="account-bar" aria-label="Учётная запись">
+<p id="identity-status" role="status">Проверяем сессию…</p>
+<button id="logout" type="button">Выйти</button>
+</section>
+<section class="notice" role="status" aria-live="polite">
+<h2>Прогнозный навык пока не подтверждён</h2>
+<p id="validation">Исторические результаты требуют повторной проверки: найдены временные утечки и ошибки пространственного аудита. Они не являются основанием для агрорешений.</p>
+</section>
+<section class="cards" aria-label="Возможности пилота">
+<article>
+<h2>Можно изучать</h2>
+<p>Зафиксированную сетку из 28 точек и исходные исторические результаты. Доступность данных не означает подтверждённую точность.</p>
+<a href="/workspace">Мои поля, справочник и сохранённые отчёты →</a>
+<a href="/value.html">Исторический паспорт навыка →</a>
+</article>
+<article>
+<h2>Пока отключено</h2>
+<p>Новые прогнозы, расчёт прошлого и регионального поля, отправка подписок и агрорекомендации. Сохранение своих полей и справочника доступно в разделе «Мои данные», настройки подписок — через API по роли; оно не запускает расчёт.</p>
+</article>
+</section>
+<section class="points">
+<h2>Область пилота</h2>
+<p>Это точки для проверки методики, не список разрешённых production-прогнозов. Доступных режимов и горизонтов нового прогноза сейчас нет.</p>
+<p id="status" role="status" aria-live="polite">Загружаем матрицу возможностей…</p>
+<div class="table-wrap">
+<table>
+<caption>Зафиксированные точки Краснодарского края</caption>
+<thead><tr><th scope="col">Точка</th><th scope="col">Широта</th><th scope="col">Долгота</th><th scope="col">Назначение</th></tr></thead>
+<tbody id="points"></tbody>
+</table>
+</div>
+</section>
+<footer>
+<p>Статус: исследовательский MVP. Публикация новых расчётов откроется после проверки данных, методики, безопасности и сохранности результатов.</p>
+<a href="/api/capabilities">Матрица возможностей API</a>
+</footer>
+</main>
+</body>
+</html>

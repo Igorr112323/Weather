@@ -1,12 +1,18 @@
-import json
+import hashlib
 import threading
 import traceback
+import time
+from uuid import UUID, uuid4
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from agrocast.core.config import Config, Region
+from agrocast.core.contracts import Coordinates
+from agrocast.core.jsoncodec import canonical_json
+from agrocast.core.settings import RuntimeSettings, ConfigurationError
+from agrocast.store.atomic import write_json
 from agrocast.ingest.openobs import fetch_cpc_daily, fetch_soil
 
 HINDCAST_YEARS = list(range(2004, 2025))
@@ -24,30 +30,27 @@ def point_box(lat, lon):
     )
 
 
-def world_config(world_dir):
-    wc = Config.load(str(Path(world_dir) / "config.json"))
-    wc.data_dir = str(Path(world_dir))
-    if not wc.shared_zarr:
-        wc.shared_zarr = str(Path(world_dir) / "zarr")
-    return wc
+def world_config(world_dir=None, data_root=None, settings=None):
+    settings = (settings or RuntimeSettings.from_environment()).with_paths(world_dir, data_root)
+    return settings.compute_config()
 
 
-def point_config(world_dir, data_root, lat, lon):
-    wc = world_config(world_dir)
+def point_config(world_dir, data_root, lat, lon, config_snapshot=None):
+    coordinates = Coordinates(lat=lat, lon=lon)
+    lat, lon = coordinates.lat, coordinates.lon
+    wc = Config.from_dict(config_snapshot) if config_snapshot is not None else world_config(world_dir, data_root)
+    if config_snapshot is not None and (Path(wc.bundle_dir) != Path(world_dir).resolve() or Path(wc.runtime_dir) != Path(data_root).resolve()):
+        raise ConfigurationError("Worker paths do not match the captured configuration")
     r = wc.region
     box = point_box(lat, lon)
     if box.lat_min >= r.lat_min and box.lat_max <= r.lat_max and box.lon_min >= r.lon_min and box.lon_max <= r.lon_max:
-        return wc, str(Path(world_dir))
-    key = f"{lat:.2f}_{lon:.2f}".replace("-", "m")
-    pdir = Path(data_root) / "points" / key
-    cfg = Config(
-        data_dir=str(pdir),
-        region=Region(lat_min=box.lat_min, lat_max=box.lat_max, lon_min=box.lon_min, lon_max=box.lon_max),
-        shared_zarr=str(Path(world_dir) / "zarr"),
-    )
-    pdir.mkdir(parents=True, exist_ok=True)
+        return wc, wc.data_dir
+    key = hashlib.sha256(canonical_json(coordinates.model_dump()).encode("utf-8")).hexdigest()
+    values = wc.to_dict()
+    values.update(data_dir=str(Path(data_root) / "compute" / "points" / key), region=box.__dict__, use_bundle_models=False)
+    cfg = Config.from_dict(values)
     cfg.save()
-    return cfg, str(pdir)
+    return cfg, cfg.data_dir
 
 
 def _fit_artifacts(cfg, log):
@@ -98,10 +101,7 @@ def _fit_artifacts(cfg, log):
                 P = mix(P, row_keys(sub), nnmaps[v], alphas[v])
             cal = gated_calibrator(P, sub.obs_tercile.to_numpy(), years=sub["year"].to_numpy())
             cal_path = cfg.artifact_dir / f"calib_{mode}_{v}.json"
-            if cal.usable():
-                cal.save(cal_path)
-            else:
-                cal_path.unlink(missing_ok=True)
+            cal.save(cal_path)
             ccal = ConformalQuantileCalibrator().fit(sub)
             ccal.save(cfg.artifact_dir / f"conformal_{mode}_{v}.json")
             log(f"калибровка {mode} {v}: {cal.n} записей")
@@ -116,7 +116,11 @@ def ensure_point(cfg, world_dir, log):
     if marker.exists():
         log("данные точки уже готовы")
         return
-    wcfg = world_config(world_dir)
+    bundle_ready = Path(cfg.bundle_dir) / "ready.json" if cfg.bundle_dir else None
+    if cfg.use_bundle_models and bundle_ready is not None and bundle_ready.exists():
+        log("читаю модели из read-only bundle; это не проверка научного допуска")
+        return
+    wcfg = world_config(world_dir, cfg.runtime_dir or cfg.data_dir)
     inside = (
         cfg.region.lat_min >= wcfg.region.lat_min
         and cfg.region.lat_max <= wcfg.region.lat_max
@@ -131,7 +135,7 @@ def ensure_point(cfg, world_dir, log):
         fetch_soil(cfg)
         log("почва готова")
     _fit_artifacts(cfg, log)
-    marker.write_text(json.dumps({"ok": True}))
+    write_json(marker, {"ok": True})
     log("точка готова")
 
 
@@ -152,7 +156,7 @@ def run_hindcast(cfg, lat, lon, start, mode, horizon, log):
     if targets[0] < pd.Period("2004-01", "M"):
         raise ValueError("проверка на истории доступна с 2004 года")
     log(f"проверка на истории: старт {start}, режим {mode}, целей {len(targets)}")
-    rec = pd.read_parquet(cfg.artifact_dir / f"backtest_records_{mode}.parquet")
+    rec = pd.read_parquet(cfg.artifact_path(f"backtest_records_{mode}.parquet"))
     if mode == "monthly":
         rec = rec[rec.lead == 1]
     tyears = sorted({int(t.year) for t in targets})
@@ -214,7 +218,7 @@ def run_hindcast(cfg, lat, lon, start, mode, horizon, log):
             P_unc = P
             if cals.get(v) is not None and cals[v].usable():
                 P = cals[v].transform(P.reshape(1, -1))[0]
-            if regime_guard.shifted(mon[v], stds[v], v, mode, t - 1, t if mode == "seasonal" else None):
+            if regime_guard.shifted(mon[v], stds[v], v, mode, t - 1, t if mode == "seasonal" else None, config=cfg):
                 P = P_unc
             std = stds[v]
             if t not in std.index:
@@ -248,7 +252,13 @@ def run_hindcast(cfg, lat, lon, start, mode, horizon, log):
 
 class Job:
     def __init__(self, job_id, params):
-        self.id = job_id
+        try:
+            self.id = str(UUID(str(job_id)))
+        except ValueError:
+            self.id = str(uuid4())
+        self.legacy_id = str(job_id)
+        self.config_snapshot = None
+        self.created_at = int(time.time())
         self.params = params
         self.status = "running"
         self.log = []
@@ -260,13 +270,25 @@ class Job:
 
 
 def run_job(job, world_dir, data_root):
+    settings = RuntimeSettings.from_environment().with_paths(world_dir, data_root)
+    settings.prepare_state()
+    if job.config_snapshot is None:
+        job.config_snapshot = settings.compute_config().to_dict()
+    snapshot_path = settings.state_dir / "offline-jobs" / (job.id + ".json")
+
+    def persist():
+        write_json(snapshot_path, {"id": job.id, "legacy_id": job.legacy_id, "params": job.params, "status": job.status,
+            "result": job.result, "error": job.error, "log": job.log, "created_at": job.created_at,
+            "updated_at": int(time.time()), "config": job.config_snapshot, "ownership": "unassigned_offline"})
+
+    persist()
     try:
         from agrocast.forecast.orchestrator import forecast_point
 
         lat = float(job.params["lat"])
         lon = float(job.params["lon"])
         kind = job.params.get("kind", "forecast")
-        cfg, _ = point_config(world_dir, data_root, lat, lon)
+        cfg, _ = point_config(world_dir, data_root, lat, lon, job.config_snapshot)
         job.add(f"точка {lat:.2f}°N {lon:.2f}°E")
         ensure_point(cfg, world_dir, job.add)
         if kind == "hindcast":
@@ -299,9 +321,12 @@ def run_job(job, world_dir, data_root):
         job.error = f"{type(exc).__name__}: {exc}"
         job.add("ошибка: " + job.error)
         traceback.print_exc()
+    finally:
+        persist()
 
 
 def start_job(job, world_dir, data_root):
+    job.config_snapshot = world_config(world_dir, data_root).to_dict()
     t = threading.Thread(target=run_job, args=(job, world_dir, data_root), daemon=True)
     t.start()
     return job

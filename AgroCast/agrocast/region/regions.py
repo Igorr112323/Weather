@@ -11,7 +11,7 @@ REGIONS = {
     "rostov": {"name": "Ростовская область", "bounds": (46.0, 47.5, 38.0, 43.0)},
 }
 
-DEFAULT_WORLD = Path(__file__).resolve().parents[2] / "world"
+from agrocast.core.settings import RuntimeSettings
 
 
 def known(region):
@@ -39,26 +39,27 @@ def region_cells(store, region="krai", min_coverage=MIN_COVERAGE, cell=CELL_DEG)
                       bounds=region_bounds(region))
 
 
-def save_region_grid(cells, world_dir=DEFAULT_WORLD, region="krai",
+def save_region_grid(cells, world_dir=None, region="krai",
                      min_coverage=MIN_COVERAGE, cell=CELL_DEG):
+    world_dir = world_dir or RuntimeSettings.from_environment().state_dir / "compute"
     path = grid_artifact_path(world_dir, region)
     return save_grid(cells, path=path, bounds=region_bounds(region), cell=cell,
                      min_coverage=min_coverage, name=f"{region}_grid")
 
 
-def load_region_grid(world_dir=DEFAULT_WORLD, region="krai"):
-    return json.loads(grid_artifact_path(world_dir, region).read_text(encoding="utf-8"))
+def load_region_grid(world_dir=None, region="krai"):
+    return json.loads(grid_artifact_path(world_dir or RuntimeSettings.from_environment().world_dir, region).read_text(encoding="utf-8"))
 
 
-def load_region_skill(world_dir=DEFAULT_WORLD, region="krai"):
-    p = skill_artifact_path(world_dir, region)
+def load_region_skill(world_dir=None, region="krai"):
+    p = skill_artifact_path(world_dir or RuntimeSettings.from_environment().world_dir, region)
     if not p.exists():
         return None
     return json.loads(p.read_text(encoding="utf-8"))
 
 
-def region_summary(world_dir=DEFAULT_WORLD):
-    world_dir = Path(world_dir)
+def region_summary(world_dir=None):
+    world_dir = Path(world_dir or RuntimeSettings.from_environment().world_dir)
     rows = []
     for rid, meta in REGIONS.items():
         gp = grid_artifact_path(world_dir, rid)

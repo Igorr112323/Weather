@@ -1,0 +1,16 @@
+{
+  "name": "agrocast-browser-tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "vendor": "node web/vendor.mjs",
+    "check:vendor": "node web/vendor.mjs --check",
+    "check:dom": "node web/check-dom.mjs"
+  },
+  "devDependencies": {
+    "acorn": "8.15.0",
+    "esbuild": "0.25.10",
+    "leaflet": "1.9.4"
+  }
+}

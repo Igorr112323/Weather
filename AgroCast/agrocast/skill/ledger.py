@@ -1,17 +1,5 @@
-"""Реестр доверия (trust ledger) — публичный, защищённый от подделки
-счёт навыка системы.
-
-Каждый прогноз (backtest-год или живой выпуск) попадает в реестр строкой:
-датой выпуска, координатой, вероятностями, квантилями, фактом и
-SHA-256-хэшем входов. Хэш делает запись подлинностно-проверяемой:
-если «навык» в отчёте не совпадает с хэшем выпусков — это видно.
-
-Это «банк доверия», которого нет ни у одной публичной агро-сервисной
-системы: честный трек-рекорд, пересчитываемый из одних и тех же данных.
-"""
 import hashlib
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -24,7 +12,7 @@ SEASON_OF = {12: "DJF", 1: "DJF", 2: "DJF", 3: "MAM", 4: "MAM", 5: "MAM",
 
 
 def _ospr_shrink(P, blend, pt, lead=3):
-    W = float(os.environ.get("AGROCAST_OSPR_W", "0.20"))
+    W = getattr(getattr(pt, "config", None), "ospr_weight", 0.2)
     spr = pt.ocean_spread(lead=lead)
     if spr is None or len(spr) < 20:
         return P
@@ -56,7 +44,7 @@ def record_hash(issue, lat, lon, variable, p, q):
 
 
 def ece(probs, obs, bins=10):
-    """Expected calibration error по максимальной вероятности и её попаданию."""
+
     probs = np.asarray(probs, float)
     obs = np.asarray(obs, int)
     m = probs.max(axis=1)
@@ -93,9 +81,8 @@ def _block(g, qcov80=None):
 
 
 def build_ledger(records, mode="monthly", config=None, half_life_years=5.0):
-    """Из записей backtest'а: LOY-бленд + изотоника + конформная калибровка
-    → финальные строки с фактами. Протокол без подглядывания: для каждого
-    года блендер обучен без него."""
+
+
     from agrocast.blend.blender import Blender, blended_records, attach_obs, season_of
     from agrocast.blend.calibration import TercileCalibrator
     from agrocast.blend.conformal import ConformalQuantileCalibrator
@@ -180,7 +167,7 @@ def build_ledger(records, mode="monthly", config=None, half_life_years=5.0):
                 mode,
                 blend["target_month"].to_numpy(int),
             )
-        if pt is not None and len(P) > 0 and v == "tp" and os.environ.get("AGROCAST_OSPR", "1") != "0":
+        if pt is not None and len(P) > 0 and v == "tp" and getattr(config, "ospr_enabled", True):
             P = _ospr_shrink(P, blend, pt)
         blend = blend.assign(p0=P[:, 0], p1=P[:, 1], p2=P[:, 2])
         ccal = ConformalQuantileCalibrator().fit(blend)
@@ -199,7 +186,7 @@ def build_ledger(records, mode="monthly", config=None, half_life_years=5.0):
 
     def _issue(r):
         tgt = pd.Period(f"{int(r['year'])}-{int(r['target_month']):02d}", "M")
-        # в движке: issue = start − 1, tgt = start + lead − 1  =>  issue = tgt − lead
+
         return str(tgt - int(r["lead"]))
 
     led["issue"] = [_issue(r) for _, r in led.iterrows()]
@@ -223,11 +210,11 @@ def ledger_summary(led):
             by_season[str(se)] = b
     s["by_lead"] = by_lead
     s["by_season"] = by_season
-    # покрытие P10–P90 после конформной калибровки (финальные q в реестре)
+
     in80 = (led["obs_z"] >= led["q10"] - 1e-9) & (led["obs_z"] <= led["q90"] + 1e-9)
     s["p80_coverage"] = round(float(in80.mean()), 3)
     s["median_abs_median_err"] = round(float(np.median((led["obs_z"] - led["q50"]).abs())), 3)
-    # последние посчитанные прогнозы (для живой ленты)
+
     last = led.sort_values(["issue", "variable"]).groupby("issue").tail(1).tail(12)
     s["recent"] = [
         {
@@ -261,11 +248,11 @@ def save_ledger(led, config, mode):
 
 
 def load_ledger(config, mode):
-    p = ledger_path(config, mode)
+    p = config.artifact_path(f"trust_ledger_{mode}.parquet")
     if not p.exists():
         return None, None
     led = pd.read_parquet(p)
-    sp = summary_path(config, mode)
+    sp = config.artifact_path(f"trust_summary_{mode}.json")
     s = json.loads(sp.read_text()) if sp.exists() else ledger_summary(led)
     return led, s
 
@@ -278,7 +265,7 @@ def live_path(config):
 
 
 def append_live(config, issue, lat, lon, variable, p, q, target=None):
-    """Живой выпуск: строка с хэшем входов (подлинностно-проверяемая)."""
+
     t = str(target) if target is not None else None
     row = pd.DataFrame(
         [
@@ -299,8 +286,9 @@ def append_live(config, issue, lat, lon, variable, p, q, target=None):
         ]
     )
     pth = live_path(config)
-    if pth.exists():
-        old = pd.read_parquet(pth)
+    previous = config.artifact_path(LIVE_PATH_NAME)
+    if previous.exists():
+        old = pd.read_parquet(previous)
         if "target" not in old.columns:
             old["target"] = None
         tmatch = old["target"].isna() if t is None else old["target"].astype(str) == t
@@ -314,7 +302,7 @@ def append_live(config, issue, lat, lon, variable, p, q, target=None):
 
 
 def live_summary(config, limit=12):
-    pth = live_path(config)
+    pth = config.artifact_path(LIVE_PATH_NAME)
     if not pth.exists():
         return None
     df = pd.read_parquet(pth).sort_values("issue", ascending=False).head(limit)

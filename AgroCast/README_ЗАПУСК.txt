@@ -1,15 +1,31 @@
 AgroCast — сезонный агропрогноз для России (автономный продукт)
 =================================================================
 
-ЗАПУСК
-  1. Распакуйте папку AgroCast в любое место.
-  2. Нужен Python 3.11+.
-  3. Запуск:  python app.py
-     — при первом запуске сам установит зависимости (numpy, pandas, xarray,
-       zarr, scikit-learn, lightgbm, fastapi, uvicorn и др.),
-     — поднимет локальный сервер и открыет карту в браузере.
-     Ручной вариант:  pip install -r requirements.txt
-                      uvicorn agrocast.serve.product:app --port 8501
+ТЕКУЩИЙ РЕЖИМ: ЗАКРЫТЫЙ ПИЛОТ, ЛИЧНЫЕ АККАУНТЫ, БЕЗОПАСНЫЙ UI И КОНТРАКТ API (T05, 2026-09-05)
+  Общий HTTP Basic T01 заменён пользователями, ролями и cookie-сессиями.
+  Нужны PostgreSQL, миграция и начальный admin. Вход — только по HTTPS.
+  Настройка: ../docs/production/IDENTITY.md; scope: ../docs/production/PILOT.md.
+  Поля и справочник: /workspace; свои сохранённые отчёты — по ссылке из списка.
+  Настройки подписок доступны через API по роли; отправка отключена.
+  DOM/CSP и проверки браузера: ../docs/production/BROWSER_SECURITY.md.
+  Текущая схема 0003_persistent_state; контракт: ../docs/production/API_CACHE.md.
+  Settings, read-only world и backup/restore: ../docs/production/STATE.md.
+  Неправильные settings или неготовая БД останавливают startup; без сессии — 401.
+  Контейнерные build/recreate/restore ещё не проверены.
+  Новые прогнозы, пересчёты и агрорекомендации отключены для всех ролей.
+  Исходные метрики навыка и покрытия не перепроверены.
+  Ниже сохранено описание исследовательского MVP, не текущего допуска.
+
+ТЕКУЩИЙ ЗАПУСК
+  1. Python 3.11+, pip install -r requirements.txt.
+  2. Настройте AGROCAST_WORLD_DIR, AGROCAST_STATE_DIR, AGROCAST_DATABASE_URL_FILE,
+     AGROCAST_PUBLIC_ORIGIN и PostgreSQL по ../docs/production/STATE.md.
+  3. Примените python -m agrocast.identity.cli migrate и создайте личный admin.
+  4. uvicorn agrocast.serve.product:create_app --factory --host 0.0.0.0 --port 8501
+     Нужен HTTPS reverse proxy. python app.py вызывает ту же guarded CLI;
+     автоматическая установка пакетов и открытие HTTP login удалены.
+
+НИЖЕ — ИСТОРИЧЕСКОЕ ОПИСАНИЕ ИССЛЕДОВАТЕЛЬСКОГО MVP, НЕ ТЕКУЩИЙ HTTP-ДОПУСК
 
 КАК ПОЛЬЗОВАТЬСЯ
   — Кликните точку на карте России (вне территории — продукт откажет).
@@ -55,6 +71,7 @@ AgroCast — сезонный агропрогноз для России (авт
 
 ОБНОВЛЕНИЕ ДАННЫХ
   Снеговой покров (открытый NOAA CDR, 1966–наст., без ключей):
-      python -m agrocast.ingest.snowcdr --world world
+      python -m agrocast.ingest.snowcdr
+  Bundle читается из AGROCAST_WORLD_DIR, записи — в AGROCAST_STATE_DIR/compute.
   Прогноз пересчитывается на актуальном снеге: чем снежнее зима вокруг поля,
   тем холоднее и влажнее ожидается весна (драйвер «Снежный покров» в отчёте).

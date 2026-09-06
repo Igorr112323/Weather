@@ -10,9 +10,10 @@ import numpy as np
 import pandas as pd
 
 BASE = Path(__file__).resolve().parent.parent
-RECORDS = BASE / "data" / "audit" / "audit_records.csv"
-MD_OUT = BASE / "data" / "audit" / "value_report.md"
-JSON_OUT = BASE / "world" / "artifacts" / "value_report.json"
+if str(BASE) not in sys.path:
+    sys.path.insert(0, str(BASE))
+
+from agrocast.core.settings import RuntimeSettings
 
 MODES = ("seasonal", "monthly")
 VARS = ("t2m", "tp")
@@ -44,7 +45,6 @@ def _metrics(sub):
     n = int(len(sub))
     if n == 0:
         return {"n": 0, "rps": None, "rps_clim": None, "rpss": None, "hit": None}
-    obs = sub["obs_tercile"].to_numpy(int)
     rps = float(sub["rps"].mean())
     rc = float(sub["rps_c"].mean())
     rpss = 1.0 - rps / rc if rc > 1e-9 else None
@@ -55,7 +55,6 @@ def _metrics(sub):
 def _calib(sub):
     obs = sub["obs_tercile"].to_numpy(int)
     p = _probs(sub)
-    n = len(sub)
     freq = {}
     claimed = {}
     ece_parts = {}
@@ -293,20 +292,22 @@ def render_md(rep):
 
 
 def write_outputs(rep, md_path, json_path):
-    md_path = Path(md_path)
+    settings = RuntimeSettings.from_environment()
+    md_path = settings.writable_path(md_path)
     md_path.parent.mkdir(parents=True, exist_ok=True)
     md_path.write_text(render_md(rep), encoding="utf-8")
-    json_path = Path(json_path)
+    json_path = settings.writable_path(json_path)
     json_path.parent.mkdir(parents=True, exist_ok=True)
     json_path.write_text(json.dumps(rep, ensure_ascii=False, indent=1), encoding="utf-8")
     return md_path, json_path
 
 
 def main(argv=None):
+    settings = RuntimeSettings.from_environment()
     ap = argparse.ArgumentParser()
-    ap.add_argument("--records", default=str(RECORDS))
-    ap.add_argument("--md", default=str(MD_OUT))
-    ap.add_argument("--json", default=str(JSON_OUT))
+    ap.add_argument("--records", default=str(settings.state_dir / "audit/audit_records.csv"))
+    ap.add_argument("--md", default=str(settings.state_dir / "audit/value_report.md"))
+    ap.add_argument("--json", default=str(settings.state_dir / "compute/artifacts/value_report.json"))
     args = ap.parse_args(argv)
     if not Path(args.records).exists():
         print("нет записей аудита: сначала запустите python -m scripts.audit_full grid --workers 2"

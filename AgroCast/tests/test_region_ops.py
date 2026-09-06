@@ -6,7 +6,7 @@ import numpy as np
 
 from agrocast.region import grid as grid_mod
 from agrocast.region import regions
-from agrocast.region.grid import cell_centers, krai_cells, save_grid
+from agrocast.region.grid import cell_centers, krai_cells
 from agrocast.serve import region as region_mod
 from agrocast.serve.digest import build_digest
 from test_grid import FakeStore, _fake_ds
@@ -69,7 +69,7 @@ def test_region_block_reports_field_skill_and_tp(tmp_path):
             dst = dstf(str(tmp_path), rid)
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(src, dst)
-    fp = region_mod.field_path(tmp_path, "stavropol")
+    fp = region_mod.legacy_field_path(tmp_path, "stavropol")
     fp.parent.mkdir(parents=True, exist_ok=True)
     payload = {"meta": {"months": ["2026-10", "2026-11", "2026-12"],
                         "issue_through": "2026-08", "dominant_cells": {"below": 3, "normal": 5, "above": 0}},
@@ -96,10 +96,10 @@ def test_region_freshness_field_and_artifact_statuses(tmp_path):
     alerts = region_freshness(world, str(data_root))
     assert not [a for a in alerts if "поле krai" in a]
     assert not [a for a in alerts if "поле stavropol" in a]
-    fp = region_mod.field_path(data_root, "krai")
+    fp = region_mod.legacy_field_path(data_root, "krai")
     fp.parent.mkdir(parents=True, exist_ok=True)
     fp.write_text(json.dumps({"meta": {}}), encoding="utf-8")
-    fp2 = region_mod.field_path(data_root, "rostov")
+    fp2 = region_mod.legacy_field_path(data_root, "rostov")
     fp2.parent.mkdir(parents=True, exist_ok=True)
     fp2.write_text(json.dumps({"meta": {}}), encoding="utf-8")
     old = time.time() - 12 * 86400

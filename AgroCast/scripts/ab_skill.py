@@ -1,11 +1,3 @@
-"""A/B-тест точности: старая система (6 моделей, равномерные веса)
-против новой (9 моделей, веса по «свежести» 5 лет, изотоника,
-конформная калибровка). Всё — на одних и тех же записях backtest'а,
-протокол leave-one-year-out без подглядывания.
-
-Запуск:  python -m scripts.ab_skill  (из папки AgroCast)
-Результат: world/artifacts/ab_skill.json + таблица в консоль.
-"""
 import json
 import sys
 from pathlib import Path
@@ -16,7 +8,7 @@ import pandas as pd
 BASE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BASE))
 
-from agrocast.serve.pipeline import world_config  # noqa: E402
+from agrocast.serve.pipeline import world_config
 
 OLD_MODELS = ["clim", "analog", "ridge", "gbm", "ridge_land", "ridge_ocean"]
 
@@ -80,8 +72,7 @@ def loy_blend(rec, models, half_life):
 
 
 def main(world_dir=None):
-    w = Path(world_dir) if world_dir else BASE / "world"
-    wc = world_config(w)
+    wc = world_config(world_dir)
     from agrocast.backtest.engine import load_records, skill_summary
     from agrocast.skill.ledger import load_ledger
 

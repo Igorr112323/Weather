@@ -1,11 +1,8 @@
 import json
-import os
 import time
-from pathlib import Path
 
 import pandas as pd
 
-from agrocast.core.config import Config
 from agrocast.ingest.registry import Registry
 from agrocast.ingest import openobs
 from agrocast.ingest.stations import STATION_CATALOG
@@ -120,7 +117,7 @@ def monthly_cycle(config, full=False):
             subs.append({"name": s["name"], "mode": mode, "start": fc["start"], "blocks": len(fc.get("months", fc.get("seasons", [])))})
         except Exception as exc:
             reg.log_event("sub_fail", f"{s['name']}: {exc}")
-    rebuilt = _refresh_region_fields(reg)
+    rebuilt = _refresh_region_fields(reg, config)
     summary = {
         "ingest_keys": list(ingest.keys()),
         "verified_scores": n,
@@ -132,21 +129,29 @@ def monthly_cycle(config, full=False):
     return summary
 
 
-def _refresh_region_fields(reg):
+def _refresh_region_fields(reg, config=None):
     from agrocast.core.timeutils import next_occurrence
     from agrocast.serve import region as region_mod
 
-    base = Path(__file__).resolve().parent.parent.parent
-    world_dir = os.environ.get("AGROCAST_WORLD", str(base / "world"))
-    data_root = os.environ.get("AGROCAST_DATA", str(base / "data"))
+    from agrocast.core.settings import RuntimeSettings
+
+    settings = RuntimeSettings.from_environment().with_paths(getattr(config, "bundle_dir", None), getattr(config, "runtime_dir", None))
+    world_dir, data_root = settings.world_dir, settings.state_dir
     start = str(next_occurrence((pd.Timestamp.now().month % 12) + 1))
     rebuilt = []
+    from agrocast.store.results import Releases, ResultCache
+
+    try:
+        releases = Releases.from_file(settings.release_manifest_file)
+    except (OSError, ValueError):
+        reg.log_event("region_unavailable", "explicit release identity is missing or invalid")
+        return rebuilt
     for rid in list(region_mod.REGIONS):
         try:
-            age = region_mod.field_age_s(data_root, rid)
-            if age is not None and age < region_mod.REGION_REBUILD_AFTER_S:
+            identity = region_mod.region_identity(start, world_dir, rid, releases)
+            if ResultCache(data_root).read(identity, max_age=region_mod.REGION_REBUILD_AFTER_S) is not None:
                 continue
-            region_mod.build_field(start, world_dir, data_root, region=rid, workers=2)
+            region_mod.build_field(start, world_dir, data_root, region=rid, workers=2, releases=releases)
             rebuilt.append(rid)
             reg.log_event("region", f"{rid}: поле пересчитано, старт {start}")
         except Exception as exc:

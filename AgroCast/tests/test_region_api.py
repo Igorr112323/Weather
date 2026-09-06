@@ -1,12 +1,10 @@
-import json
 import os
-import time
 
 import pytest
 
 from agrocast.serve import region as region_mod
-from agrocast.serve.product import (JOBS, RegionRefreshRequest, region_field, region_grid,
-                                    region_refresh, region_regions, region_skill)
+from agrocast.serve.product import (RegionRefreshRequest, region_grid, region_refresh, region_regions, region_skill)
+from agrocast.serve.errors import APIError
 
 
 def test_grid_endpoint_serves_28_cells():
@@ -34,72 +32,15 @@ def test_skill_endpoint_serves_audit_numbers():
     assert len(s["by_point"]) == 28
 
 
-def test_field_endpoint_missing_stale_fresh(tmp_path, monkeypatch):
-    import agrocast.serve.product as product_mod
-
-    monkeypatch.setattr(product_mod, "DATA_ROOT", str(tmp_path))
-    out = region_field()
-    assert out["ok"] is False
-
-    fp = region_mod.field_path(tmp_path)
-    fp.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"meta": {"months": ["2026-10", "2026-11", "2026-12"], "issue_through": "2026-02"},
-               "points": [], "field": {"below": [[0.33]], "normal": [[0.33]], "above": [[0.34]]}}
-    fp.write_text(json.dumps(payload), encoding="utf-8")
-    fresh = region_field()
-    assert fresh["ok"] is True
-    assert fresh["meta"]["stale"] is False
-    assert fresh["meta"]["region"] == "krai"
-    assert fresh["field"]["below"] == [[0.33]]
-
-    old = time.time() - region_mod.FIELD_MAX_AGE_S - 3600
-    os.utime(fp, (old, old))
-    stale = region_field()
-    assert stale["ok"] is True
-    assert stale["meta"]["stale"] is True
-
-
-def test_refresh_endpoint_runs_job_and_field_appears(tmp_path, monkeypatch):
-    import agrocast.serve.product as product_mod
-
-    monkeypatch.setattr(product_mod, "DATA_ROOT", str(tmp_path))
-    calls = []
-
-    def stub_build(start, world_dir, data_root, region="krai", workers=2, log=None):
-        calls.append(start)
-        fp = region_mod.field_path(data_root, region)
-        fp.parent.mkdir(parents=True, exist_ok=True)
-        fp.write_text(json.dumps({"meta": {"months": [start], "issue_through": "2026-02",
-                                           "region": region},
-                                  "points": [], "field": {"below": [[1.0]], "normal": [[0.0]], "above": [[0.0]]}}),
-                      encoding="utf-8")
-        if log:
-            log("stub done")
-        return fp
-
-    monkeypatch.setattr(region_mod, "build_field", stub_build)
-    r = region_refresh(RegionRefreshRequest(start="2026-10"))
-    assert r["ok"] is True and r["job"]
-    job = JOBS[r["job"]]
-    for _ in range(100):
-        if job.status != "running":
-            break
-        time.sleep(0.05)
-    assert job.status == "done"
-    assert calls == ["2026-10"]
-    out = region_field()
-    assert out["ok"] is True
-    assert out["meta"]["months"] == ["2026-10"]
-
-
-def test_unknown_region_returns_400():
-    for fn in (region_grid, region_skill, region_field):
-        r = fn(region="bavaria")
-        assert r.status_code == 400
-    r = region_refresh(RegionRefreshRequest(start="2026-10", region="bavaria"))
-    assert r.status_code == 400
-    ok = region_grid(region="krai")
-    assert ok["ok"] is True
+def test_invalid_region_models_and_disabled_refresh():
+    for fn in (region_grid, region_skill):
+        with pytest.raises(ValueError):
+            fn(region="bavaria")
+    with pytest.raises(ValueError):
+        RegionRefreshRequest(start="2026-10", region="bavaria")
+    with pytest.raises(APIError) as error:
+        region_refresh(RegionRefreshRequest(start="2026-10"))
+    assert error.value.status == 403
 
 
 def test_stavropol_grid_serves_8_cells():
@@ -129,74 +70,32 @@ def test_stavropol_skill_serves_audit_numbers():
     assert all(p["seasonal_t2m_rpss"] > 0 for p in s["by_point"])
 
 
-def test_regions_endpoint_lists_registry_with_built_flags():
+def test_regions_endpoint_lists_only_pilot_region():
     out = region_regions()
     assert out["ok"] is True
     rows = {r["region"]: r for r in out["regions"]}
-    assert set(rows) == {"krai", "stavropol", "rostov"}
+    assert set(rows) == {"krai"}
+    assert out["validation"]["status"] == "unverified"
     assert rows["krai"]["built"] is True and rows["krai"]["n_cells"] == 28
-    assert rows["stavropol"]["built"] is True and rows["stavropol"]["n_cells"] == 8
-    assert rows["rostov"]["built"] is True and rows["rostov"]["n_cells"] == 17
     assert rows["krai"]["name"] == "Краснодарский край"
     assert rows["krai"]["bounds"]["lat_min"] == 44.0
     assert rows["krai"]["skill"] is True
-    assert rows["stavropol"]["seasonal_t2m_rpss"] > 0.2
-    assert rows["rostov"]["verifications"] == 16320
-    assert rows["rostov"]["seasonal_t2m_rpss"] > 0.2
 
 
 def test_field_paths_per_region(tmp_path):
-    p_krai = region_mod.field_path(tmp_path, "krai")
+    p_krai = region_mod.legacy_field_path(tmp_path, "krai")
     assert str(p_krai).endswith(os.path.join("audit", "krig_demo_tp.json"))
-    p_st = region_mod.field_path(tmp_path, "stavropol")
+    p_st = region_mod.legacy_field_path(tmp_path, "stavropol")
     assert str(p_st).endswith(os.path.join("audit", "stavropol_field.json"))
-    p_ro = region_mod.field_path(tmp_path, "rostov")
+    p_ro = region_mod.legacy_field_path(tmp_path, "rostov")
     assert str(p_ro).endswith(os.path.join("audit", "rostov_field.json"))
     assert p_st != p_krai and p_ro != p_st
 
 
-def test_refresh_per_region_runs_job_with_region(tmp_path, monkeypatch):
-    import agrocast.serve.product as product_mod
-
-    monkeypatch.setattr(product_mod, "DATA_ROOT", str(tmp_path))
-    calls = []
-
-    def stub_build(start, world_dir, data_root, region="krai", workers=2, log=None):
-        calls.append((start, region))
-        fp = region_mod.field_path(data_root, region)
-        fp.parent.mkdir(parents=True, exist_ok=True)
-        fp.write_text(json.dumps({"meta": {"months": [start], "issue_through": "2026-02",
-                                           "region": region},
-                                  "points": [], "field": {"below": [[1.0]], "normal": [[0.0]], "above": [[0.0]]}}),
-                      encoding="utf-8")
-        if log:
-            log("stub done")
-        return fp
-
-    monkeypatch.setattr(region_mod, "build_field", stub_build)
-    r = region_refresh(RegionRefreshRequest(start="2026-11", region="stavropol"))
-    assert r["ok"] is True and r["job"] and r["region"] == "stavropol"
-    job = JOBS[r["job"]]
-    for _ in range(100):
-        if job.status != "running":
-            break
-        time.sleep(0.05)
-    assert job.status == "done"
-    assert calls == [("2026-11", "stavropol")]
-    out = region_field(region="stavropol")
-    assert out["ok"] is True
-    assert out["meta"]["region"] == "stavropol"
-    assert out["meta"]["months"] == ["2026-11"]
-    assert region_mod.field_path(tmp_path, "stavropol").exists()
-    miss = region_field(region="rostov")
-    assert miss["ok"] is False
-
-
 def test_region_block_per_region(tmp_path):
-    import agrocast.serve.product as product_mod
-    from pathlib import Path
+    from agrocast.core.settings import RuntimeSettings
 
-    base = Path(product_mod.WORLD)
+    base = RuntimeSettings.from_environment().world_dir
     txt_k = region_mod.region_block(str(base), str(tmp_path), "krai")
     assert "Краснодарский край" in txt_k
     assert "поле региона не рассчитано" in txt_k

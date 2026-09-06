@@ -14,7 +14,7 @@ def stack_path(config, mode, variable):
 def load_alpha(config, mode, variable):
     if variable == "tp":
         return 0.0
-    p = stack_path(config, mode, variable)
+    p = config.artifact_path(f"stack_{mode}_{variable}.json")
     if not p.exists():
         return 0.0
     try:

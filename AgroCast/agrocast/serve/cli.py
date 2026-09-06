@@ -1,24 +1,20 @@
 import argparse
 import json
-import sys
-from pathlib import Path
 
 import pandas as pd
 
 from agrocast.core.config import Config
+from agrocast.core.settings import RuntimeSettings, ConfigurationError
 
 
-def _load_config(data_dir):
-    cfg_path = Path(data_dir) / "config.json"
-    if cfg_path.exists():
-        return Config.load(cfg_path)
-    cfg = Config(data_dir=data_dir)
-    return cfg
+def _load_config(data_dir=None, world_dir=None):
+    return RuntimeSettings.from_environment().with_paths(world_dir, data_dir).compute_config()
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="agrocast")
-    p.add_argument("--data-dir", default=str(Path.home() / "agrocast_data"))
+    p.add_argument("--state-dir", "--data-dir", dest="data_dir", default=None)
+    p.add_argument("--world-dir", default=None)
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("init-synthetic")
@@ -55,16 +51,35 @@ def main(argv=None):
     sp.add_argument("--mode", default="monthly", choices=["monthly", "seasonal"])
     sp.add_argument("--season-len", type=int, default=3)
 
-    sp = sub.add_parser("serve")
+    sp = sub.add_parser("serve", help="Закрытый пилот с личными аккаунтами; настройки AGROCAST_*")
     sp.add_argument("--host", default="0.0.0.0")
     sp.add_argument("--port", type=int, default=8000)
 
     sub.add_parser("autopilot")
     sub.add_parser("verify")
+    sub.add_parser("settings")
     sub.add_parser("skill")
 
     args = p.parse_args(argv)
-    cfg = _load_config(args.data_dir)
+    try:
+        settings = RuntimeSettings.from_environment().with_paths(args.world_dir, args.data_dir)
+        if args.cmd not in {"init-synthetic", "serve", "settings"}:
+            cfg = settings.compute_config()
+    except ConfigurationError as error:
+        raise SystemExit(str(error)) from None
+    if args.cmd == "settings":
+        print(json.dumps(settings.public_snapshot(), ensure_ascii=False, sort_keys=True))
+        return
+    if args.cmd == "serve":
+        import uvicorn
+        from agrocast.serve.product import create_app
+
+        uvicorn.run(create_app(settings=settings), host=args.host, port=args.port)
+        return
+
+    if args.cmd == "init-synthetic":
+        cfg = Config(data_dir=str(settings.state_dir / "compute"), runtime_dir=str(settings.state_dir), **settings.numeric_overrides())
+    settings.prepare_state()
     cfg.save()
 
     if args.cmd == "init-synthetic":
@@ -118,15 +133,9 @@ def main(argv=None):
         fc = forecast_point(cfg, args.lat, args.lon, start=start, horizon=args.horizon, variables=tuple(args.vars.split(",")), mode=args.mode, season_len=args.season_len)
         text = json.dumps(fc, ensure_ascii=False, indent=2, default=str)
         if args.out:
-            Path(args.out).write_text(text)
+            settings.writable_path(args.out).write_text(text)
         else:
             print(text)
-
-    elif args.cmd == "serve":
-        import uvicorn
-        from agrocast.serve.api import app
-
-        uvicorn.run(app, host=args.host, port=args.port)
 
     elif args.cmd == "autopilot":
         from agrocast.autopilot.cycle import schedule

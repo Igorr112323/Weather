@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -16,6 +16,7 @@ from agrocast.core.contracts import (
     CONTRACT_VERSION, EmptyQuery, ForecastSpec,
     RegionFieldQuery, RegionFieldSpec, RegionId, RegionQuery, ReportQuery,
 )
+from agrocast.core.errors import IssueFreshnessError
 from agrocast.core.jsoncodec import strict_json
 from agrocast.identity.credentials import IdentityError
 from agrocast.core.settings import RuntimeSettings
@@ -29,7 +30,8 @@ from agrocast.serve.pilot import PILOT_REGION, PILOT_WARNING, historical_result,
 from agrocast.serve.queue_api import router as queue_router
 from agrocast.serve.responses import (
     AcceptedJob, CapabilitiesResponse, DiagnosticResponse, GridResponse, LivenessResponse, LocalForecastResponse,
-    LocalInputsResponse, RegionFieldResponse, RegionsResponse, SkillResponse, ValueResponse, accepted_job_response,
+    LocalInputsResponse, ReadinessResponse, RegionFieldResponse, RegionsResponse, SkillResponse, ValueResponse,
+    accepted_job_response,
 )
 from agrocast.serve.security import AccessGuard, PUBLIC_GET_PATHS
 
@@ -193,6 +195,8 @@ def local_forecast(request: Request, spec: ForecastSpec):
     principal = getattr(request.state, "principal", None)
     try:
         return run_forecast(settings, spec, principal)
+    except IssueFreshnessError:
+        raise APIError("issue_inputs_mismatch", 422, "Запрошенный месяц новее последних полных входов; прогноз не публикуется") from None
     except ValueError:
         raise APIError("compute_failed", 500, "Локальный расчёт не завершился; входные данные и кэш сохранены") from None
 
@@ -240,6 +244,16 @@ def value_page():
 @router.get("/health/live", response_model=LivenessResponse)
 def liveness(query: NoQuery = EmptyQuery()):
     return {"status": "alive", "stage": "closed_pilot", "forecast_enabled": False}
+
+
+@router.get("/health/ready", response_model=ReadinessResponse)
+def readiness_endpoint(request: Request, query: NoQuery = EmptyQuery()):
+    from agrocast.serve import readiness as readiness_service
+
+    settings = request.app.state.settings
+    engine = getattr(getattr(request.app.state, "identity", None), "engine", None)
+    result = readiness_service.evaluate(settings, request.app.state.config, engine=engine)
+    return JSONResponse(result, status_code=200 if result["status"] == "ready" else 503)
 
 
 @router.get("/api/capabilities", response_model=CapabilitiesResponse)

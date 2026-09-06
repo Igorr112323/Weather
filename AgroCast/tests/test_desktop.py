@@ -12,7 +12,7 @@ from agrocast.serve.product import create_app
 from agrocast.serve.runtime import LOCAL_ORG_ID, LOCAL_USER_ID
 
 ORIGIN = "https://127.0.0.1"
-POINT = {"lat": 45.03, "lon": 39.07, "start": "2026-10", "horizon": 3, "mode": "seasonal", "season_len": 3}
+POINT = {"lat": 45.03, "lon": 39.07, "start": "2026-03", "horizon": 3, "mode": "seasonal", "season_len": 3}
 
 
 @pytest.fixture
@@ -96,7 +96,7 @@ def test_local_forecast_computes_caches_and_skips_queue_tables(desktop_client, d
     assert response.status_code == 200, response.text
     first = response.json()
     assert first["cached"] is False
-    assert first["payload"]["start"] == "2026-10"
+    assert first["payload"]["start"] == "2026-03"
     assert first["payload"]["seasons"]
     assert first["identity"]["cache_version"] == "result-v1"
     assert first["computed_at"]
@@ -115,6 +115,14 @@ def test_local_forecast_computes_caches_and_skips_queue_tables(desktop_client, d
     body = desktop_client.get("/api/local/inputs").json()
     assert body["results_cache"]["total"] == 1
     assert body["releases"] is not None
+    import re
+
+    for name in ("daily_region", "fields_monthly", "sst", "strat_snow", "oisst_boxes", "regimes"):
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", body["sources_through"][name])
+    stale = desktop_client.post("/api/local/forecast", json={**POINT, "start": "2026-10"})
+    assert stale.status_code == 422
+    assert stale.json()["code"] == "issue_inputs_mismatch"
+    assert desktop_client.get("/health/ready").status_code in (200, 503)
     from sqlalchemy import create_engine
 
     engine = create_engine("sqlite:///" + str(desktop_settings.state_dir / "agrocast.db"))

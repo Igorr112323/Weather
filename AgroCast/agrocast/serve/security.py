@@ -15,7 +15,7 @@ from agrocast.core.jsoncodec import strict_json
 from agrocast.serve.errors import APIError, error_response
 
 SESSION_COOKIE = "__Host-agrocast_session"
-PUBLIC_GET_PATHS = frozenset({"/health/live", "/api/capabilities", "/login", "/login.js", "/pilot.css", *ASSETS})
+PUBLIC_GET_PATHS = frozenset({"/health/live", "/health/ready", "/api/capabilities", "/login", "/login.js", "/pilot.css", *ASSETS})
 PILOT_READ_PATHS = frozenset({
     "/", "/pilot.js", "/value.html", "/api/value", "/api/region/grid",
     "/api/region/regions", "/api/region/skill", "/api/auth/me",

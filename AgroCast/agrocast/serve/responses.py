@@ -223,6 +223,7 @@ class LocalInputsResponse(Contract):
     observations: DirectoryReport
     results_cache: dict
     releases: dict | None = None
+    sources_through: dict[str, str | None]
 
 
 class LocalForecastResponse(Contract):
@@ -268,6 +269,24 @@ class LivenessResponse(Contract):
     status: Literal["alive"]
     stage: Literal["closed_pilot"]
     forecast_enabled: Literal[False]
+
+
+class SourceHealth(Contract):
+    status: str
+    last: str | None = None
+    available_at: str | None = None
+    age_days: Annotated[StrictInt, Field(ge=0)] | None = None
+    limit_days: Annotated[StrictInt, Field(ge=1)]
+
+
+class ReadinessResponse(Contract):
+    status: Literal["ready", "not_ready"]
+    reasons: list[str]
+    degraded: list[str]
+    sources: dict[str, SourceHealth]
+    bundle: dict[str, JsonValue]
+    regions: dict[str, dict[str, JsonValue]]
+    queue: dict[str, JsonValue]
 
 
 class DiagnosticResponse(Contract):

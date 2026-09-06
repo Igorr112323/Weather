@@ -2,6 +2,7 @@ import datetime as dt
 from pathlib import Path
 
 import numpy as np
+from agrocast.core.errors import IssueFreshnessError
 import pandas as pd
 
 from agrocast.core.mathutils import exp_weights
@@ -237,6 +238,21 @@ def _sat_crop(v):
     }
 
 
+def align_issue(start, index):
+    explicit = start is not None
+    if start is None or not str(start).strip():
+        start = now_period() + 1
+    else:
+        start = pd.Period(str(start), "M") if not isinstance(start, pd.Period) else start
+    issue = start - 1
+    if issue not in index:
+        if explicit:
+            raise IssueFreshnessError("requested month is newer than the last complete predictor row")
+        issue = index[-1]
+        start = issue + 1
+    return start, issue
+
+
 def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "tp"), save=True, point=None, mode="monthly", season_len=3, variety=None):
     store = config.zarr_store()
     point = point or PointDataset(config, lat, lon, store)
@@ -256,16 +272,7 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
     except Exception:
         vcrop = None
     horizon = int(min(max(int(horizon), 1), config.horizon_max))
-    explicit = start is not None
-    if start is None or not str(start).strip():
-        start = now_period() + 1
-    else:
-        start = pd.Period(str(start), "M") if not isinstance(start, pd.Period) else start
-    issue = start - 1
-    if issue not in pf.index:
-        issue = pf.index[-1]
-        if not explicit:
-            start = issue + 1
+    start, issue = align_issue(start, pf.index)
     blender = Blender.load(config.artifact_path(blender_name(mode))) or Blender.default(variables)
     pcalib = {}
     ccalib = {}

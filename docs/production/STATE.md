@@ -60,6 +60,16 @@ python -m uvicorn agrocast.serve.product:create_app --factory --host 0.0.0.0 --p
 
 Compose сохраняет `/app/data` в прежнем named volume, монтирует `../AgroCast/world:/app/world:ro`, делает корневую ФС app read-only и выделяет `/tmp` как tmpfs. App/migrate имеют одинаковые canonical paths. PostgreSQL и state volumes необходимо сохранять вместе с прежним Compose project name. **Не используйте `down -v`, volume prune или новый project name как способ обновления.** Файл конфигурации Compose проверен статически; это не доказательство фактического container recreation.
 
+## Манифест бандла (T07)
+
+`world/ready.json` — манифест read-only бандла: минимум `{"ok": true}`; новые бандлы обязаны
+добавлять `contract` (равен `world-v1` приложения, иначе readiness 503), `built_at` и
+`predictor_through` (до какой даты полные предсказорные данные; дата позже фактического
+содержимого сторов — `bundle:manifest_ahead_of_store`, тоже 503). Возраст артефакта навыка
+`{region}_grid_skill.json` берётся из его внутреннего `generated_at`, а не из mtime.
+Скрипт `scripts/zarr_freshness.py` и `/health/ready` используют один модуль
+`agrocast/serve/readiness.py`; подробности — [FRESHNESS.md](FRESHNESS.md).
+
 ## Миграция схемы
 
 [`0003_persistent_state`](../../AgroCast/migrations/versions/0003_persistent_state.py) идёт после `0002_crop_revision`:

@@ -23,7 +23,7 @@ from test_queue_core import make_principal
 ORIGIN = "https://testserver"
 AGRO_DIR = Path(__file__).resolve().parents[1]
 DIGESTS = {"data_release": "a" * 64, "model_release": "b" * 64, "application_release": "c" * 64}
-READY_POINT = {"lat": 45.03, "lon": 39.07, "start": "2026-10", "horizon": 3, "mode": "seasonal", "season_len": 3}
+READY_POINT = {"lat": 45.03, "lon": 39.07, "start": "2026-03", "horizon": 3, "mode": "seasonal", "season_len": 3}
 TEST_KINDS = "sleepy,grandchild,probe,boom"
 
 try:

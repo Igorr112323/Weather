@@ -28,6 +28,12 @@ function el(tag, className, text) {
   return node;
 }
 
+function nextMonth(monthStr) {
+  const [year, month] = monthStr.split("-").map(Number);
+  const total = year * 12 + (month - 1) + 1;
+  return String(Math.floor(total / 12)).padStart(4, "0") + "-" + String((total % 12) + 1).padStart(2, "0");
+}
+
 function currentMonth() {
   const now = new Date();
   return now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
@@ -141,6 +147,14 @@ async function loadInputs() {
     const manifest = data.bundle_manifest || {};
     if (manifest.configuration && manifest.configuration.train_start) bundle.appendChild(el("p", "hint", "Климатическая база обучения: " + manifest.configuration.train_start + "–" + (manifest.configuration.backtest_start || "…")));
     if (data.releases) bundle.appendChild(el("p", "hint", "Отпечаток данных выпуска: " + String(data.releases.data_release).slice(0, 12) + "…"));
+    const through = data.sources_through || {};
+    if (through.fields_monthly) {
+      const latest = nextMonth(through.fields_monthly);
+      $("start").max = latest;
+      if (currentMonth() > latest) $("start").value = latest;
+      bundle.appendChild(el("p", "hint", "Предсказорные входы есть до " + through.fields_monthly + " включительно; прогноз можно запрашивать до " + latest + " — позднее этого месяца расчёт не публикуется."));
+    }
+    if (through.daily_region) bundle.appendChild(el("p", "hint", "Суточные поля обновлены до " + through.daily_region + "."));
     bundle.appendChild(fileTable(data.bundle.files, 6));
     box.appendChild(bundle);
     const obs = dataCard("Скачанные наблюдения (для прогноза)", `${data.observations.file_count} файлов · ${fmtSize(data.observations.total_bytes)}`);

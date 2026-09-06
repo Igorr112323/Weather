@@ -2,6 +2,8 @@ import hashlib
 import json
 import os
 import time
+
+import pandas as pd
 from pathlib import Path
 
 from agrocast.core.contracts import CONTRACT_VERSION
@@ -74,6 +76,21 @@ def ensure_releases(settings):
     return Releases.from_file(path)
 
 
+def _sources_through(settings):
+    from agrocast.serve import readiness
+
+    out = {}
+    try:
+        store = settings.compute_config().zarr_store()
+    except Exception:
+        return {name: None for name in (*readiness.REQUIRED_SOURCES, *readiness.OPTIONAL_SOURCES)}
+    now = pd.Timestamp.now()
+    for name in (*readiness.REQUIRED_SOURCES, *readiness.OPTIONAL_SOURCES):
+        block = readiness._source_block(store, name, now)
+        out[name] = block["last"]
+    return out
+
+
 def collect_inputs(settings):
     cache_root = settings.state_dir / "results-v1"
     cache_entries = []
@@ -105,6 +122,7 @@ def collect_inputs(settings):
         "observations": _list_directory(settings.state_dir / "compute"),
         "results_cache": {"entries": cache_entries, "total": len(list(cache_root.glob('*.json'))) if cache_root.is_dir() else 0},
         "releases": releases,
+        "sources_through": _sources_through(settings),
     }
 
 

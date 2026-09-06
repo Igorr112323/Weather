@@ -34,7 +34,7 @@ jobs:
       - name: Тесты десктоп-режима
         run: |
           set -o pipefail
-          python -m pytest tests/test_desktop.py tests/test_runtime_settings.py -q -p no:cacheprovider 2>&1 | tee pytest-output.log || { echo "::error::pytest: $(tail -c 4000 pytest-output.log | tr '\n' '|')"; exit 1; }
+          python -m pytest tests/test_desktop.py tests/test_runtime_settings.py -q -p no:cacheprovider 2>&1 | tee pytest-output.log || { echo "::error::pytest: $(grep -E '^(FAILED|E  |_{6,})' pytest-output.log | tail -c 3500 | tr '\n' '|')"; exit 1; }
       - name: Смоук встроенного сервера без GUI
         run: |
           set -o pipefail

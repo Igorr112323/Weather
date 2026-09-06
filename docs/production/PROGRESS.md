@@ -1,6 +1,6 @@
 # Прогресс реализации production-плана
 
-[План](PLAN.md) · [Scope пилота](PILOT.md) · [Identity и запуск](IDENTITY.md) · [DOM/CSP](BROWSER_SECURITY.md) · [HTTP/кэш](API_CACHE.md) · [Settings/state](STATE.md) · [Очередь](QUEUE.md) · [Исходный аудит](AUDIT.md) · [Release gates](RELEASE_CHECKLIST.md)
+[План](PLAN.md) · [Scope пилота](PILOT.md) · [Identity и запуск](IDENTITY.md) · [DOM/CSP](BROWSER_SECURITY.md) · [HTTP/кэш](API_CACHE.md) · [Settings/state](STATE.md) · [Очередь](QUEUE.md) · [Десктоп](DESKTOP.md) · [Исходный аудит](AUDIT.md) · [Release gates](RELEASE_CHECKLIST.md)
 
 ## Состояние на 2026-09-06
 

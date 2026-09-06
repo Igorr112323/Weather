@@ -1,0 +1,58 @@
+name: desktop-builds
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, arena/01a075bf-weather]
+    paths:
+      - AgroCast/agrocast/desktop/**
+      - AgroCast/agrocast/serve/**
+      - AgroCast/agrocast/core/settings.py
+      - AgroCast/desktop/**
+      - AgroCast/static/desktop.*
+      - AgroCast/requirements*.txt
+      - .github/workflows/desktop-builds.yml
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: AgroCast
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: AgroCast/requirements-desktop.txt
+      - name: Зависимости
+        run: pip install -r requirements-desktop.txt -r requirements-test.txt
+      - name: Тесты десктоп-режима
+        run: python -m pytest tests/test_desktop.py tests/test_runtime_settings.py -q -p no:cacheprovider
+      - name: Смоук встроенного сервера без GUI
+        run: |
+          python - <<'PY'
+          import json, urllib.request
+          from agrocast.desktop.app import prepare_environment, start_server
+          prepare_environment("build-smoke")
+          server, thread, listener, url = start_server()
+          try:
+              with urllib.request.urlopen(url + "api/capabilities", timeout=15) as response:
+                  payload = json.load(response)
+          finally:
+              server.should_exit = True
+              thread.join(timeout=15)
+          assert payload["operations"]["local_mode"] is True
+          print("desktop server smoke ok")
+          PY
+      - name: Сборка приложения
+        run: python -m PyInstaller --noconfirm desktop/AgroCast.spec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agrocast-desktop-${{ matrix.os }}
+          path: AgroCast/dist/AgroCast
+          if-no-files-found: error

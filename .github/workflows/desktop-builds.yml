@@ -45,7 +45,7 @@ jobs:
           import json, urllib.request
           from agrocast.desktop.app import prepare_environment, start_server
           prepare_environment("build-smoke")
-          server, thread, listener, url = start_server()
+          server, thread, url = start_server()
           try:
               with urllib.request.urlopen(url + "api/capabilities", timeout=15) as response:
                   payload = json.load(response)

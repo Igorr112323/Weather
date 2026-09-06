@@ -39,6 +39,13 @@ def _wait_until_ready(url, errors, timeout=120.0):
     return False
 
 
+def _serve(server, errors):
+    try:
+        server.run()
+    except BaseException as error:
+        errors.append(error)
+
+
 def start_server():
     from agrocast.core.settings import RuntimeSettings
     from agrocast.serve.product import create_app
@@ -47,36 +54,30 @@ def start_server():
 
     settings = RuntimeSettings.from_environment()
     application = create_app(settings=settings)
-    listener = socket.socket()
-    listener.bind(("127.0.0.1", 0))
-    listener.listen(2048)
-    url = "http://127.0.0.1:%d/" % listener.getsockname()[1]
-    inherited = socket.fromfd(listener.fileno(), socket.AF_INET, socket.SOCK_STREAM)
-    config = uvicorn.Config(application, sockets=[inherited], log_level=settings.log_level.lower(), lifespan="on")
-    server = uvicorn.Server(config)
-    errors = []
-
-    def _serve():
-        try:
-            server.run()
-        except BaseException as error:
-            errors.append(error)
-
-    thread = threading.Thread(target=_serve, daemon=True, name="agrocast-local-server")
-    thread.start()
-    if not _wait_until_ready(url, errors):
+    last_error = None
+    for _attempt in range(5):
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+        probe.close()
+        url = "http://127.0.0.1:%d/" % port
+        config = uvicorn.Config(application, host="127.0.0.1", port=port, log_level=settings.log_level.lower(), lifespan="on")
+        server = uvicorn.Server(config)
+        errors = []
+        thread = threading.Thread(target=_serve, args=(server, errors), daemon=True, name="agrocast-local-server")
+        thread.start()
+        if _wait_until_ready(url, errors):
+            return server, thread, url
         server.should_exit = True
         thread.join(timeout=10)
-        listener.close()
-        detail = repr(errors[0]) if errors else "startup timed out"
-        raise RuntimeError("Local AgroCast server did not start: %s; check %s logs" % (detail, settings.state_dir))
-    return server, thread, listener, url
+        last_error = errors[0] if errors else RuntimeError("startup timed out on port %d" % port)
+    raise RuntimeError("Local AgroCast server did not start: %r; check %s logs" % (last_error, settings.state_dir))
 
 
 def main(argv=None):
     state, _root = prepare_environment()
     try:
-        server, thread, listener, url = start_server()
+        server, thread, url = start_server()
     except (RuntimeError, OSError) as error:
         print(str(error), file=sys.stderr)
         return 78
@@ -107,10 +108,6 @@ def main(argv=None):
         code = app.exec()
     server.should_exit = True
     thread.join(timeout=15)
-    try:
-        listener.close()
-    except OSError:
-        pass
     return code
 
 

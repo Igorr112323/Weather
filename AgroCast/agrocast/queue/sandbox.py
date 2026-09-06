@@ -8,6 +8,7 @@ PR_SET_NO_NEW_PRIVS = 38
 SCMP_ACT_ALLOW = 0x7FFF0000
 SCMP_ACT_ERRNO_BASE = 0x00050000
 SCMP_ACT_KILL_PROCESS = 0x80300000
+NOFILE_CAP = 1024
 
 DENIED_SYSCALLS = (
     "reboot", "swapon", "swapoff", "setns", "unshare", "chroot", "pivot_root", "mount", "umount2",
@@ -119,6 +120,13 @@ def apply_limits(deadline_seconds, fsize_mb=256, cpu_margin=60, max_rss_mb=0):
         bytes_limit = int(fsize_mb) * 1024 * 1024
         resource.setrlimit(resource.RLIMIT_FSIZE, (bytes_limit, bytes_limit))
         applied["fsize_mb"] = int(fsize_mb)
+    soft_nofile, hard_nofile = resource.getrlimit(resource.RLIMIT_NOFILE)
+    target_nofile = min(soft_nofile, NOFILE_CAP)
+    if hard_nofile != resource.RLIM_INFINITY:
+        target_nofile = min(target_nofile, hard_nofile)
+    if target_nofile < soft_nofile:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (target_nofile, hard_nofile))
+        applied["nofile"] = target_nofile
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     return applied
 

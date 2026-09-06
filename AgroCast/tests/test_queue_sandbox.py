@@ -47,6 +47,26 @@ def test_seccomp_abi_declares_pointer_arguments():
     assert context_passed == {0x7FFFFFFF12345678}
 
 
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="RLIMIT_NOFILE is POSIX")
+def test_nofile_cap_binds_below_a_generous_host_default():
+    import subprocess
+
+    repo_root = Path(__file__).resolve().parents[1]
+    code = (
+        "import resource\n"
+        "from agrocast.queue.sandbox import NOFILE_CAP, apply_limits\n"
+        "soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)\n"
+        "base = 65536 if (hard == resource.RLIM_INFINITY or hard >= 65536) else hard\n"
+        "resource.setrlimit(resource.RLIMIT_NOFILE, (base, hard))\n"
+        "apply_limits(60)\n"
+        "new_soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]\n"
+        "assert new_soft == min(base, NOFILE_CAP), new_soft\n"
+        "print('ok')"
+    )
+    result = subprocess.run([sys.executable, "-c", code], cwd=str(repo_root), capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+
+
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="libseccomp is Linux only")
 def test_denylist_application_survives_high_address_context():
     import subprocess

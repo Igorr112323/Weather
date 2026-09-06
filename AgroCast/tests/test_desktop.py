@@ -91,7 +91,8 @@ def test_local_forecast_computes_caches_and_skips_queue_tables(desktop_client, d
     assert first["computed_at"]
     releases_path = desktop_settings.state_dir / "desktop-releases.json"
     assert releases_path.exists()
-    assert oct(os.stat(releases_path).st_mode)[-3:] == "600"
+    if os.name == "posix":
+        assert oct(os.stat(releases_path).st_mode)[-3:] == "600"
     manifest = json.loads(releases_path.read_text())
     for key in ("data_release", "model_release", "application_release"):
         assert len(manifest[key]) == 64

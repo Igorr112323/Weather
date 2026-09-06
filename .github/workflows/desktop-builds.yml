@@ -32,10 +32,12 @@ jobs:
       - name: Зависимости
         run: pip install -r requirements-desktop.txt -r requirements-test.txt
       - name: Тесты десктоп-режима
-        run: python -m pytest tests/test_desktop.py tests/test_runtime_settings.py -q -p no:cacheprovider
+        run: |
+          set -o pipefail
+          python -m pytest tests/test_desktop.py tests/test_runtime_settings.py -q -p no:cacheprovider 2>&1 | tee pytest-output.log || { echo "::error::pytest: $(tail -c 4000 pytest-output.log | tr '\n' '|')"; exit 1; }
       - name: Смоук встроенного сервера без GUI
         run: |
-          python - <<'PY'
+          python - <<'PY' 2>&1 | tee smoke-output.log || { echo "::error::smoke: $(tail -c 4000 smoke-output.log | tr '\n' '|')"; exit 1; }
           import json, urllib.request
           from agrocast.desktop.app import prepare_environment, start_server
           prepare_environment("build-smoke")

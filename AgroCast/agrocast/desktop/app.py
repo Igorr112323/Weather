@@ -13,7 +13,7 @@ def bundled_root():
 
 def prepare_environment(home=None):
     root = bundled_root()
-    state = Path(home or os.environ.get("AGROCAST_DESKTOP_HOME") or (Path.home() / ".agrocast"))
+    state = Path(home or os.environ.get("AGROCAST_DESKTOP_HOME") or (Path.home() / ".agrocast")).expanduser().resolve()
     os.environ["AGROCAST_STATIC_DIR"] = str(root / "static")
     os.environ["AGROCAST_MIGRATIONS_DIR"] = str(root / "migrations")
     os.environ.setdefault("AGROCAST_WORLD_DIR", str(root / "world"))

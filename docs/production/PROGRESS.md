@@ -224,9 +224,12 @@ AGROCAST_TEST_DATABASE_URL_FILE=/secure/test-only/database_url OPENBLAS_NUM_THRE
 Проверено: новые `tests/test_readiness.py` (17 тестов, синтетический бандл, фиксированное
 время), обновлённый десктопный сценарий (честный месяц `2026-03` считается, `2026-10`
 отклоняется 422), `test_region_ops`/`test_pilot_deployment` с восстановленным
-`region_freshness` и валидным compose; полный набор — зелёный (см. сноску ниже). Научный
-допуск и приём веб-заданий не изменялись: readiness готовит честный вход, gates T06/T14
-остаются закрытыми.
+`region_freshness` и валидным compose; полный набор SQLite — 594 passed / 13 skipped / 0
+failed, список job'а `identity-postgresql` локально на PostgreSQL — зелёный, CI
+desktop-builds — зелёный на Windows/macOS/Ubuntu (с `test_readiness.py` в отборе). Красный
+`identity-postgresql` в CI — предсуществующий дефект worker-песочницы T06, не регрессия T07
+(детали — в «Что пока не завершено»). Научный допуск и приём веб-заданий не изменялись:
+readiness готовит честный вход, gates T06/T14 остаются закрытыми.
 
 ## Десктоп-контур D · D01–D03 (2026-09-06)
 
@@ -253,7 +256,14 @@ AF_UNIX в лаунчере uvicorn, Pillow для иконки EXE). Подро
 
 - Единые settings и persistence реализованы в T05; фактический container rollout/recreation остаётся непроверенным. Дальнейшие browser/UX сценарии — T18/T21.
 - Научный допуск расчётов не открыт: очередь T06 реализована как инфраструктура с закрытым приёмом (`queue_intake=false`), включение требует научных и release gates (T08/T13/T14).
-- Свежесть predictor frame, временные/пространственные утечки, независимая калибровка и допуск агрорекомендаций.
+- Временные/пространственные утечки, независимая калибровка и допуск агрорекомендаций. Свежесть
+  predictor frame закрыта инфраструктурно (T07: readiness + gate выпуска), научная часть — T08/T10.
+- Дефект CI, предшествующий T07: в job `identity-postgresql` красны `tests/test_queue_worker.py`
+  (тот же шаг падал на прогоне T06 до коммитов десктопа). На runner ubuntu-24.04 compute-потомок
+  умирает с SIGSEGV до первой строки протокола, а worker направляет stderr потомка в DEVNULL —
+  диагностика с CI невозможна. Локально (SQLite и PostgreSQL, полный набор и список job'а
+  дословно) — все 16 файлов зелёные; audit-job с тем же sandbox — зелёный. Требуется отдельное
+  исследование: сначала передавать stderr потомка в лог задачи (правка T06-кода), затем разбор.
 - Immutable bundles, release registry, data pipeline, backup/restore, production least privilege, эксплуатационные SLO и юридические gates.
 
 Отсутствие этих результатов не скрывается новым логином. [Release checklist](RELEASE_CHECKLIST.md) остаётся незакрытым.

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AgroCast — локальные прогнозы</title>
+<link rel="stylesheet" href="/assets/desktop.css">
+<link rel="icon" type="image/png" href="/assets/agrocast.png">
+<script type="module" src="/assets/desktop.js"></script>
+</head>
+<body>
+<header>
+<h1>AgroCast</h1>
+<p class="tag">локальная версия · данные и расчёты остаются на этом компьютере</p>
+</header>
+<main>
+<section class="card">
+<h2>1 · Прогноз для вашей точки</h2>
+<div class="row">
+<div><label for="point">Точка наблюдения</label><select id="point"></select></div>
+<div><label for="start">Месяц выпуска</label><input id="start" type="month"></div>
+</div>
+<p class="hint">Горизонт — три месяца от выбранного. Сезонные температуры и осадки сравниваются с климатической нормой.</p>
+<button id="run" type="button" class="big">Показать прогноз</button>
+<button id="cancel" type="button" class="secondary" hidden>Отменить расчёт</button>
+<p id="status" role="status" aria-live="polite" class="status">Выберите точку и месяц. Первый расчёт новой точки может занять несколько минут: приложение докачает суточные наблюдения и сохранит их у вас.</p>
+<div id="result" hidden>
+<h3>Итог расчёта</h3>
+<p id="result-meta" class="status"></p>
+<div id="summary"></div>
+<details><summary>Полные данные прогноза (JSON)</summary><pre id="raw"></pre></details>
+</div>
+</section>
+<section class="card">
+<h2>2 · Данные, из которых считается прогноз</h2>
+<div class="row">
+<button id="refresh" type="button" class="secondary">Обновить список</button>
+<p id="data-status" class="status" role="status">Показываем локальные файлы…</p>
+</div>
+<div id="data" class="grid3"></div>
+</section>
+<section class="card">
+<h2>3 · Как это работает</h2>
+<ul class="plain">
+<li>Модели и климатические данные лежат в локальном наборе внутри приложения. Прогноз считается на вашем компьютере; в интернет уходит только докачка суточных наблюдений для новой точки (обычно 2–6 минут, один раз на точку).</li>
+<li>Каждый расчёт сохраняется в локальный кэш: тот же месяц и точка открываются мгновенно, без нового расчёта.</li>
+<li>В карточке «Данные» видно ровно те файлы, из которых собран прогноз: бандл моделей, скачанные наблюдения и кэш результатов с датами.</li>
+<li>Каталог приложения: <code id="state-dir">…</code></li>
+</ul>
+</section>
+</main>
+<footer><p>AgroCast · локальный режим · это не верифицированная публикация пилота</p></footer>
+</body>
+</html>

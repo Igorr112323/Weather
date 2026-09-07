@@ -34,6 +34,8 @@ class Config:
     base_end: int = 2020
     train_start: int = 1980
     backtest_start: int = 2000
+    publication_delay_days: int = 5
+    vintages_dir: str = ""
     analog_k: int = 10
     n_pcs: int = 3
     horizon_max: int = 6
@@ -43,6 +45,7 @@ class Config:
     bundle_dir: str = ""
     runtime_dir: str = ""
     use_bundle_models: bool = False
+    allow_tp_nn_alpha: bool = False
     phys_preset: str = "land"
     regime_guard: bool = True
     ospr_enabled: bool = True
@@ -54,13 +57,13 @@ class Config:
     def validate(self):
         if not isinstance(self.region, Region):
             raise ValueError("region must be a Region")
-        for name in ("calib_end_year", "clim_window", "base_start", "base_end", "train_start", "backtest_start", "analog_k", "n_pcs", "horizon_max", "n_ensemble", "random_state"):
+        for name in ("calib_end_year", "clim_window", "base_start", "base_end", "train_start", "backtest_start", "analog_k", "n_pcs", "horizon_max", "n_ensemble", "random_state", "publication_delay_days"):
             if type(getattr(self, name)) is not int:
                 raise ValueError(f"{name} must be an integer")
-        for name in ("station_calibrated_targets", "use_bundle_models", "regime_guard", "ospr_enabled"):
+        for name in ("station_calibrated_targets", "use_bundle_models", "regime_guard", "ospr_enabled", "allow_tp_nn_alpha"):
             if type(getattr(self, name)) is not bool:
                 raise ValueError(f"{name} must be boolean")
-        if not 1 <= self.horizon_max <= 6 or min(self.clim_window, self.analog_k, self.n_pcs, self.n_ensemble) < 1 or self.random_state < 0:
+        if not 1 <= self.horizon_max <= 6 or min(self.clim_window, self.analog_k, self.n_pcs, self.n_ensemble) < 1 or self.random_state < 0 or self.publication_delay_days < 0:
             raise ValueError("numeric configuration is outside supported bounds")
         for name in ("daily_grid", "clim_half_life", "ospr_weight"):
             value = getattr(self, name)

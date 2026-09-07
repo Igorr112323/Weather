@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -16,25 +16,30 @@ from agrocast.core.contracts import (
     CONTRACT_VERSION, EmptyQuery, ForecastSpec,
     RegionFieldQuery, RegionFieldSpec, RegionId, RegionQuery, ReportQuery,
 )
+from agrocast.core.errors import IssueFreshnessError
 from agrocast.core.jsoncodec import strict_json
 from agrocast.identity.credentials import IdentityError
 from agrocast.core.settings import RuntimeSettings
+from agrocast.queue.admission import admit_point, admit_region
 from agrocast.serve.runtime import runtime_lifespan
 from agrocast.identity.service import IdentityService
 from agrocast.serve.accounts import Actor, router as account_router
 from agrocast.serve.browser_policy import ASSETS, BROWSER_HEADERS
 from agrocast.serve.errors import APIError, ERROR_RESPONSES, error_response, invalid_request
 from agrocast.serve.pilot import PILOT_REGION, PILOT_WARNING, historical_result, pilot_capabilities, pilot_points
+from agrocast.serve.queue_api import router as queue_router
 from agrocast.serve.responses import (
-    AcceptedJob, CapabilitiesResponse, DiagnosticResponse, GridResponse, LivenessResponse,
-    RegionFieldResponse, RegionsResponse, SkillResponse, ValueResponse,
+    AcceptedJob, CapabilitiesResponse, DiagnosticResponse, GridResponse, LivenessResponse, LocalForecastResponse,
+    LocalInputsResponse, ReadinessResponse, RegionFieldResponse, RegionsResponse, SkillResponse, ValueResponse,
+    accepted_job_response,
 )
 from agrocast.serve.security import AccessGuard, PUBLIC_GET_PATHS
 
-STATIC = Path(__file__).resolve().parents[2] / "static"
+from agrocast.core.settings import bundle_static_dir
+
+STATIC = bundle_static_dir()
 PrepareRequest = ForecastSpec
 RegionRefreshRequest = RegionFieldSpec
-JOBS = {}
 NoQuery = Annotated[EmptyQuery, Query()]
 
 
@@ -70,15 +75,27 @@ def validate_pilot_target(request):
 
 
 @router.post("/api/prepare", response_model=AcceptedJob, status_code=202)
-def prepare(req: PrepareRequest):
+def prepare(req: PrepareRequest, request: Request, actor: Actor):
     validate_pilot_target(req)
-    disabled()
+    if not request.app.state.settings.queue_intake:
+        disabled()
+    result = admit_point(request.app.state.queue, request.app.state.identity, request.app.state.settings, actor, req)
+    response = accepted_job_response(result["job_id"])
+    response.headers["X-Deduplicated"] = "true" if result["deduplicated"] else "false"
+    response.headers["X-Cached"] = "true" if result.get("cached") else "false"
+    return response
 
 
 @router.post("/api/region/refresh", response_model=AcceptedJob, status_code=202)
-def region_refresh(req: RegionRefreshRequest):
+def region_refresh(req: RegionRefreshRequest, request: Request, actor: Actor):
     validate_pilot_target(req)
-    disabled()
+    if not request.app.state.settings.queue_intake:
+        disabled()
+    result = admit_region(request.app.state.queue, request.app.state.settings, actor, req)
+    response = accepted_job_response(result["job_id"])
+    response.headers["X-Deduplicated"] = "true" if result["deduplicated"] else "false"
+    response.headers["X-Cached"] = "true" if result.get("cached") else "false"
+    return response
 
 
 @router.get("/api/region/field", response_model=RegionFieldResponse)
@@ -154,8 +171,47 @@ def health(request: Request, query: NoQuery = EmptyQuery()):
     return out
 
 
+@router.get("/api/local/inputs", response_model=LocalInputsResponse)
+def local_inputs(request: Request, query: NoQuery = EmptyQuery()):
+    settings = request.app.state.settings
+    if not settings.desktop_mode:
+        raise APIError("desktop_only", 403, "Локальные входные данные доступны только в десктоп-версии")
+    from agrocast.serve.local import collect_inputs
+
+    return collect_inputs(settings)
+
+
+@router.post("/api/local/forecast", response_model=LocalForecastResponse)
+def local_forecast(request: Request, spec: ForecastSpec):
+    settings = request.app.state.settings
+    if not settings.desktop_mode:
+        raise APIError("desktop_only", 403, "Локальный расчёт доступен только в десктоп-версии")
+    config = request.app.state.config
+    region = config.region
+    if not (region.lat_min <= spec.lat <= region.lat_max and region.lon_min <= spec.lon <= region.lon_max):
+        raise APIError("point_outside_region", 422, "Точка вне покрытия локального набора данных")
+    from agrocast.serve.local import run_forecast
+
+    principal = getattr(request.state, "principal", None)
+    try:
+        return run_forecast(settings, spec, principal)
+    except IssueFreshnessError:
+        raise APIError("issue_inputs_mismatch", 422, "Запрошенный месяц новее последних полных входов; прогноз не публикуется") from None
+    except ValueError:
+        raise APIError("compute_failed", 500, "Локальный расчёт не завершился; входные данные и кэш сохранены") from None
+
+
+@router.get("/desktop.html", response_class=HTMLResponse, include_in_schema=False)
+def desktop_page(request: Request):
+    if not request.app.state.settings.desktop_mode:
+        raise APIError("desktop_only", 403)
+    return (STATIC / "desktop.html").read_text(encoding="utf-8")
+
+
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
-def index():
+def index(request: Request):
+    if request.app.state.settings.desktop_mode:
+        return (STATIC / "desktop.html").read_text(encoding="utf-8")
     return (STATIC / "pilot.html").read_text(encoding="utf-8")
 
 
@@ -190,9 +246,26 @@ def liveness(query: NoQuery = EmptyQuery()):
     return {"status": "alive", "stage": "closed_pilot", "forecast_enabled": False}
 
 
+@router.get("/health/ready", response_model=ReadinessResponse)
+def readiness_endpoint(request: Request, query: NoQuery = EmptyQuery()):
+    from agrocast.serve import readiness as readiness_service
+
+    settings = request.app.state.settings
+    engine = getattr(getattr(request.app.state, "identity", None), "engine", None)
+    result = readiness_service.evaluate(settings, request.app.state.config, engine=engine)
+    return JSONResponse(result, status_code=200 if result["status"] == "ready" else 503)
+
+
 @router.get("/api/capabilities", response_model=CapabilitiesResponse)
-def capabilities(query: NoQuery = EmptyQuery()):
-    return pilot_capabilities()
+def capabilities(request: Request, query: NoQuery = EmptyQuery()):
+    out = pilot_capabilities()
+    intake = bool(request.app.state.settings.queue_intake)
+    out["operations"]["durable_queue"] = True
+    out["operations"]["local_mode"] = bool(request.app.state.settings.desktop_mode)
+    out["operations"]["queue_intake"] = intake
+    out["operations"]["region_refresh"] = intake
+    out["operations"]["hindcast"] = intake
+    return out
 
 
 @router.get("/pilot.js", include_in_schema=False)
@@ -229,6 +302,7 @@ def create_app(identity: IdentityService | None = None, settings: RuntimeSetting
     application.state.logger = log
     application.state.started = False
     application.include_router(account_router)
+    application.include_router(queue_router)
     application.include_router(router)
 
     @application.exception_handler(Exception)
@@ -278,9 +352,11 @@ def create_app(identity: IdentityService | None = None, settings: RuntimeSetting
                         operation["security"] = [{"SessionCookie": [], **({"CSRF": []} if method not in {"get", "head"} else {})}]
                     if method not in {"get", "head"}:
                         operation.setdefault("parameters", []).append({"name": "Origin", "in": "header", "required": True, "schema": {"type": "string", "description": "Exact configured HTTPS origin"}})
+            admission = "enabled" if settings.queue_intake else "disabled"
             for path in ("/api/prepare", "/api/region/refresh"):
-                schema["paths"][path]["post"]["x-pilot-admission"] = "disabled"
+                schema["paths"][path]["post"]["x-pilot-admission"] = admission
             schema["x-pilot-computation-enabled"] = False
+            schema["x-durable-queue"] = {"admission": admission, "states": ["queued", "running", "succeeded", "failed", "cancelled"]}
             application.openapi_schema = schema
         return application.openapi_schema
 

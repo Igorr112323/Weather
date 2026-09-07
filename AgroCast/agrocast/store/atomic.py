@@ -5,6 +5,16 @@ from pathlib import Path
 from agrocast.core.jsoncodec import canonical_json
 
 
+def fsync_directory(path):
+    if os.name != "posix":
+        return
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def write_json(path, value, exclusive=False):
     path = Path(path)
     data = canonical_json(value).encode("utf-8")
@@ -20,11 +30,7 @@ def write_json(path, value, exclusive=False):
             os.link(temporary, path)
         else:
             os.replace(temporary, path)
-        descriptor = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
+        fsync_directory(path.parent)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

@@ -152,7 +152,16 @@ def region_block(world_dir, data_root, region="krai"):
             if hit is not None:
                 t += f", попадания {100 * hit:.0f}%"
             lines.append(t)
+        if s.get("schema") == "grid-skill-v2":
+            c2 = (s.get("combos") or {}).get("seasonal_t2m_l1") or {}
+            if c2:
+                mark = "подтверждён" if c2.get("skill_promoted") else "не подтверждён"
+                lines.append(f"продвижение t2m: {mark} по правилу «{c2.get('promotion_rule', '')}»")
         note = s.get("note_tp") or "осадки: навык не подтверждён — уровень климатологии"
+        if s.get("schema") == "grid-skill-v2":
+            n_cells = s.get("n_points", "?")
+            n_ver = s.get("verifications", "?")
+            note = f"{note} (spatial v2: {n_cells} ячеек, {n_ver} верификаций, локальный baseline и терцильные границы по ячейке)"
         lines.append(note)
     else:
         lines.append("артефакт навыка отсутствует: навык t2m и осадков не подтверждён")
@@ -191,9 +200,86 @@ def _forecast_cell(args_):
     }
 
 
-def build_field(start, world_dir, data_root, region="krai", workers=2, log=None, releases=None):
+def validate_cell_results(grid_art, results, start):
+    by_id = {cell["id"]: cell for cell in grid_art["cells"]}
+    seen = set()
+    for row in results:
+        cell = by_id.get(row.get("id"))
+        if cell is None or (row.get("lat"), row.get("lon")) != (float(cell["lat"]), float(cell["lon"])):
+            raise ValueError("regional cell result does not match its request")
+        if row.get("target") != start or row.get("months") != target_months(start, 3):
+            raise ValueError("regional cell result does not match its request")
+        if row.get("id") in seen:
+            raise ValueError("duplicate regional cell result")
+        seen.add(row["id"])
+        probabilities = [row.get(key) for key in TERCILE_KEYS]
+        if not all(type(value) in (int, float) and np.isfinite(value) and 0 <= value <= 1 for value in probabilities) or abs(sum(probabilities) - 1) > 0.02:
+            raise ValueError("regional cell probabilities are invalid")
+    missing = [cell["id"] for cell in grid_art["cells"] if cell["id"] not in seen]
+    if missing:
+        raise ValueError(f"regional cell coverage is incomplete: {len(missing)} cells missing")
+
+
+def kriging_merge(grid_art, results, start, region, runtime_forecast_s=None, log=None):
     from agrocast.region.kriging import ordinary_kriging
 
+    say = log or (lambda m: None)
+    validate_cell_results(grid_art, results, start)
+    t1 = time.time()
+    b = grid_art["bounds"]
+    lats = np.arange(b["lat_min"] + FIELD_CELL / 2, b["lat_max"], FIELD_CELL)
+    lons = np.arange(b["lon_min"] + FIELD_CELL / 2, b["lon_max"], FIELD_CELL)
+    targets = np.column_stack([np.repeat(lats, len(lons)), np.tile(lons, len(lats))])
+    ordered = sorted(results, key=lambda row: [cell["id"] for cell in grid_art["cells"]].index(row["id"]))
+    pts = np.array([(p["lat"], p["lon"]) for p in ordered])
+    comps = {}
+    vg_out = {}
+    fallback = 0
+    for k in TERCILE_KEYS:
+        vals = np.array([p[k] for p in ordered])
+        res = ordinary_kriging(pts, vals, targets, detrend=False)
+        comps[k] = np.clip(res.pred, 0.0, 1.0).reshape(len(lats), len(lons))
+        fallback += int(res.n_fallback)
+        vg_out = {"nugget": round(res.variogram.nugget, 4),
+                  "psill": round(res.variogram.psill, 4),
+                  "range_km": round(res.variogram.range_km, 1)}
+    tot = sum(comps[k] for k in TERCILE_KEYS)
+    tot = np.where(tot <= 1e-9, 1.0, tot)
+    field = {k: np.round(comps[k] / tot, 4).tolist() for k in TERCILE_KEYS}
+    doms = {}
+    bi = np.argmax(np.stack([np.asarray(field[k]) for k in TERCILE_KEYS]), axis=0)
+    for i in bi.ravel().tolist():
+        doms[TERCILE_KEYS[i]] = doms.get(TERCILE_KEYS[i], 0) + 1
+    payload = {
+        "meta": {
+            "engine": "agrocast-region-field",
+            "region": region,
+            "region_name": region_name(region),
+            "start": start,
+            "target": ordered[0]["target"],
+            "months": ordered[0]["months"],
+            "issue_through": ordered[0]["issue_through"],
+            "n_points": len(ordered),
+            "grid_cell_deg": FIELD_CELL,
+            "lats": [round(float(x), 3) for x in lats],
+            "lons": [round(float(x), 3) for x in lons],
+            "bounds": b,
+            "variogram": vg_out,
+            "idw_fallback_cells": fallback,
+            "dominant_cells": doms,
+            "runtime_s": {"forecast": round(float(runtime_forecast_s or 0.0), 1), "kriging": round(time.time() - t1, 1)},
+            "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "disclaimer": "Навык осадков на сетке региона не подтверждён (уровень климатологии); поле — связность прогноза продукта, не подтверждённый навык.",
+        },
+        "points": ordered,
+        "field": field,
+    }
+    say(f"поле {len(lats) * len(lons)} ячеек 0.25° за {time.time() - t1:.1f}s; доминирующая терцель: "
+        + ", ".join(f"{k} {v}" for k, v in doms.items()))
+    return payload
+
+
+def build_field(start, world_dir, data_root, region="krai", workers=2, log=None, releases=None):
     if not known_region(region):
         raise ValueError(f"неизвестный регион: {region}")
     if type(workers) is not int or not 1 <= workers <= 2:
@@ -217,67 +303,13 @@ def build_field(start, world_dir, data_root, region="krai", workers=2, log=None,
     results = []
     with ProcessPoolExecutor(max_workers=int(workers)) as ex:
         for expected, r in zip(jobs, ex.map(_forecast_cell, jobs), strict=True):
-            if (r.get("id"), r.get("lat"), r.get("lon")) != expected[:3] or r.get("target") != start or r.get("months") != target_months(start, 3):
-                raise ValueError("regional cell result does not match its request")
-            probabilities = [r.get(key) for key in TERCILE_KEYS]
-            if not all(type(value) in (int, float) and np.isfinite(value) and 0 <= value <= 1 for value in probabilities) or abs(sum(probabilities) - 1) > 0.02:
-                raise ValueError("regional cell probabilities are invalid")
             results.append(r)
             say(f"{r['id']} ({r['lat']:.2f},{r['lon']:.2f}): "
                 f"{r['below']:.2f}/{r['normal']:.2f}/{r['above']:.2f} "
                 f"[{len(results)}/{len(jobs)}]")
     say(f"прогнозы: {len(results)}/{len(jobs)} за {time.time() - t0:.0f}s; кринг…")
-    t1 = time.time()
-    b = art["bounds"]
-    lats = np.arange(b["lat_min"] + FIELD_CELL / 2, b["lat_max"], FIELD_CELL)
-    lons = np.arange(b["lon_min"] + FIELD_CELL / 2, b["lon_max"], FIELD_CELL)
-    targets = np.column_stack([np.repeat(lats, len(lons)), np.tile(lons, len(lats))])
-    pts = np.array([(p["lat"], p["lon"]) for p in results])
-    comps = {}
-    vg_out = {}
-    fallback = 0
-    for k in TERCILE_KEYS:
-        vals = np.array([p[k] for p in results])
-        res = ordinary_kriging(pts, vals, targets, detrend=False)
-        comps[k] = np.clip(res.pred, 0.0, 1.0).reshape(len(lats), len(lons))
-        fallback += int(res.n_fallback)
-        vg_out = {"nugget": round(res.variogram.nugget, 4),
-                  "psill": round(res.variogram.psill, 4),
-                  "range_km": round(res.variogram.range_km, 1)}
-    tot = sum(comps[k] for k in TERCILE_KEYS)
-    tot = np.where(tot <= 1e-9, 1.0, tot)
-    field = {k: np.round(comps[k] / tot, 4).tolist() for k in TERCILE_KEYS}
-    doms = {}
-    bi = np.argmax(np.stack([np.asarray(field[k]) for k in TERCILE_KEYS]), axis=0)
-    for i in bi.ravel().tolist():
-        doms[TERCILE_KEYS[i]] = doms.get(TERCILE_KEYS[i], 0) + 1
-    payload = {
-        "meta": {
-            "engine": "agrocast-region-field",
-            "region": region,
-            "region_name": region_name(region),
-            "start": start,
-            "target": results[0]["target"],
-            "months": results[0]["months"],
-            "issue_through": results[0]["issue_through"],
-            "n_points": len(results),
-            "grid_cell_deg": FIELD_CELL,
-            "lats": [round(float(x), 3) for x in lats],
-            "lons": [round(float(x), 3) for x in lons],
-            "bounds": b,
-            "variogram": vg_out,
-            "idw_fallback_cells": fallback,
-            "dominant_cells": doms,
-            "runtime_s": {"forecast": round(time.time() - t0, 1), "kriging": round(time.time() - t1, 1)},
-            "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "disclaimer": "Навык осадков на сетке региона не подтверждён (уровень климатологии); поле — связность прогноза продукта, не подтверждённый навык.",
-        },
-        "points": results,
-        "field": field,
-    }
+    payload = kriging_merge(art, results, start, region, time.time() - t0, say)
     if region_identity(start, world_dir, region, releases) != identity:
         raise ValueError("regional inputs changed during computation")
     fp = cache.write(identity, payload)
-    say(f"поле {len(lats) * len(lons)} ячеек 0.25° за {time.time() - t1:.1f}s; доминирующая терцель: "
-        + ", ".join(f"{k} {v}" for k, v in doms.items()))
     return fp

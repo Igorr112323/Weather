@@ -52,7 +52,7 @@ def frost_block(members, crop=None):
         "span": [t0.strftime("%d.%m.%Y"), t1.strftime("%d.%m.%Y")],
         "p_frost_any": round(float(np.mean(any_frost)), 2),
         "p_frost_spring": round(float(np.mean(spr_any)), 2),
-        "p_frost_day_by_month": {m: round(float(np.mean(v)), 3) for m, v in sorted(month_hits.items())},
+        "p_frost_day_by_month": {str(int(m)): round(float(np.mean(v)), 3) for m, v in sorted(month_hits.items())},
     }
     if last_frost:
         arr = sorted(last_frost)

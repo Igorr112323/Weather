@@ -1,10 +1,8 @@
-import json
-from pathlib import Path
 import numpy as np
 import pandas as pd
 
 from agrocast.core.mathutils import softmax_w
-from agrocast.backtest.metrics import rps_mean, clim_rps, weighted_rpss, year_weights
+from agrocast.backtest.metrics import weighted_rpss, year_weights
 
 MIN_N = 30
 SHRINK = 0.28
@@ -87,7 +85,7 @@ class Blender:
             obs = g["obs_tercile"].to_numpy(int)
             probs = g[["p0", "p1", "p2"]].to_numpy(float)
             w = year_weights(g["year"], self.half_life_years)
-            rpss = weighted_rpss(probs, obs, w)
+            rpss = weighted_rpss(probs, obs, w, months=(g["target_month"].to_numpy(int) if "target_month" in g.columns else None))
             rows.append({"variable": keys[0], "season": keys[1], "model": keys[2], "rpss": float(rpss), "n": len(g)})
         skill = pd.DataFrame(rows)
         self.skill = skill
@@ -136,14 +134,21 @@ class Blender:
         return P, Q / tot
 
     def save(self, path):
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        Path(path).write_text(json.dumps({"weights": self.weights}, indent=2))
+        from agrocast.core.artifacts import BLENDER_SCHEMA, write_artifact
+        from agrocast.models.builder import MODEL_NAMES
+
+        write_artifact(path, {"weights": self.weights, "half_life_years": self.half_life_years}, BLENDER_SCHEMA, models=MODEL_NAMES)
 
     @classmethod
     def load(cls, path):
-        p = Path(path)
-        if not p.exists():
+        from agrocast.core.artifacts import BLENDER_SCHEMA, check_weight_models, read_artifact
+        from agrocast.models.builder import MODEL_NAMES
+
+        data = read_artifact(path, schema=BLENDER_SCHEMA, name="blender", known_models=MODEL_NAMES)
+        if data is None:
             return None
         b = cls()
-        b.weights = json.loads(p.read_text())["weights"]
+        b.weights = data["weights"]
+        check_weight_models(b.weights, MODEL_NAMES, name="blender")
         return b
+

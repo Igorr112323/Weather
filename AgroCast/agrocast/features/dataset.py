@@ -390,7 +390,7 @@ def make_test_row(pf, issue, lead, target_period, use_cols=None):
     return pd.Series(vals, index=cols + ["lead", "tmonth"])
 
 
-def training_data(pf, std_df, variable, start_month, lead, until, use_cols=None):
+def training_data(pf, std_df, variable, start_month, lead, until, use_cols=None, span=1, embargo=0):
     cols = (list(pf.columns) if use_cols is None else list(use_cols)) + ["lead"]
     X, y, years, periods, e1s, e2s, mus, sds = [], [], [], [], [], [], [], []
     s = std_df["z"]
@@ -410,7 +410,7 @@ def training_data(pf, std_df, variable, start_month, lead, until, use_cols=None)
             row = row[use_cols]
         if not np.isfinite(row.to_numpy(float)).all():
             continue
-        if tgt > until:
+        if tgt + (int(span) - 1) + int(embargo) > until:
             continue
         z = float(s.loc[tgt])
         if not np.isfinite(z):

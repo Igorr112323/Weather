@@ -179,7 +179,7 @@ def import_snapshot(engine, directory, mapping_path, namespace):
                         raise StateError("mapped record does not meet the published HTTP contract") from None
                     connection.execute(insert(table).values(**row))
                     written = dict(connection.execute(select(table).where(table.c.id == row["id"])).mappings().one())
-                    if fingerprint(written) != fingerprint(row):
+                    if fingerprint({key: written[key] for key in row}) != fingerprint(row):
                         raise StateError("imported target content differs from the mapped record")
                     report["target_counts"][table.name] += 1
                     targets.append({"table": table.name, "id": row["id"], "checksum": fingerprint(row)})

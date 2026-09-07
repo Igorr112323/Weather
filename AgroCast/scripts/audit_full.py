@@ -130,9 +130,10 @@ def phase_precompute():
             rows.append(loyo.assign(audit_year=int(Y), audit_kind="cur_loyo"))
         pre = pd.concat(rows, ignore_index=True)
         pre.to_parquet(_output("cache") / f"precompute_{mode}.parquet")
+        from agrocast.blend.nn_stack import load_alpha
+
         for v in VARS_:
-            p = _config().artifact_path(f"stack_{mode}_{v}.json")
-            alphas[f"{mode}:{v}"] = float(json.loads(p.read_text()).get("alpha", 0.0)) if p.exists() else 0.0
+            alphas[f"{mode}:{v}"] = load_alpha(_config(), mode, v)
         log(f"precompute {mode}: {len(pre)} строк (past+cur), {time.time()-t0:.0f}s")
     (_output("cache") / "alphas.json").write_text(json.dumps(alphas, indent=1))
     log(f"precompute готов. alphas: {alphas}")
@@ -162,7 +163,7 @@ def _ccor(cc, r, v, obs_z):
 
 def process_point(pid, lat, lon):
 
-    from agrocast.backtest.metrics import clim_rps, rps_rows
+    from agrocast.backtest.metrics import rps_rows, tercile_baseline
     from agrocast.blend.calibration import gated_calibrator
     from agrocast.blend.nn_stack import nn_map
     from agrocast.features.dataset import PointDataset
@@ -179,6 +180,11 @@ def process_point(pid, lat, lon):
     pt = PointDataset(cfg, lat, lon, cfg.zarr_store())
     pt.raw_daily()
     alphas = json.loads((_output("cache") / "alphas.json").read_text())
+    from agrocast.core.policy import nn_alpha_allowed
+
+    for key in list(alphas):
+        if not nn_alpha_allowed(key.split(":")[-1], _config()):
+            alphas[key] = 0.0
     rec_years = sorted(int(y) for y in pd.read_parquet(
         _config().artifact_path("backtest_records_seasonal.parquet")).year.unique())
 
@@ -258,12 +264,15 @@ def process_point(pid, lat, lon):
                         in_corridor=int(float(r.q10) <= float(obs_z[i]) <= float(r.q90)),
                         in_corridor_c=int(_ccor(ccs[v], r, v, float(obs_z[i]))),
                         rps=float(rps_p[i]), brps=float(rps_b[i]),
-                        rps_c=float(clim_rps(np.array([obs[i]]))),
                     ))
     df = pd.DataFrame(rows)
     if df.empty:
         log(f"{pid}: ПУСТО")
         return None
+    df["rps_c"] = rps_rows(
+        tercile_baseline(df["obs_tercile"].to_numpy(int), df["target_month"].to_numpy(int)),
+        df["obs_tercile"].to_numpy(int),
+    )
     df["rpss"] = 1.0 - df.rps / df.rps_c
     df["brpss"] = 1.0 - df.brps / df.rps_c
     df.to_parquet(out_path)
@@ -293,6 +302,33 @@ def phase_points(workers=2, jobs=None):
         raise SystemExit(1)
 
 
+def _skill_claim(region="krai"):
+    from agrocast.region.regions import skill_artifact_path
+
+    sp = skill_artifact_path(_settings().world_dir, region)
+    if not sp.exists():
+        return None
+    try:
+        sk = json.loads(sp.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {"error": f"артефакт навыка нечитаем: {exc}"}
+    c2 = (sk.get("combos") or {}).get("seasonal_t2m_l1") or {}
+    promoted = bool(c2.get("skill_promoted")) or bool((sk.get("seasonal_t2m") or {}).get("skill_promoted"))
+    return {"promoted": promoted, "region": sk.get("region", region), "schema": sk.get("schema")}
+
+
+def promotion_contradiction(audit_stats, claim):
+    if claim is None:
+        return None
+    if "error" in claim:
+        return claim["error"]
+    if claim.get("promoted") and not audit_stats.get("skill_promoted"):
+        return (f"противоречие: артефакт навыка ({claim.get('schema')}, {claim.get('region')}) заявляет подтверждённый "
+                f"сезонный t2m, а правило продвижения в аудите не выполнено (RPSS {audit_stats.get('rpss')}, "
+                f"CI {audit_stats.get('rpss_ci95_time')})")
+    return None
+
+
 MINI_POINTS = [
     ("P01", 46.75, 38.75),
     ("P12", 45.75, 37.75),
@@ -318,10 +354,18 @@ def phase_mini5(workers=2):
         errors.append(f"n={o['n']}")
     if cov is None or not (0.72 <= cov <= 0.85):
         errors.append(f"конформальное покрытие {cov}")
-    if st2m["rpss"] is None or st2m["rpss"] <= 0.05:
-        errors.append(f"сезонный t2m RPSS {st2m['rpss']}")
+    claim = _skill_claim()
+    contradiction = promotion_contradiction(st2m, claim)
+    if contradiction:
+        errors.append(contradiction)
+    elif not st2m.get("skill_promoted"):
+        log("сезонный t2m: навык не подтверждён правилом продвижения "
+            f"(RPSS {st2m['rpss']}, CI {st2m.get('rpss_ci95_time')}) — опубликовано без заявления навыка")
     if st2m["hit"] <= 0.44:
-        errors.append(f"сезонный t2m hit {st2m['hit']}")
+        if claim and claim.get("promoted"):
+            errors.append(f"противоречие: артефакт заявляет подтверждённый навык, но сезонный t2m hit {st2m['hit']} ниже исторического пола 0.44")
+        else:
+            log(f"сезонный t2m hit {st2m['hit']} ниже исторического пола 0.44 — навык не заявляется, результат опубликован")
     if o["ece"] > 0.10:
         errors.append(f"ECE {o['ece']}")
     if errors:
@@ -380,6 +424,9 @@ def export_skill_artifact(path=None, region="krai"):
         out = {
             "rpss": r["rpss"], "hit": r["hit"],
             "hit_ci95": r["hit_ci95"],
+            "rpss_ci95_time": r.get("rpss_ci95_time"),
+            "skill_promoted": r.get("skill_promoted"),
+            "ece": r.get("ece"),
             "conformal_coverage": r.get("p10_90_coverage_conformal"),
             "seasons": {},
         }
@@ -412,19 +459,19 @@ def export_skill_artifact(path=None, region="krai"):
 
 
 def wilson(k, n, z=1.96):
-    if n == 0:
-        return (float("nan"), float("nan"))
-    p = k / n
-    d = 1 + z * z / n
-    c = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
-    return ((p + z * z / (2 * n) - c) / d, (p + z * z / (2 * n) + c) / d)
+    from agrocast.backtest.metrics import wilson_interval
+
+    lo, hi = wilson_interval(k, n, z)
+    return (float("nan"), float("nan")) if lo is None else (lo, hi)
 
 
-def group_metrics(df):
+def group_metrics(df, block_len=12):
+    from agrocast.backtest.metrics import block_bootstrap_ci, ece as ece_metric, promotion_decision
 
     if df.empty:
         return None
     out = []
+    rps_c = float(df["rps_c"].mean())
     for prefix, label in (("", "product"), ("b", "blend_counterfactual")):
         probs = df[[prefix + "p0", prefix + "p1", prefix + "p2"]].to_numpy(float)
         obs = df["obs_tercile"].to_numpy(int)
@@ -432,26 +479,30 @@ def group_metrics(df):
         hits = df[prefix + "hit"].to_numpy(int)
         lo, hi = wilson(int(hits.sum()), n)
         rps = float(df[prefix + "rps"].mean())
-        rps_c = float(df["rps_c"].mean())
-        ece = 0.0
+        ece_res = ece_metric(probs, obs)
         rel = {}
         for k in range(3):
             mk = obs == k
             nk = int(mk.sum())
             pk = float(probs[mk, k].mean()) if nk else float("nan")
             fk = nk / n
-            ece += fk * abs(pk - fk)
             rel[f"pred_{k}"] = round(pk, 3)
             rel[f"freq_{k}"] = round(fk, 3)
+        rpss_rows_i = 1.0 - df[prefix + "rps"].to_numpy(float) / rps_c if rps_c > 0 else np.zeros(n)
+        stat_r = block_bootstrap_ci(rpss_rows_i, int(block_len), 400, 7)
+        promo = promotion_decision(1.0 - rps / rps_c if rps_c > 0 else None, stat_r["ci95"])
         out.append({
             "system": label, "n": n,
             "hit": round(float(hits.mean()), 4),
             "hit_ci95": [round(lo, 4), round(hi, 4)],
             "rps": round(rps, 4), "rps_clim": round(rps_c, 4),
             "rpss": round(1.0 - rps / rps_c, 4) if rps_c > 0 else None,
-            "ece": round(ece, 4), **rel,
+            "rpss_ci95_time": stat_r["ci95"], "n_time_blocks": stat_r["n_blocks"],
+            "skill_promoted": bool(promo["promoted"]), "promotion_rule": promo["rule"],
+            "ece": ece_res["classwise"], "ece_top_label": ece_res["top_label"], "ece_definition": ece_res["definition"],
             "p10_90_coverage": round(float(df["in_corridor"].mean()), 4),
             "p10_90_coverage_conformal": round(float(df["in_corridor_c"].mean()), 4) if "in_corridor_c" in df.columns else None,
+            **rel,
         })
     return pd.DataFrame(out)
 
@@ -467,18 +518,18 @@ def phase_report():
 
     summary = {}
 
-    def agg(subset, key):
-        g = group_metrics(subset)
+    def agg(subset, key, block_len=12):
+        g = group_metrics(subset, block_len=block_len)
         summary[key] = g.to_dict("records") if g is not None else None
 
     agg(df, "overall")
     for m in MODES:
-        agg(df[df["mode"] == m], f"mode_{m}")
+        agg(df[df["mode"] == m], f"mode_{m}", block_len=6 if m == "seasonal" else 12)
     for v in VARS_:
         agg(df[df["variable"] == v], f"var_{v}")
     for m in MODES:
         for v in VARS_:
-            agg(df[(df["mode"] == m) & (df["variable"] == v)], f"{m}_{v}")
+            agg(df[(df["mode"] == m) & (df["variable"] == v)], f"{m}_{v}", block_len=6 if m == "seasonal" else 12)
     for s in ("DJF", "MAM", "JJA", "SON"):
         agg(df[df["season"] == s], f"season_{s}")
 

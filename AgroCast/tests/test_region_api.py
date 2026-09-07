@@ -38,8 +38,11 @@ def test_invalid_region_models_and_disabled_refresh():
             fn(region="bavaria")
     with pytest.raises(ValueError):
         RegionRefreshRequest(start="2026-10", region="bavaria")
+    from types import SimpleNamespace
+    from agrocast.core.settings import RuntimeSettings
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(settings=RuntimeSettings(public_origin="https://testserver"))))
     with pytest.raises(APIError) as error:
-        region_refresh(RegionRefreshRequest(start="2026-10"))
+        region_refresh(RegionRefreshRequest(start="2026-10"), request, None)
     assert error.value.status == 403
 
 

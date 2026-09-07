@@ -13,6 +13,18 @@ DEFAULT_WORLD = BASE / "world"
 DEFAULT_STATE = BASE / "data"
 
 
+def bundle_static_dir():
+    return Path(os.environ.get("AGROCAST_STATIC_DIR") or BASE / "static")
+
+
+def bundle_migrations_dir():
+    return Path(os.environ.get("AGROCAST_MIGRATIONS_DIR") or BASE / "migrations")
+
+
+def desktop_state_dir():
+    return Path.home() / ".agrocast"
+
+
 class ConfigurationError(ValueError):
     pass
 
@@ -53,10 +65,24 @@ def _boolean(value, name):
     return value in {"1", "true"}
 
 
+def _integer(value, name, minimum, maximum):
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise ConfigurationError(f"{name} must be an integer between {minimum} and {maximum}")
+    return value
+
+
+def _environment_integer(env, name, minimum, maximum, default):
+    raw = env.get(name, str(default))
+    if not re.fullmatch(r"-?[0-9]+", raw):
+        raise ConfigurationError(f"{name} must be an integer between {minimum} and {maximum}")
+    return _integer(int(raw), name, minimum, maximum)
+
+
 @dataclass(frozen=True)
 class RuntimeSettings:
     world_dir: Path = DEFAULT_WORLD
     state_dir: Path = DEFAULT_STATE
+    bundles_dir: Path | None = None
     config_file: Path | None = None
     database_url_file: Path | None = field(default=None, repr=False)
     public_origin: str | None = None
@@ -67,6 +93,20 @@ class RuntimeSettings:
     regime_guard: bool | None = None
     ospr_enabled: bool | None = None
     ospr_weight: float | None = None
+    queue_intake: bool = False
+    queue_max_queued: int = 200
+    queue_max_active_per_user: int = 2
+    queue_global_slots: int = 2
+    queue_lease_seconds: int = 60
+    queue_retry_seconds: int = 30
+    queue_retry_cap_seconds: int = 1800
+    queue_max_attempts: int = 3
+    queue_deadline_seconds: int = 1800
+    queue_retention_days: int = 30
+    queue_log_lines: int = 500
+    queue_blas_threads: int = 1
+    queue_max_rss_mb: int = 0
+    desktop_mode: bool = False
 
     def __post_init__(self):
         for name in ("world_dir", "state_dir", "config_file", "database_url_file", "release_manifest_file"):
@@ -77,6 +117,18 @@ class RuntimeSettings:
             raise ConfigurationError("world_dir and state_dir are required")
         if self.world_dir == self.state_dir or self.world_dir in self.state_dir.parents or self.state_dir in self.world_dir.parents:
             raise ConfigurationError("Bundle and writable state directories must not overlap")
+        if self.bundles_dir is None:
+            object.__setattr__(self, "bundles_dir", self.state_dir.parent / "bundles")
+        else:
+            object.__setattr__(self, "bundles_dir", _path(self.bundles_dir, "bundles_dir"))
+        if (
+            self.bundles_dir == self.state_dir
+            or self.bundles_dir in self.state_dir.parents
+            or self.state_dir in self.bundles_dir.parents
+        ):
+            raise ConfigurationError("Published bundles directory must not overlap with writable state")
+        if self.bundles_dir == self.world_dir:
+            raise ConfigurationError("Published bundles directory must differ from the active bundle directory")
         if self.log_level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
             raise ConfigurationError("AGROCAST_LOG_LEVEL is invalid")
         if type(self.session_seconds) is not int or not 300 <= self.session_seconds <= 86400:
@@ -90,6 +142,22 @@ class RuntimeSettings:
                 raise ConfigurationError(f"{name} must be boolean")
         if self.ospr_weight is not None and (type(self.ospr_weight) not in (int, float) or not 0 <= self.ospr_weight <= 1):
             raise ConfigurationError("AGROCAST_OSPR_W must be finite and between 0 and 1")
+        if type(self.queue_intake) is not bool:
+            raise ConfigurationError("AGROCAST_QUEUE_INTAKE must be boolean")
+        if type(self.desktop_mode) is not bool:
+            raise ConfigurationError("AGROCAST_DESKTOP must be boolean")
+        _integer(self.queue_max_queued, "AGROCAST_QUEUE_MAX_QUEUED", 1, 10000)
+        _integer(self.queue_max_active_per_user, "AGROCAST_QUEUE_MAX_ACTIVE_PER_USER", 1, 100)
+        _integer(self.queue_global_slots, "AGROCAST_QUEUE_GLOBAL_SLOTS", 1, 16)
+        _integer(self.queue_lease_seconds, "AGROCAST_QUEUE_LEASE_SECONDS", 10, 3600)
+        _integer(self.queue_retry_seconds, "AGROCAST_QUEUE_RETRY_SECONDS", 1, 3600)
+        _integer(self.queue_retry_cap_seconds, "AGROCAST_QUEUE_RETRY_CAP_SECONDS", 10, 86400)
+        _integer(self.queue_max_attempts, "AGROCAST_QUEUE_MAX_ATTEMPTS", 1, 5)
+        _integer(self.queue_deadline_seconds, "AGROCAST_QUEUE_DEADLINE_SECONDS", 5, 86400)
+        _integer(self.queue_retention_days, "AGROCAST_QUEUE_RETENTION_DAYS", 1, 3650)
+        _integer(self.queue_log_lines, "AGROCAST_QUEUE_LOG_LINES", 10, 10000)
+        _integer(self.queue_blas_threads, "AGROCAST_QUEUE_BLAS_THREADS", 1, 64)
+        _integer(self.queue_max_rss_mb, "AGROCAST_QUEUE_MAX_RSS_MB", 0, 1048576)
 
     @classmethod
     def from_environment(cls, environment=None):
@@ -104,12 +172,27 @@ class RuntimeSettings:
         return cls(
             world_dir=_option(env, "AGROCAST_WORLD_DIR", ("AGROCAST_WORLD",), str(DEFAULT_WORLD)),
             state_dir=_option(env, "AGROCAST_STATE_DIR", ("AGROCAST_DATA", "AGROCAST_DATA_DIR"), str(DEFAULT_STATE)),
+            bundles_dir=_option(env, "AGROCAST_BUNDLES_DIR", (), None),
             config_file=env.get("AGROCAST_CONFIG_FILE"), database_url_file=env.get("AGROCAST_DATABASE_URL_FILE"),
             public_origin=env.get("AGROCAST_PUBLIC_ORIGIN"), release_manifest_file=env.get("AGROCAST_RELEASE_MANIFEST_FILE"),
             log_level=env.get("AGROCAST_LOG_LEVEL", "INFO"), session_seconds=int(seconds),
             phys_preset=_option(env, "AGROCAST_PHYS_PRESET", ("PHYS_PRESET",)),
             regime_guard=_boolean(_option(env, "AGROCAST_REGIME_GUARD", ("REGIME_GUARD",)), "AGROCAST_REGIME_GUARD"),
             ospr_enabled=_boolean(env.get("AGROCAST_OSPR"), "AGROCAST_OSPR"), ospr_weight=weight,
+            queue_intake=_boolean(env.get("AGROCAST_QUEUE_INTAKE"), "AGROCAST_QUEUE_INTAKE") or False,
+            desktop_mode=_boolean(env.get("AGROCAST_DESKTOP"), "AGROCAST_DESKTOP") or False,
+            queue_max_queued=_environment_integer(env, "AGROCAST_QUEUE_MAX_QUEUED", 1, 10000, 200),
+            queue_max_active_per_user=_environment_integer(env, "AGROCAST_QUEUE_MAX_ACTIVE_PER_USER", 1, 100, 2),
+            queue_global_slots=_environment_integer(env, "AGROCAST_QUEUE_GLOBAL_SLOTS", 1, 16, 2),
+            queue_lease_seconds=_environment_integer(env, "AGROCAST_QUEUE_LEASE_SECONDS", 10, 3600, 60),
+            queue_retry_seconds=_environment_integer(env, "AGROCAST_QUEUE_RETRY_SECONDS", 1, 3600, 30),
+            queue_retry_cap_seconds=_environment_integer(env, "AGROCAST_QUEUE_RETRY_CAP_SECONDS", 10, 86400, 1800),
+            queue_max_attempts=_environment_integer(env, "AGROCAST_QUEUE_MAX_ATTEMPTS", 1, 5, 3),
+            queue_deadline_seconds=_environment_integer(env, "AGROCAST_QUEUE_DEADLINE_SECONDS", 5, 86400, 1800),
+            queue_retention_days=_environment_integer(env, "AGROCAST_QUEUE_RETENTION_DAYS", 1, 3650, 30),
+            queue_log_lines=_environment_integer(env, "AGROCAST_QUEUE_LOG_LINES", 10, 10000, 500),
+            queue_blas_threads=_environment_integer(env, "AGROCAST_QUEUE_BLAS_THREADS", 1, 64, 1),
+            queue_max_rss_mb=_environment_integer(env, "AGROCAST_QUEUE_MAX_RSS_MB", 0, 1048576, 0),
         )
 
     def with_paths(self, world_dir=None, state_dir=None):
@@ -159,7 +242,7 @@ class RuntimeSettings:
             self.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
             with tempfile.TemporaryFile(dir=self.state_dir) as handle:
                 handle.write(b"ready")
-            for name in ("compute", "backups", "migration", "offline-jobs", "results-v1"):
+            for name in ("compute", "backups", "migration", "offline-jobs", "results-v1", "queue-staging", "queue-exec"):
                 target = self.state_dir / name
                 if target.is_symlink() or self.world_dir == target.resolve() or self.world_dir in target.resolve().parents:
                     raise ConfigurationError("Writable state must not point into the bundle")
@@ -190,10 +273,23 @@ class RuntimeSettings:
             config.pop(key, None)
         return {
             "world_dir": str(self.world_dir), "state_dir": str(self.state_dir),
+            "bundles_dir": str(self.bundles_dir),
             "config_file": str(self.config_file or self.world_dir / "config.json"),
             "public_origin": self.public_origin, "session_seconds": self.session_seconds,
             "log_level": self.log_level, "numerics": config,
             "release_manifest_file": str(self.release_manifest_file) if self.release_manifest_file else None,
+            "queue": self.queue_snapshot(),
+        }
+
+    def queue_snapshot(self):
+        return {
+            "intake": self.queue_intake, "max_queued": self.queue_max_queued,
+            "max_active_per_user": self.queue_max_active_per_user, "global_slots": self.queue_global_slots,
+            "lease_seconds": self.queue_lease_seconds, "retry_seconds": self.queue_retry_seconds,
+            "retry_cap_seconds": self.queue_retry_cap_seconds, "max_attempts": self.queue_max_attempts,
+            "deadline_seconds": self.queue_deadline_seconds, "retention_days": self.queue_retention_days,
+            "log_lines": self.queue_log_lines, "blas_threads": self.queue_blas_threads,
+            "max_rss_mb": self.queue_max_rss_mb,
         }
 
     def fingerprint(self):

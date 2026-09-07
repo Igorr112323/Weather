@@ -1,5 +1,7 @@
 import numpy as np
 
+from agrocast.agro import units
+
 CROPS = [
     {"key": "maize", "name": "Кукуруза на зерно", "sow_months": (4, 5), "t_window": (10.0, 15.0)},
 ]
@@ -36,7 +38,8 @@ def drought_block(tp_probs, tp_q_mm, tp_norm_mm, gtk_p50=None, spi_p50=None):
         "deficit_mm": round(deficit, 1) if deficit is not None else None,
     }
     if deficit is not None and deficit > 20 and risk >= 0.45:
-        out["irrigation_hint_m3_ha"] = int(round(deficit * 10))
+        out["irrigation_hint_m3_ha"] = units.mm_to_m3_ha(deficit)
+        out["irrigation_basis"] = "дефицит осадков относительно нормы (tp p50); не водобалансовый расчёт ETc"
     return out
 
 

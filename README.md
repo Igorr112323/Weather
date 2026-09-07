@@ -39,7 +39,17 @@ app factory, read-only bundle и проверяемый перенос/backup/re
 [Матрица возможностей и настройка пилота](docs/production/PILOT.md) ·
 [DOM/CSP и браузерные проверки](docs/production/BROWSER_SECURITY.md) ·
 [HTTP-контракт, миграция crop revision и кэш](docs/production/API_CACHE.md) ·
-[Settings, read-only world, migration и recovery](docs/production/STATE.md).
+[Settings, read-only world, migration и recovery](docs/production/STATE.md) ·
+[Очередь вычислений, leases, квоты и runbook worker'а](docs/production/QUEUE.md) ·
+[Десктоп-версия: локальный режим, экран данных и сборка](docs/production/DESKTOP.md) ·
+[Readiness, лимиты источников и gate честного выпуска](docs/production/FRESHNESS.md) ·
+[Сквозной as-of и устранение временных утечек](docs/production/ASOF.md) ·
+[Единый расчётный pipeline LIVE/hindcast/audit/refit](docs/production/PIPELINE.md). ·
+[Метрики навыка и калибровки: baseline, ECE, conformal, порог продвижения](docs/production/METRICS.md). ·
+[Агрономический чек-лист параметров и исключений агрорекомендаций](docs/production/AGRO_CHECKLIST.md). ·
+[Публикация наборов данных и обновление источников на машине пользователя](docs/production/BUNDLES.md). ·
+[Инвентарь прав на данные, приватность и экспорт/удаление аккаунта](docs/production/DATA_LICENSES.md). ·
+[Отчёт о производительности локального контура](docs/production/PERFORMANCE.md).
 
 Новый и изменяемый код — строго без комментариев; пояснения и архитектурные
 решения оформляются в Markdown.

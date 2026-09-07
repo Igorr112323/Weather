@@ -5,7 +5,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from agrocast.backtest.metrics import ece as ece_metric
 from agrocast.backtest.metrics import rps_rows, rpss
+from agrocast.forecast.asof import target_end_periods, walk_forward_masks
 
 SEASON_OF = {12: "DJF", 1: "DJF", 2: "DJF", 3: "MAM", 4: "MAM", 5: "MAM",
              6: "JJA", 7: "JJA", 8: "JJA", 9: "SON", 10: "SON", 11: "SON"}
@@ -43,25 +45,6 @@ def record_hash(issue, lat, lon, variable, p, q):
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
-def ece(probs, obs, bins=10):
-
-    probs = np.asarray(probs, float)
-    obs = np.asarray(obs, int)
-    m = probs.max(axis=1)
-    dom = probs.argmax(axis=1)
-    hit = (dom == obs).astype(float)
-    idx = np.clip((m * bins).astype(int), 0, bins - 1)
-    num, den = 0.0, 0.0
-    for b in range(bins):
-        msk = idx == b
-        n = int(msk.sum())
-        if n < 5:
-            continue
-        num += n * abs(float(m[msk].mean()) - float(hit[msk].mean()))
-        den += n
-    return float(num / den) if den > 0 else None
-
-
 def _block(g, qcov80=None):
     if len(g) == 0:
         return None
@@ -71,11 +54,12 @@ def _block(g, qcov80=None):
     conf = probs.max(axis=1) > 0.45
     out = {
         "n": int(len(g)),
-        "rpss": round(float(rpss(probs, obs)), 3),
+        "rpss": round(float(rpss(probs, obs, months=(g["target_month"].to_numpy(int) if "target_month" in g.columns else None))), 3),
         "hit": round(float((dom == obs).mean()), 3),
         "hit_conf": round(float((dom[conf] == obs[conf]).mean()), 3) if conf.sum() >= 10 else None,
         "coverage_conf": round(float(conf.mean()), 3),
-        "ece": round(ece(probs, obs), 3) if ece(probs, obs) is not None else None,
+        "ece": ece_metric(probs, obs)["top_label"],
+        "ece_classwise": ece_metric(probs, obs)["classwise"],
     }
     return out
 
@@ -100,7 +84,6 @@ def build_ledger(records, mode="monthly", config=None, half_life_years=5.0):
         return pd.DataFrame()
     from agrocast.blend.nn_stack import load_alpha, mix, nn_map, row_keys
 
-    rc = None
     pf_dict = {}
     mz = {}
     terc = {}
@@ -111,7 +94,6 @@ def build_ledger(records, mode="monthly", config=None, half_life_years=5.0):
 
         pt = PointDataset(config, *region_center(config.region), config.zarr_store())
         if SPECS.get(mode):
-            rc = RegimeClimatology.fit_history(mode, pt)
             pf_dict = {p: row for p, row in pt.predictor_frame().iterrows()}
             mon = pt.monthly()
             for vv, spec in SPECS.get(mode, {}).items():
@@ -121,62 +103,85 @@ def build_ledger(records, mode="monthly", config=None, half_life_years=5.0):
                     mz["z" + ("t" if vx == "t2m" else "p") + str(k)] = memory_z(mon, vx, k)
                 terc[vv] = tercile_grid(pt, vv)
     pieces_all = []
+    fold_span = 3 if mode == "seasonal" else 1
+    fold_embargo = fold_span - 1
+    rc_cache = {}
+    rc_enabled = pt is not None and bool(SPECS.get(mode))
     for v, gv in rec.groupby("variable"):
-        g = gv
-        pieces = []
-        for y in sorted(g["year"].unique()):
-            b = Blender(half_life_years=half_life_years).fit(g[g["year"] != y])
-            pieces.append(blended_records(g[g["year"] == y], b.weights))
-        blend = pd.concat(pieces, ignore_index=True)
-        blend = attach_obs(blend, g)
-        blend["season"] = blend["target_month"].map(season_of)
-        P = blend[["p0", "p1", "p2"]].to_numpy(float)
-        alpha = load_alpha(config, mode, v) if config is not None else 0.0
-        if pt is not None and alpha > 0:
-            nnmap = nn_map(pt, v, mode, sorted(blend["year"].unique()))
-            P = mix(P, row_keys(blend), nnmap, alpha)
-        if len(blend) >= 120:
-            cal = TercileCalibrator().fit(P, blend["obs_tercile"].to_numpy(int))
-            if cal.usable():
-                P = cal.transform(P)
-        if rc is not None:
-            Pn = []
-            for i, r in blend.iterrows():
-                tm, y2, lead = int(r["target_month"]), int(r["year"]), int(r["lead"])
-                if mode == "seasonal":
-                    key = season_issue_key(tm, y2)
-                    group = r["season"]
-                else:
-                    key = issue_key_for(tm, y2, lead)
-                    group = f"m{tm}"
-                ip = pd.Period(f"{key // 100}-{key % 100:02d}", "M")
-                prow = pf_dict.get(ip)
-                pprev = pf_dict.get(ip - 3)
-                x = rc.feature_vector(v, prow, ip, mz, pprev, terc.get(v)) if prow is not None else None
-                Pn.append(rc.transform(P[i], v, group, y2, x))
-            P = np.asarray(Pn)
-        if pt is not None and len(P) > 0:
-            from agrocast.blend.shrink import shrink_ledger_block
+        g = gv.reset_index(drop=True)
+        target_ends = target_end_periods(g, fold_span)
+        fold_years = sorted(int(y) for y in g["year"].unique())
+        masks = walk_forward_masks(target_ends, fold_years, fold_embargo)
+        history = None
+        for y in fold_years:
+            gy = g[g["year"] == y]
+            fit_slice = g[masks[y]]
+            b = Blender(half_life_years=half_life_years).fit(fit_slice)
+            blend = blended_records(gy, b.weights)
+            if blend.empty:
+                continue
+            blend = attach_obs(blend, g)
+            blend["season"] = blend["target_month"].map(season_of)
+            fold_until = str(target_ends[masks[y]].max()) if len(fit_slice) else ""
+            P = blend[["p0", "p1", "p2"]].to_numpy(float)
+            alpha = load_alpha(config, mode, v) if config is not None else 0.0
+            if pt is not None and alpha > 0:
+                nnmap = nn_map(pt, v, mode, [y])
+                P = mix(P, row_keys(blend), nnmap, alpha)
+            if history is not None and len(history) >= 120:
+                cal = TercileCalibrator().fit(history[["p0", "p1", "p2"]].to_numpy(float), history["obs_tercile"].to_numpy(int))
+                if cal.usable():
+                    P = cal.transform(P)
+            if rc_enabled:
+                fold_start = pd.Period(f"{y}-01", "M")
+                if y not in rc_cache:
+                    rc_cache[y] = RegimeClimatology.fit_history(mode, pt, until_period=fold_start - 1 - fold_embargo)
+                rcy = rc_cache[y]
+                Pn = []
+                for i, r in blend.iterrows():
+                    tm, y2, lead = int(r["target_month"]), int(r["year"]), int(r["lead"])
+                    if mode == "seasonal":
+                        key = season_issue_key(tm, y2)
+                        group = r["season"]
+                    else:
+                        key = issue_key_for(tm, y2, lead)
+                        group = f"m{tm}"
+                    ip = pd.Period(f"{key // 100}-{key % 100:02d}", "M")
+                    prow = pf_dict.get(ip)
+                    pprev = pf_dict.get(ip - 3)
+                    x = rcy.feature_vector(v, prow, ip, mz, pprev, terc.get(v)) if prow is not None else None
+                    Pn.append(rcy.transform(P[i], v, group, y2, x))
+                P = np.asarray(Pn)
+            if pt is not None and len(P) > 0 and history is not None and len(history) > 0:
+                from agrocast.blend.shrink import ShrinkContext, year_skills
 
-            P = shrink_ledger_block(
-                P,
-                blend["obs_tercile"].to_numpy(int),
-                blend["year"].to_numpy(int),
-                pt,
-                v,
-                mode,
-                blend["target_month"].to_numpy(int),
-            )
-        if pt is not None and len(P) > 0 and v == "tp" and getattr(config, "ospr_enabled", True):
-            P = _ospr_shrink(P, blend, pt)
-        blend = blend.assign(p0=P[:, 0], p1=P[:, 1], p2=P[:, 2])
-        ccal = ConformalQuantileCalibrator().fit(blend)
-        qs = np.array([
-            ccal.transform([r["q10"], r["q50"], r["q90"]], v, r["lead"])
-            for _, r in blend.iterrows()
-        ])
-        blend = blend.assign(q10=qs[:, 0], q50=qs[:, 1], q90=qs[:, 2])
-        pieces_all.append(blend)
+                ys = year_skills(
+                    history[["p0", "p1", "p2"]].to_numpy(float),
+                    history["obs_tercile"].to_numpy(int),
+                    history["year"].to_numpy(int),
+                )
+                ctx = ShrinkContext(mode, pt, v, ys)
+                P = np.asarray(
+                    [ctx.apply(P[i], int(blend.iloc[i]["target_month"]), int(blend.iloc[i]["year"])) for i in range(len(P))],
+                    float,
+                )
+            if pt is not None and len(P) > 0 and v == "tp" and getattr(config, "ospr_enabled", True):
+                P = _ospr_shrink(P, blend, pt)
+            blend = blend.assign(p0=P[:, 0], p1=P[:, 1], p2=P[:, 2])
+            ccal = ConformalQuantileCalibrator().fit(history) if history is not None and len(history) else ConformalQuantileCalibrator()
+            qs = np.array([
+                ccal.transform([r["q10"], r["q50"], r["q90"]], v, r["lead"])
+                for _, r in blend.iterrows()
+            ])
+            blend = blend.assign(q10=qs[:, 0], q50=qs[:, 1], q90=qs[:, 2])
+            blend = blend.assign(fold_train_until=fold_until)
+            if "evaluation" in g.columns:
+                blend = blend.assign(evaluation=str(gy["evaluation"].iloc[0]))
+            cols = ["variable", "target_month", "lead", "year", "p0", "p1", "p2", "q10", "q50", "q90", "obs_z", "obs_tercile"]
+            if "evaluation" in blend.columns:
+                cols.append("evaluation")
+            history = blend[cols] if history is None else pd.concat([history, blend[cols]], ignore_index=True)
+            pieces_all.append(blend)
     led = pd.concat(pieces_all, ignore_index=True)
     probs = led[["p0", "p1", "p2"]].to_numpy(float)
     obs = led["obs_tercile"].to_numpy(int)

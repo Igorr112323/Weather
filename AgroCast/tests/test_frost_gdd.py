@@ -52,7 +52,7 @@ def test_frost_generic_and_crop():
     assert g["p_frost_spring"] >= 0.2
     assert g["p_frost_any"] >= g["p_frost_spring"]
     assert g["last_frost"]["median"] and g["last_frost"]["p90"]
-    assert 5 in g["p_frost_day_by_month"]
+    assert "5" in g["p_frost_day_by_month"]
     c = frost_block(members, CROP)["crop"]
     assert c["safe_date"]
     assert c["danger_at_sow_from"] is not None

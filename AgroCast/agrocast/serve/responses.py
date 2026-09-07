@@ -76,6 +76,20 @@ class SubscriptionRecord(OwnedRecord[SubscriptionBody]):
 
 class JobRecord(OwnedRecord[dict[str, JsonValue]]):
     status: JobStatus
+    queue_kind: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*$")] | None = None
+    dedup_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    attempts: StrictInt | None = None
+    max_attempts: StrictInt | None = None
+    next_retry_at: Timestamp | None = None
+    lease_owner: str | None = None
+    lease_expires_at: Timestamp | None = None
+    heartbeat_at: Timestamp | None = None
+    deadline_at: Timestamp | None = None
+    cancel_requested_at: Timestamp | None = None
+    parent_id: UUID | None = None
+    started_at: Timestamp | None = None
+    finished_at: Timestamp | None = None
+    result_checksum: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
 
     @field_validator("data")
     @classmethod
@@ -162,10 +176,126 @@ class AcceptedJob(Contract):
         return self
 
 
+class DurableJobView(Contract):
+    id: UUID
+    status: JobStatus
+    queue_kind: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*$")]
+    attempts: StrictInt
+    max_attempts: StrictInt
+    next_retry_at: Timestamp | None = None
+    deadline_at: Timestamp | None = None
+    lease_active: StrictBool
+    cancel_requested: StrictBool
+    started_at: Timestamp | None = None
+    finished_at: Timestamp | None = None
+    result_checksum: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    error_code: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*$")] | None = None
+    parent_id: UUID | None = None
+    log: list[str]
+
+
+class FileRecord(Contract):
+    path: str
+    size_bytes: Timestamp
+    modified_at: Timestamp | None = None
+
+
+class DirectoryReport(Contract):
+    files: list[FileRecord]
+    file_count: StrictInt
+    total_bytes: Timestamp
+    truncated: StrictBool
+
+
+class CacheEntry(Contract):
+    key: str
+    size_bytes: Timestamp
+    stored_at: Timestamp | None = None
+    payload_sha256: str | None = None
+
+
+class LocalInputsResponse(Contract):
+    generated_at: Timestamp
+    state_dir: str
+    world_dir: str
+    bundle: DirectoryReport
+    bundle_manifest: dict
+    observations: DirectoryReport
+    results_cache: dict
+    releases: dict | None = None
+    bundle_release: dict | None = None
+    sources_through: dict[str, str | None]
+
+
+class AccountExportResponse(Contract):
+    export: dict
+
+
+class AccountDeleteBody(Contract):
+    password: Annotated[str, Field(min_length=8, max_length=256)]
+
+
+class LocalForecastResponse(Contract):
+    cached: StrictBool
+    payload: dict
+    identity: dict
+    computed_at: Timestamp | None = None
+    log: list[str]
+
+
+class DurableJobResponse(Contract):
+    job: DurableJobView
+
+
+class QueueEventRecord(Contract):
+    id: UUID
+    job_id: UUID
+    sequence: StrictInt
+    kind: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*$")]
+    payload: dict[str, JsonValue]
+    created_at: Timestamp
+
+
+class QueueEventsResponse(Contract):
+    events: list[QueueEventRecord]
+
+
+class QueueStatsResponse(Contract):
+    queued: StrictInt
+    running: StrictInt
+    succeeded: StrictInt
+    failed: StrictInt
+    cancelled: StrictInt
+    expired_leases: StrictInt
+    global_slots: StrictInt
+    max_queued: StrictInt
+    max_active_per_user: StrictInt
+    oldest_queued_age_s: StrictInt | None = None
+    intake_enabled: StrictBool
+
+
 class LivenessResponse(Contract):
     status: Literal["alive"]
     stage: Literal["closed_pilot"]
     forecast_enabled: Literal[False]
+
+
+class SourceHealth(Contract):
+    status: str
+    last: str | None = None
+    available_at: str | None = None
+    age_days: Annotated[StrictInt, Field(ge=0)] | None = None
+    limit_days: Annotated[StrictInt, Field(ge=1)]
+
+
+class ReadinessResponse(Contract):
+    status: Literal["ready", "not_ready"]
+    reasons: list[str]
+    degraded: list[str]
+    sources: dict[str, SourceHealth]
+    bundle: dict[str, JsonValue]
+    regions: dict[str, dict[str, JsonValue]]
+    queue: dict[str, JsonValue]
 
 
 class DiagnosticResponse(Contract):
@@ -278,8 +408,8 @@ class ForecastCapabilities(Contract):
 
 
 class Operations(Contract):
-    hindcast: Literal[False]
-    region_refresh: Literal[False]
+    hindcast: StrictBool
+    region_refresh: StrictBool
     crop_mutation: StrictBool
     field_management: StrictBool
     subscription_preferences: StrictBool
@@ -287,6 +417,9 @@ class Operations(Contract):
     job_access: StrictBool
     agro_recommendations: Literal[False]
     legacy_api: Literal[False]
+    durable_queue: StrictBool
+    queue_intake: StrictBool
+    local_mode: StrictBool
 
 
 class CapabilitiesResponse(Historical):

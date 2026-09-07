@@ -13,7 +13,7 @@ def monthly_from_daily(daily):
     if "t2m" in daily:
         out["t2m"] = g["t2m"].mean()
     if "tp" in daily:
-        out["tp"] = g["tp"].sum()
+        out["tp"] = g["tp"].sum(min_count=1)
     if "swvl" in daily:
         out["swvl"] = g["swvl"].mean()
     if "snow" in daily:

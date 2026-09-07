@@ -7,7 +7,6 @@ import pandas as pd
 import requests
 import xarray as xr
 
-from agrocast.core.config import Config
 from agrocast.ingest.registry import Registry
 from agrocast.store.zarrstore import ZarrStore
 
@@ -59,6 +58,24 @@ def _ncss(dataset, var, north, south, east, west, t0, t1, target, extra="", time
         Path(target).unlink(missing_ok=True)
         _t.sleep(2.0 * (attempt + 1))
     raise last
+
+
+def drop_incomplete_months(daily):
+    times = pd.DatetimeIndex(daily.time.values)
+    months = pd.PeriodIndex(times, freq="M")
+    usable = np.ones(len(times), dtype=bool)
+    for v in daily.data_vars:
+        arr = np.asarray(daily[v].to_numpy(), dtype="float64")
+        if arr.ndim == 1:
+            usable &= np.isfinite(arr)
+        else:
+            flat = arr.reshape(arr.shape[0], -1)
+            usable &= np.mean(~np.isfinite(flat), axis=1) <= 0.25
+    counts = pd.Series(usable.astype(int), index=months).groupby(level=0).sum()
+    expected = counts.index.to_timestamp().days_in_month.astype(int)
+    complete = set(counts.index[counts.to_numpy() >= expected.to_numpy()])
+    keep = usable & np.array([m in complete for m in months])
+    return daily.isel(time=np.where(keep)[0])
 
 
 def _last_complete_period():
@@ -234,6 +251,13 @@ def fetch_cpc_daily(config, start_year=1979, end_year=None, workers=4):
                 "(data.rcc-acis.org) или сервис недоступен"
             )
         daily = xr.concat([f for _, f in frames], dim="time").sortby("time")
+    before = int(daily.sizes["time"])
+    daily = drop_incomplete_months(daily)
+    dropped = before - int(daily.sizes["time"])
+    if dropped:
+        reg.log_event("ingest_warn", f"cpc: отброшено неполных/all-NaN дней: {dropped}")
+    if int(daily.sizes["time"]) == 0:
+        raise RuntimeError("CPC: после фильтра неполных месяцев не осталось ни одного полного месяца")
     daily["t2m"].attrs["units"] = "degC"
     daily["tp"].attrs["units"] = "mm"
     store.append("daily_region", daily)

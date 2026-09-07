@@ -26,15 +26,23 @@ def test_anonymous_operations_fail_before_body_parsing(anonymous, method, path):
 
 @pytest.mark.parametrize("username", ["reader_a", "operator_a", "admin_a"])
 @pytest.mark.parametrize("method,path", [("POST", "/api/prepare"), ("POST", "/api/region/refresh"), ("POST", "/api/subscribe"), ("GET", "/api/ledger"), ("GET", "/api/region/field"), ("GET", "/docs"), ("GET", "/openapi.json"), ("POST", "/api/capabilities"), ("POST", "/health/live"), ("POST", "/api/jobs")])
-def test_scientific_exclusions_apply_to_all_roles_without_side_effects(clients, monkeypatch, username, method, path):
-    from agrocast.serve import pipeline
+def test_scientific_exclusions_apply_to_all_roles_without_side_effects(clients, monkeypatch, username, method, path, identity_engine):
+    from sqlalchemy import func, select
 
-    start = Mock(side_effect=AssertionError("no forecast worker"))
+    from agrocast.identity.schema import jobs
+
+    admit = Mock(side_effect=AssertionError("no compute admission"))
     region = Mock(side_effect=AssertionError("no region worker"))
-    monkeypatch.setattr(pipeline, "start_job", start)
+    monkeypatch.setattr(product, "admit_point", admit)
+    monkeypatch.setattr(product, "admit_region", admit)
     from agrocast.serve import region as region_module
     monkeypatch.setattr(region_module, "build_field", region)
-    before = dict(product.JOBS)
+
+    def queue_rows():
+        with identity_engine.connect() as connection:
+            return connection.execute(select(func.count()).select_from(jobs).where(jobs.c.queue_kind.is_not(None))).scalar_one()
+
+    before = queue_rows()
     payload = {}
     if path == "/api/prepare":
         payload = {"lat": 46.25, "lon": 38.25, "start": "2026-10"}
@@ -44,9 +52,9 @@ def test_scientific_exclusions_apply_to_all_roles_without_side_effects(clients, 
     assert response.status_code == 403
     expected = "role_forbidden" if username == "reader_a" and path in {"/api/prepare", "/api/region/refresh"} else "pilot_operation_disabled"
     assert response.json()["code"] == expected
-    start.assert_not_called()
+    admit.assert_not_called()
     region.assert_not_called()
-    assert product.JOBS == before
+    assert queue_rows() == before
 
 
 @pytest.mark.parametrize("path", ["/api/prepare/", "/api%2Fprepare", "/api/region/refresh/", "/api/crops%2Ftest"])
@@ -108,10 +116,9 @@ def test_only_frozen_pilot_grid_and_region_are_available(clients):
     assert [row["region"] for row in client.get("/api/region/regions").json()["regions"]] == ["krai"]
 
 
-def test_legacy_process_local_jobs_are_not_implicitly_assigned(clients, monkeypatch):
-    job_id = str(uuid4())
-    monkeypatch.setitem(product.JOBS, job_id, {"status": "done", "private": True})
-    response = clients("admin_a").get("/api/job/" + job_id)
+def test_legacy_process_local_jobs_are_not_implicitly_assigned(clients):
+    assert not hasattr(product, "JOBS")
+    response = clients("admin_a").get("/api/job/" + str(uuid4()))
     assert response.status_code == 404
 
 

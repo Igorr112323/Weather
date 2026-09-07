@@ -49,9 +49,21 @@ class ZarrStore:
             ds.to_zarr(tmp, mode="w", encoding=encoding if encoding else None, zarr_format=2)
         except TypeError:
             ds.to_zarr(tmp, mode="w", encoding=encoding if encoding else None)
+        backup = p.with_name(p.name + ".old")
+        if backup.exists():
+            shutil.rmtree(backup)
+        moved = False
         if p.exists():
-            shutil.rmtree(p)
-        tmp.rename(p)
+            p.rename(backup)
+            moved = True
+        try:
+            tmp.rename(p)
+        except OSError:
+            if moved and not p.exists() and backup.exists():
+                backup.rename(p)
+            raise
+        if backup.exists():
+            shutil.rmtree(backup, ignore_errors=True)
         return p
 
     def append(self, name, ds_new):

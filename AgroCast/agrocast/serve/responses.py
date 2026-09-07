@@ -223,6 +223,7 @@ class LocalInputsResponse(Contract):
     observations: DirectoryReport
     results_cache: dict
     releases: dict | None = None
+    bundle_release: dict | None = None
     sources_through: dict[str, str | None]
 
 

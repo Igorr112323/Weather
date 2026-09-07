@@ -82,6 +82,7 @@ def _environment_integer(env, name, minimum, maximum, default):
 class RuntimeSettings:
     world_dir: Path = DEFAULT_WORLD
     state_dir: Path = DEFAULT_STATE
+    bundles_dir: Path | None = None
     config_file: Path | None = None
     database_url_file: Path | None = field(default=None, repr=False)
     public_origin: str | None = None
@@ -116,6 +117,18 @@ class RuntimeSettings:
             raise ConfigurationError("world_dir and state_dir are required")
         if self.world_dir == self.state_dir or self.world_dir in self.state_dir.parents or self.state_dir in self.world_dir.parents:
             raise ConfigurationError("Bundle and writable state directories must not overlap")
+        if self.bundles_dir is None:
+            object.__setattr__(self, "bundles_dir", self.state_dir.parent / "bundles")
+        else:
+            object.__setattr__(self, "bundles_dir", _path(self.bundles_dir, "bundles_dir"))
+        if (
+            self.bundles_dir == self.state_dir
+            or self.bundles_dir in self.state_dir.parents
+            or self.state_dir in self.bundles_dir.parents
+        ):
+            raise ConfigurationError("Published bundles directory must not overlap with writable state")
+        if self.bundles_dir == self.world_dir:
+            raise ConfigurationError("Published bundles directory must differ from the active bundle directory")
         if self.log_level not in {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}:
             raise ConfigurationError("AGROCAST_LOG_LEVEL is invalid")
         if type(self.session_seconds) is not int or not 300 <= self.session_seconds <= 86400:
@@ -159,6 +172,7 @@ class RuntimeSettings:
         return cls(
             world_dir=_option(env, "AGROCAST_WORLD_DIR", ("AGROCAST_WORLD",), str(DEFAULT_WORLD)),
             state_dir=_option(env, "AGROCAST_STATE_DIR", ("AGROCAST_DATA", "AGROCAST_DATA_DIR"), str(DEFAULT_STATE)),
+            bundles_dir=_option(env, "AGROCAST_BUNDLES_DIR", (), None),
             config_file=env.get("AGROCAST_CONFIG_FILE"), database_url_file=env.get("AGROCAST_DATABASE_URL_FILE"),
             public_origin=env.get("AGROCAST_PUBLIC_ORIGIN"), release_manifest_file=env.get("AGROCAST_RELEASE_MANIFEST_FILE"),
             log_level=env.get("AGROCAST_LOG_LEVEL", "INFO"), session_seconds=int(seconds),
@@ -259,6 +273,7 @@ class RuntimeSettings:
             config.pop(key, None)
         return {
             "world_dir": str(self.world_dir), "state_dir": str(self.state_dir),
+            "bundles_dir": str(self.bundles_dir),
             "config_file": str(self.config_file or self.world_dir / "config.json"),
             "public_origin": self.public_origin, "session_seconds": self.session_seconds,
             "log_level": self.log_level, "numerics": config,

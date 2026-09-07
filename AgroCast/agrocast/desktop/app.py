@@ -17,6 +17,7 @@ def prepare_environment(home=None):
     os.environ["AGROCAST_STATIC_DIR"] = str(root / "static")
     os.environ["AGROCAST_MIGRATIONS_DIR"] = str(root / "migrations")
     os.environ.setdefault("AGROCAST_WORLD_DIR", str(root / "world"))
+    os.environ.setdefault("AGROCAST_BUNDLES_DIR", str(state.parent / "bundles"))
     os.environ["AGROCAST_STATE_DIR"] = str(state)
     os.environ.setdefault("AGROCAST_PUBLIC_ORIGIN", "https://127.0.0.1")
     os.environ["AGROCAST_DESKTOP"] = "1"
@@ -53,6 +54,14 @@ def start_server():
     import uvicorn
 
     settings = RuntimeSettings.from_environment()
+    from agrocast.bundle.releases import active_release
+
+    active = active_release(settings.bundles_dir)
+    if active is not None and active["problems"]:
+        raise RuntimeError(
+            "Локальный набор данных повреждён (release %s). Выполните откат: python -m scripts.bundle_publish rollback --releases-root %s"
+            % (active["release_id"], settings.bundles_dir)
+        )
     application = create_app(settings=settings)
     last_error = None
     for _attempt in range(5):

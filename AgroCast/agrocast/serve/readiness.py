@@ -173,6 +173,11 @@ def evaluate(settings, config, engine=None, now=None):
     bundle = _bundle_block(settings.world_dir, store, now)
     if bundle["status"] != "ok":
         reasons.append(f"bundle:{bundle['status']}")
+    from agrocast.bundle.releases import release_status
+
+    bundle_release = release_status(settings.bundles_dir)
+    if bundle_release["status"] == "corrupt":
+        reasons.append("bundle_release:corrupt")
     regions = _region_block(settings.world_dir, now)
     for region_id, row in regions.items():
         if row["grid"] != "ok":
@@ -189,6 +194,7 @@ def evaluate(settings, config, engine=None, now=None):
         "degraded": degraded,
         "sources": sources,
         "bundle": bundle,
+        "bundle_release": bundle_release,
         "regions": regions,
         "queue": queue,
     }

@@ -210,8 +210,31 @@ function fileTable(files, limit = 9) {
   return list;
 }
 
+async function checkAutonomy() {
+  try {
+    const result = await api("/api/local/autonomy");
+    const badge = $("autonomy-badge");
+    if (!badge) return;
+    if (result.autonomous) {
+      badge.textContent = "Автономный режим — интернет не нужен";
+      badge.className = "autonomy-ok";
+    } else {
+      const missing = Object.entries(result.checks).filter(([, v]) => !v.ok).map(([k]) => k).join(", ");
+      badge.textContent = "Не все данные на месте: " + missing;
+      badge.className = "autonomy-warn";
+    }
+  } catch (error) {
+    const badge = $("autonomy-badge");
+    if (badge) {
+      badge.textContent = "Проверка автономности недоступна";
+      badge.className = "autonomy-warn";
+    }
+  }
+}
+
 async function loadInputs() {
   const status = $("data-status");
+  checkAutonomy();
   try {
     const data = await api("/api/local/inputs");
     $("state-dir").textContent = data.state_dir;
@@ -232,7 +255,7 @@ async function loadInputs() {
     bundle.appendChild(fileTable(data.bundle.files, 6));
     box.appendChild(bundle);
     const obs = dataCard("Скачанные наблюдения (для прогноза)", `${data.observations.file_count} файлов · ${fmtSize(data.observations.total_bytes)}`);
-    obs.appendChild(el("p", "hint", data.observations.file_count ? "Суточные ряды наблюдений, загруженные на этом компьютере." : "Пока пусто — закачаются при первом расчёте новой точки."));
+    obs.appendChild(el("p", "hint", data.observations.file_count ? "Суточные ряды наблюдений, сохранённые на этом компьютере." : "Для точек из набора данных наблюдения уже включены в бандл."));
     obs.appendChild(fileTable(data.observations.files, 8));
     box.appendChild(obs);
     const cache = dataCard("Кэш результатов", `${data.results_cache.total} сохранённых расчётов`);

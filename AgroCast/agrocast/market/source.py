@@ -52,19 +52,24 @@ def _age_days(as_of):
 
 
 def corn_price(data_root, world_dir="world", timeout=15, max_age_days=STALE_DAYS):
+    import os
+
+    desktop = os.environ.get("AGROCAST_DESKTOP", "") == "1"
     cache = Path(data_root) / "market" / "corn_price.json"
     cached = _read(cache)
     cache_fresh = bool(cached and cached.get("fetched_at") and _age_days(cached.get("as_of", "1900-01-01")) == 0)
     price = None
     if cache_fresh and cached:
         price = cached
-    else:
+    elif not desktop:
         try:
             price = fetch_corn_price(timeout=timeout)
             cache.parent.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps(price, ensure_ascii=False))
         except Exception:
             price = cached
+    else:
+        price = cached
     if price is None:
         price = _read(Path(world_dir) / "artifacts" / "market_seed.json")
     if not price:
@@ -73,6 +78,8 @@ def corn_price(data_root, world_dir="world", timeout=15, max_age_days=STALE_DAYS
     price = dict(price)
     price["stale_days"] = age
     price["stale"] = age is None or age > max_age_days
+    if desktop:
+        price["offline_mode"] = True
     if age is not None and age > 1:
         price["source"] += f"; цена на {price['as_of']} (дней с обновления: {age})"
     return price

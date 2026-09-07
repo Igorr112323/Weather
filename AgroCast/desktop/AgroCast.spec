@@ -3,15 +3,29 @@ from pathlib import Path
 
 ROOT = Path(SPECPATH).resolve().parent
 
+
+def _data_files(source, destination):
+    files = sorted(
+        (path for path in source.rglob("*") if path.is_file()),
+        key=lambda path: path.relative_to(source).as_posix(),
+    )
+    entries = []
+    for path in files:
+        parent = path.relative_to(source).parent.as_posix()
+        target = destination if parent == "." else "%s/%s" % (destination, parent)
+        entries.append((str(path), target))
+    return entries
+
+
 a = Analysis(
     [str(ROOT / "agrocast" / "desktop" / "app.py")],
     pathex=[str(ROOT)],
     binaries=[],
-    datas=[
-        (str(ROOT / "static"), "static"),
-        (str(ROOT / "world"), "world"),
-        (str(ROOT / "migrations"), "migrations"),
-    ],
+    datas=(
+        _data_files(ROOT / "static", "static")
+        + _data_files(ROOT / "world", "world")
+        + _data_files(ROOT / "migrations", "migrations")
+    ),
     hiddenimports=[
         "uvicorn.logging",
         "uvicorn.loops.asyncio",

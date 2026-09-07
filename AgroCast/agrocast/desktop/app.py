@@ -62,7 +62,7 @@ def _verify_bundle_integrity(world_dir):
     digest = hashlib.sha256()
     for entry in sorted(world_dir.rglob("*")):
         if entry.is_file() and entry.name != "integrity.json":
-            digest.update(str(entry.relative_to(world_dir)).encode())
+            digest.update(entry.relative_to(world_dir).as_posix().encode())
             digest.update(_bundle_content_bytes(entry))
     actual = digest.hexdigest()[:16]
     if actual != expected.get("sha256_prefix"):

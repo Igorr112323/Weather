@@ -465,6 +465,28 @@ bundle → ошибка, не тихий default); hindcast == ledger-строк
   (Debian 12 minimal, пакет `libpython3.11` недоступен в репозитории). Это ожидаемое
   ограничение песочницы; CI-сборка трёх ОС (ubuntu-22.04/macos-14/windows-latest)
   использует setup-python с полной shared library.
+### Полная автономность десктоп-приложения (2026-09-07)
+
+- **Интернет не требуется:** в desktop-режиме (`AGROCAST_DESKTOP=1`) приложение
+  не делает ни одного внешнего HTTP-запроса. Проверено статическим анализом
+  (grep внешних endpoints) и smoke-тестом встроенного сервера.
+- **`market/source.py`:** в desktop-режиме `corn_price` не пытается скачать
+  цену с Yahoo Finance (раньше timeout 10 сек при каждом расчёте) — сразу
+  использует кэш или seed из bundle. Поле `offline_mode: true` в ответе.
+- **`serve/pipeline.py:ensure_point`:** в desktop-режиме для точек вне bundle
+  (не из 28 контрольных точек КРА) — явная ошибка вместо попытки скачать CPC
+  из интернета. Все 28 точек КРА внутри bundle — расчёт без сети.
+- **`/api/local/autonomy`:** новый endpoint — проверяет, что все компоненты
+  для автономной работы на месте: bundle активен, market seed, world ready,
+  config, krai_grid, zarr-источники. Поле `internet_required: false`.
+- **UI:** индикатор автономности в заголовке (зелёный «Автономный режим —
+  интернет не нужен» / жёлтый с перечнем недостающих компонентов). Текст
+  «Как это работает» обновлён: интернет не упоминается. Статусная строка:
+  «Расчёт полностью локальный — интернет не требуется».
+- **Проверки:** check-dom.mjs ✅, ruff F,E9 ✅, 15 desktop-тестов ✅,
+  smoke-сервер ✅ (autonomous: internet_required=false, 12 zarr-источников),
+  полный suite 669 passed / 20 skipped ✅.
+
 - **Квота GitHub Actions восстановлена** (2026-09-07): billing обновлён, CI
   desktop-builds полностью зелёный на теге `desktop-v0.1.0` (run 34148156133).
   Матрица 3 ОС: тесты, smoke сервера и PyInstaller — ✅ ubuntu-22.04 (3m34s),

@@ -76,10 +76,16 @@ jobs:
           path: downloads
       - name: Упаковка, контрольные суммы, draft-релиз
         run: |
-          set -euo pipefail
+          set -euxo pipefail
+          which zip || sudo apt-get install -y zip
+          which tar
+          echo "--- downloads ---"
+          ls -la downloads/ || true
           mkdir -p assets
           cd downloads
           for name in agrocast-desktop-*; do
+            echo "--- $name ---"
+            ls -la "$name/" || true
             case "$name" in
               *windows*) out="AgroCast-windows-x64.zip" ;;
               *macos*)   out="AgroCast-macos-arm64.tar.gz" ;;
@@ -88,7 +94,10 @@ jobs:
             ( cd "$name" && zip -qr "../../assets/$out" . )
           done
           cd ../assets
+          echo "--- assets ---"
+          ls -la
           sha256sum AgroCast-* > SHA256SUMS
+          cat SHA256SUMS
           gh release create "$GITHUB_REF_NAME" --draft \
             --title "AgroCast desktop $GITHUB_REF_NAME" \
             --notes "Сборка прогнана на том же коммите: матрица desktop-тестов, смоук сервера без GUI и PyInstaller-артефакты (job build). Архивы не подписаны — сверьте SHA256SUMS перед установкой. Научный допуск и агро-верификация выпускаются по RELEASE_CHECKLIST закрытого пилота; агрорекомендации публикуются только с маркировкой подтверждённости. В состав включен read-only seed-bundle (world/) с производными NOAA и Copernicus-данными; права и атрибуции — docs/production/DATA_LICENSES.md. Откат набора данных: scripts/bundle_publish rollback." \

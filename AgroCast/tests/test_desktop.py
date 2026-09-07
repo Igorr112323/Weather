@@ -75,7 +75,7 @@ def test_bundle_integrity_accepts_valid_marker(tmp_path):
     digest = hashlib.sha256()
     for entry in sorted(tmp_path.rglob("*")):
         if entry.is_file() and entry.name != "integrity.json":
-            digest.update(str(entry.relative_to(tmp_path)).encode())
+            digest.update(entry.relative_to(tmp_path).as_posix().encode())
             digest.update(entry.read_bytes())
     (tmp_path / "integrity.json").write_text(
         json.dumps({"sha256_prefix": digest.hexdigest()[:16]}), encoding="utf-8"
@@ -103,7 +103,7 @@ def test_bundle_integrity_is_line_ending_independent(tmp_path):
     digest = hashlib.sha256()
     for entry in sorted(tmp_path.rglob("*")):
         if entry.is_file() and entry.name != "integrity.json":
-            digest.update(str(entry.relative_to(tmp_path)).encode())
+            digest.update(entry.relative_to(tmp_path).as_posix().encode())
             digest.update(entry.read_bytes())
     (tmp_path / "integrity.json").write_text(
         json.dumps({"sha256_prefix": digest.hexdigest()[:16]}), encoding="utf-8"
@@ -122,6 +122,38 @@ def test_bundle_integrity_skips_without_marker(tmp_path):
 
     (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
     _verify_bundle_integrity(tmp_path)  # no integrity.json -> no-op
+
+
+def test_bundle_integrity_os_independent_with_crlf(tmp_path):
+    """Regression: CRLF in text files or backslash paths must not change the hash.
+
+    On Windows, git may check out text files with CRLF and pathlib produces
+    backslash paths.  Both must be normalised so the sha256 matches the
+    Linux-generated integrity.json.
+    """
+    import hashlib
+
+    from agrocast.desktop.app import _bundle_content_bytes, _verify_bundle_integrity
+
+    (tmp_path / "a.txt").write_text("hello\nworld\n", encoding="utf-8")
+    (tmp_path / "b").mkdir()
+    (tmp_path / "b" / "c.txt").write_text("data\n", encoding="utf-8")
+
+    # Compute the expected hash the same way the code does (posix paths + LF normalised).
+    digest = hashlib.sha256()
+    for entry in sorted(tmp_path.rglob("*")):
+        if entry.is_file() and entry.name != "integrity.json":
+            digest.update(entry.relative_to(tmp_path).as_posix().encode())
+            digest.update(_bundle_content_bytes(entry))
+    (tmp_path / "integrity.json").write_text(
+        json.dumps({"sha256_prefix": digest.hexdigest()[:16]}), encoding="utf-8"
+    )
+
+    # Rewrite text files with CRLF (simulates Windows checkout)
+    for p in tmp_path.rglob("*.txt"):
+        p.write_bytes(p.read_bytes().replace(b"\n", b"\r\n"))
+
+    _verify_bundle_integrity(tmp_path)  # must still pass
 
 
 def test_desktop_icon_is_bundled_linked_and_served(desktop_client):

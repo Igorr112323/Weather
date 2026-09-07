@@ -1,12 +1,23 @@
 const $ = (id) => document.getElementById(id);
 
+function describeError(response, body) {
+  const detail = body && (body.detail ?? body.code ?? body.message);
+  if (Array.isArray(detail)) {
+    const parts = detail.slice(0, 3).map((item) => {
+      const where = Array.isArray(item.loc) ? item.loc.filter((part) => part !== "body").join(" → ") : "";
+      return (where ? where + ": " : "") + String(item.msg ?? item.message ?? "ошибка поля");
+    });
+    return "Проверьте форму: " + parts.join("; ");
+  }
+  if (typeof detail === "string" && detail) return detail;
+  if (response.status === 404) return "Ресурс не найден (404). Обновите список данных.";
+  return "Ошибка сервера (HTTP " + response.status + ").";
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, { credentials: "same-origin", ...options });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail = body && (body.detail || body.code);
-    throw new Error(typeof detail === "string" ? detail : "HTTP " + response.status);
-  }
+  if (!response.ok) throw new Error(describeError(response, body));
   return body;
 }
 
@@ -51,6 +62,15 @@ async function loadPoints() {
     option.value = point.id;
     select.appendChild(option);
   }
+  if (!points.length) {
+    const empty = el("option", "", "нет доступных точек — обновите данные");
+    empty.disabled = true;
+    empty.selected = true;
+    select.appendChild(empty);
+    $("run").disabled = true;
+  } else {
+    $("run").disabled = false;
+  }
 }
 
 function tercileRow(label, probs, words) {
@@ -75,6 +95,15 @@ function renderSummary(payload) {
     const card = el("div", "season");
     const months = (item.months || [item.target || ""]).join(", ");
     card.appendChild(el("h4", "", `${months}`));
+    if (!item.t2m && !item.tp) {
+      card.appendChild(el("p", "status", "Для этого сезона нет ни температуры, ни осадков — расчёт завершился частично."));
+    }
+    if (!item.tp && item.t2m) {
+      card.appendChild(el("p", "hint", "Осадки для этого сезона не рассчитаны — показана только температура."));
+    }
+    if (!item.t2m && item.tp) {
+      card.appendChild(el("p", "hint", "Температура для этого сезона не рассчитана — показаны только осадки."));
+    }
     if (item.t2m && item.t2m.tercile_probs) {
       card.appendChild(tercileRow("Температура", item.t2m.tercile_probs, { below: "ниже нормы", normal: "около нормы", above: "выше нормы" }));
     }
@@ -92,19 +121,53 @@ function renderSummary(payload) {
   $("raw").textContent = JSON.stringify(payload, null, 1);
 }
 
+const FORECAST_DEADLINE_MS = 600000;
+let elapsedTimer = null;
+let currentAbort = null;
+
+function stopElapsed() {
+  if (elapsedTimer !== null) {
+    clearInterval(elapsedTimer);
+    elapsedTimer = null;
+  }
+}
+
+function startElapsed(status) {
+  const started = Date.now();
+  const tick = () => {
+    const seconds = Math.round((Date.now() - started) / 1000);
+    status.textContent = "Считаю локально: " + seconds + " с. Первый расчёт новой точки докачает наблюдения — это 2–6 минут, один раз.";
+  };
+  tick();
+  stopElapsed();
+  elapsedTimer = setInterval(tick, 1000);
+}
+
 async function runForecast() {
   const button = $("run");
+  const cancel = $("cancel");
   const status = $("status");
   const pointId = $("point").value;
   const point = points.find((item) => item.id === pointId) || {};
   const start = $("start").value || currentMonth();
   button.disabled = true;
-  status.textContent = "Считаю локально. Первый расчёт новой точки докачает наблюдения — это 2–6 минут, один раз.";
+  cancel.hidden = false;
+  currentAbort = new AbortController();
+  let timedOut = false;
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    currentAbort && currentAbort.abort();
+  }, FORECAST_DEADLINE_MS);
+  cancel.onclick = () => {
+    currentAbort && currentAbort.abort();
+  };
+  startElapsed(status);
   try {
     const out = await api("/api/local/forecast", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ lat: point.lat, lon: point.lon, point_id: point.id, start, horizon: 3, mode: "seasonal", season_len: 3 }),
+      signal: currentAbort.signal,
     });
     renderSummary(out.payload);
     $("result-meta").textContent = out.cached
@@ -114,8 +177,19 @@ async function runForecast() {
     status.textContent = "Готово.";
     loadInputs();
   } catch (error) {
-    status.textContent = "Не получилось: " + error.message;
+    stopElapsed();
+    if (error && error.name === "AbortError") {
+      status.textContent = timedOut
+        ? "Расчёт длился больше 10 минут и был остановлен. Уже скачанные данные сохранены — попробуйте повторить."
+        : "Расчёт отменён. Скачанные данные и кэш сохранены.";
+    } else {
+      status.textContent = "Не получилось: " + error.message;
+    }
   } finally {
+    clearTimeout(deadline);
+    stopElapsed();
+    currentAbort = null;
+    cancel.hidden = true;
     button.disabled = false;
   }
 }
@@ -168,8 +242,12 @@ async function loadInputs() {
       cache.appendChild(el("p", "hint", `${String(entry.key).slice(0, 16)}… · ${fmtSize(entry.size_bytes)} · ${fmtDate(entry.stored_at)}`));
     }
     box.appendChild(cache);
-    status.textContent = "Обновлено " + fmtDate(data.generated_at) + ".";
+    const ageMinutes = Math.round((Date.now() / 1000 - Number(data.generated_at || 0)) / 60);
+    const staleHint = Number.isFinite(ageMinutes) && ageMinutes > 10 ? " Список старше " + ageMinutes + " минут — нажмите «Обновить»." : "";
+    status.textContent = "Обновлено " + fmtDate(data.generated_at) + "." + staleHint;
   } catch (error) {
+    $("data").textContent = "";
+    $("data").appendChild(el("p", "status", "Список данных недоступен: " + error.message));
     status.textContent = "Не удалось прочитать список данных: " + error.message;
   }
 }

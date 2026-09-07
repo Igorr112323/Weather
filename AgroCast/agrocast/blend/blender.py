@@ -85,7 +85,7 @@ class Blender:
             obs = g["obs_tercile"].to_numpy(int)
             probs = g[["p0", "p1", "p2"]].to_numpy(float)
             w = year_weights(g["year"], self.half_life_years)
-            rpss = weighted_rpss(probs, obs, w)
+            rpss = weighted_rpss(probs, obs, w, months=(g["target_month"].to_numpy(int) if "target_month" in g.columns else None))
             rows.append({"variable": keys[0], "season": keys[1], "model": keys[2], "rpss": float(rpss), "n": len(g)})
         skill = pd.DataFrame(rows)
         self.skill = skill

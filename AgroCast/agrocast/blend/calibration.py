@@ -26,11 +26,13 @@ class TercileCalibrator:
     def __init__(self):
         self.curves = None
         self.n = 0
+        self.fit_years = []
 
     def fit(self, p, obs):
         p = np.asarray(p, float)
         obs = np.asarray(obs, int)
         self.n = len(obs)
+        self.fit_years = []
         self.curves = [MonoCurve.fit(p[:, k], (obs == k).astype(float)) for k in range(3)]
         return self
 
@@ -46,7 +48,7 @@ class TercileCalibrator:
     def save(self, path):
         from agrocast.core.artifacts import CALIB_SCHEMA, write_artifact
 
-        data = {"n": self.n, "curves": [{"x": list(c.x), "y": list(c.y)} for c in (self.curves or [])]}
+        data = {"n": self.n, "curves": [{"x": list(c.x), "y": list(c.y)} for c in (self.curves or [])], "fit_years": list(self.fit_years)}
         write_artifact(path, data, CALIB_SCHEMA)
 
     @classmethod
@@ -58,6 +60,7 @@ class TercileCalibrator:
             return None
         c = cls()
         c.n = data["n"]
+        c.fit_years = [int(y) for y in (data.get("fit_years") or [])]
         c.curves = [MonoCurve(np.asarray(d["x"], float), np.asarray(d["y"], float)) for d in data["curves"]]
         return c
 
@@ -78,6 +81,7 @@ def gated_calibrator(p, obs, years=None, hold_years=5, min_hold=48):
     if int(m_hold.sum()) < min_hold or int(m_fit.sum()) < MIN_CAL_N:
         return TercileCalibrator().fit(p, obs)
     cal = TercileCalibrator().fit(p[m_fit], obs[m_fit])
+    cal.fit_years = sorted(int(y) for y in np.unique(years[m_fit]))
     if not cal.usable():
         return cal
     if rps_of(cal.transform(p[m_hold]), obs[m_hold]) < rps_of(p[m_hold], obs[m_hold]):

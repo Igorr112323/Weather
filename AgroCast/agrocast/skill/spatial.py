@@ -5,7 +5,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from agrocast.backtest.metrics import rps_rows
+from agrocast.backtest.metrics import (block_bootstrap_ci, ece as ece_metric, promotion_decision, rps_rows,
+                                      tercile_baseline)
 
 SCHEMA = "grid-skill-v2"
 METHOD = "moving-block bootstrap over consecutive target periods; spatial 2x2 cell-block resampling"
@@ -20,18 +21,6 @@ def add_cell_frame(pipe, lat, lon, cell_id):
     out["cell_lon"] = float(lon)
     out["cell_id"] = str(cell_id)
     return out
-
-
-def _baseline_probs(terciles, months):
-    base = {}
-    for m in range(1, 13):
-        vals = terciles[months == m]
-        if len(vals) == 0:
-            base[m] = np.array([1 / 3, 1 / 3, 1 / 3])
-            continue
-        counts = np.array([(vals == k).sum() for k in range(3)], float)
-        base[m] = (counts + 1.0) / (counts.sum() + 3.0)
-    return base
 
 
 def evaluate_combo(pipe, variable, lead):
@@ -51,45 +40,11 @@ def evaluate_combo(pipe, variable, lead):
     rps_base = np.full(len(g), np.nan)
     for (_clat, _clon), sub in g.groupby(["cell_lat", "cell_lon"]):
         months = np.asarray([p.month for p in sub["period"]])
-        base = _baseline_probs(sub["obs_tercile"].to_numpy(int), months)
-        Pb = np.array([base[p.month] for p in sub["period"]])
-        rps_base[sub.index.to_numpy()] = rps_rows(Pb, sub["obs_tercile"].to_numpy(int))
+        base_p = tercile_baseline(sub["obs_tercile"].to_numpy(int), months)
+        rps_base[sub.index.to_numpy()] = rps_rows(base_p, sub["obs_tercile"].to_numpy(int))
     if not np.isfinite(rps_base).all():
         rps_base = np.where(np.isfinite(rps_base), rps_base, float(np.nanmean(rps_base)))
     return {"frame": g, "rps": rps, "hit": hit, "coverage": cover, "rps_base": rps_base}
-
-
-def _block_means(values, block_len):
-    arr = np.asarray(values, float)
-    n = len(arr)
-    if n == 0:
-        return np.zeros(0)
-    bl = max(1, int(block_len))
-    if bl >= n:
-        return arr.mean(keepdims=True)
-    starts = np.arange(n - bl + 1)
-    out = np.empty(len(starts))
-    for i, st in enumerate(starts):
-        out[i] = float(arr[st : st + bl].mean())
-    return out
-
-
-def _moving_block_bootstrap_ci(values, block_len, n_boot, seed):
-    values = np.asarray(values, float)
-    blocks = _block_means(values, block_len)
-    if len(blocks) == 0:
-        return {"ci95": [None, None], "n_time_blocks": 0, "block_len": int(block_len)}
-    k = max(1, int(np.ceil(len(values) / max(1, int(block_len)))))
-    point = float(values.mean())
-    if len(blocks) == 1:
-        return {"ci95": [point, point], "n_time_blocks": 1, "block_len": int(block_len)}
-    rng = np.random.default_rng(int(seed))
-    boot = np.empty(int(n_boot))
-    for b in range(int(n_boot)):
-        pick = rng.integers(0, len(blocks), size=k)
-        boot[b] = float(blocks[pick].mean())
-    lo, hi = np.quantile(boot, [0.025, 0.975])
-    return {"ci95": [float(lo), float(hi)], "n_time_blocks": k, "block_len": int(block_len), "bootstrap_point": point}
 
 
 def spatial_block_ids(lats, lons, cell_size=0.5, block_cells=SPATIAL_BLOCK_CELLS):
@@ -113,7 +68,26 @@ def _spatial_ci(frame, values, n_boot, seed):
     return {"ci95": [float(lo), float(hi)], "n_spatial_blocks": int(len(means))}
 
 
-def summarize(pipe, modes, leads, variables=("t2m", "tp"), n_boot=400, seed=7, block_len=None):
+def _fit_years(artifact_dir, mode, variable):
+    years = set()
+    source = "none"
+    if artifact_dir is None:
+        return years, source
+    from agrocast.blend.calibration import TercileCalibrator
+    from agrocast.blend.conformal import ConformalQuantileCalibrator
+
+    cc = ConformalQuantileCalibrator.load(Path(artifact_dir) / f"conformal_{mode}_{variable}.json")
+    if cc is not None and cc.fit_years:
+        years.update(int(y) for ys in cc.fit_years.values() for y in ys)
+        source = "conformal"
+    tc = TercileCalibrator.load(Path(artifact_dir) / f"calib_{mode}_{variable}.json")
+    if tc is not None and list(getattr(tc, "fit_years", [])):
+        years.update(int(y) for y in tc.fit_years)
+        source = "conformal+calib" if source != "none" else "calib"
+    return years, source
+
+
+def summarize(pipe, modes, leads, variables=("t2m", "tp"), n_boot=400, seed=7, block_len=None, artifact_dir=None):
     combos = {}
     for mode in modes:
         for lead in leads[mode]:
@@ -122,17 +96,35 @@ def summarize(pipe, modes, leads, variables=("t2m", "tp"), n_boot=400, seed=7, b
                 if ev is None:
                     continue
                 frame = ev["frame"]
-                bl = int(DEFAULT_BLOCK_LEN[mode] if block_len is None else block_len)
-                mean_rps = float(ev["rps"].mean())
-                mean_base = float(ev["rps_base"].mean())
+                fit_years, fit_source = _fit_years(artifact_dir, mode, v)
+                n_excluded = 0
+                if fit_years and "year" in frame.columns:
+                    keep = ~frame["year"].isin(sorted(fit_years))
+                    n_excluded = int((~keep).sum())
+                    if n_excluded < len(frame):
+                        for key in ("rps", "hit", "coverage", "rps_base"):
+                            ev[key] = ev[key][keep.to_numpy()]
+                        frame = frame[keep].reset_index(drop=True)
+                rps_v = np.asarray(ev["rps"], float)
+                base_v = np.asarray(ev["rps_base"], float)
+                mean_rps = float(rps_v.mean())
+                mean_base = float(base_v.mean())
                 rpss = float(1.0 - mean_rps / mean_base) if mean_base > 0 else None
-                stat_t = _moving_block_bootstrap_ci(ev["rps"], bl, n_boot, seed)
-                stat_hit = _moving_block_bootstrap_ci(ev["hit"], bl, n_boot, seed)
-                stat_cov = _moving_block_bootstrap_ci(ev["coverage"], bl, n_boot, seed)
-                stat_space = _spatial_ci(frame, ev["rps"], n_boot, seed)
+                rpss_rows_i = 1.0 - rps_v / mean_base if mean_base > 0 else rps_v
+                bl = int(DEFAULT_BLOCK_LEN[mode] if block_len is None else block_len)
+                stat_t = block_bootstrap_ci(rps_v, bl, n_boot, seed)
+                stat_r = block_bootstrap_ci(rpss_rows_i, bl, n_boot, seed)
+                stat_hit = block_bootstrap_ci(np.asarray(ev["hit"], float), bl, n_boot, seed)
+                stat_cov = block_bootstrap_ci(np.asarray(ev["coverage"], float), bl, n_boot, seed)
+                stat_space = _spatial_ci(frame, rps_v, n_boot, seed)
+                P = frame[["p0", "p1", "p2"]].to_numpy(float)
+                obsv = frame["obs_tercile"].to_numpy(int)
+                ece_res = ece_metric(P, obsv)
+                width_z = float((frame["q90"] - frame["q10"]).mean()) if {"q90", "q10"} <= set(frame.columns) else None
                 evaluation = "replay_revised"
-                if "evaluation" in frame.columns:
-                    evaluation = sorted(set(str(x) for x in frame["evaluation"].dropna()))[0] if frame["evaluation"].notna().any() else evaluation
+                if "evaluation" in frame.columns and frame["evaluation"].notna().any():
+                    evaluation = sorted(set(str(x) for x in frame["evaluation"].dropna()))[0]
+                promo = promotion_decision(rpss, stat_r["ci95"])
                 combos[f"{mode}_{v}_l{int(lead)}"] = {
                     "mode": mode,
                     "variable": v,
@@ -141,16 +133,24 @@ def summarize(pipe, modes, leads, variables=("t2m", "tp"), n_boot=400, seed=7, b
                     "rps": mean_rps,
                     "baseline_rps": mean_base,
                     "baseline": BASELINE,
-                    "hit": float(ev["hit"].mean()),
-                    "coverage80": float(ev["coverage"].mean()),
+                    "hit": float(np.asarray(ev["hit"], float).mean()),
+                    "coverage80": float(np.asarray(ev["coverage"], float).mean()),
                     "rps_ci95_time": stat_t["ci95"],
+                    "rpss_ci95_time": stat_r["ci95"],
                     "hit_ci95_time": stat_hit["ci95"],
                     "coverage_ci95_time": stat_cov["ci95"],
                     "rps_ci95_space": stat_space["ci95"],
+                    "skill_promoted": promo["promoted"],
+                    "promotion_rule": promo["rule"],
+                    "ece_top_label": ece_res["top_label"],
+                    "ece_classwise": ece_res["classwise"],
+                    "ece_bins": ece_res["n_bins"],
+                    "width80_z": width_z,
+                    "fit_exclusion": {"source": fit_source, "n_excluded_fit_overlap": n_excluded},
                     "n_rows": int(len(frame)),
                     "n_cells": int(frame["cell_id"].nunique()),
                     "n_periods": int(frame["period"].nunique()),
-                    "n_time_blocks": int(stat_t["n_time_blocks"]),
+                    "n_time_blocks": int(stat_t["n_blocks"]),
                     "n_spatial_blocks": int(stat_space["n_spatial_blocks"]),
                     "block_len_months": bl,
                     "method": METHOD,
@@ -176,6 +176,9 @@ def legacy_blocks(combos, years):
             "hit_ci95": c["hit_ci95_time"],
             "conformal_coverage": c["coverage80"],
             "coverage_ci95": c["coverage_ci95_time"],
+            "ece": c["ece_top_label"],
+            "skill_promoted": c["skill_promoted"],
+            "width80_z": c["width80_z"],
             "n": c["n_rows"],
             "years": years,
         }
@@ -220,6 +223,9 @@ def build_skill_artifact(combos, by_point, region, region_name, years, n_points,
             "n_spatial_blocks": max((c["n_spatial_blocks"] for c in combos.values()), default=0),
             "n_time_blocks": {k: c["n_time_blocks"] for k, c in combos.items()},
             "evaluation": sorted({c["evaluation"] for c in combos.values()}),
+            "ece_definition": "uniform [0,1] bins=10, skip bin rows<5; top-label over dominant class; classwise over classes",
+            "promotion_rule": next((c["promotion_rule"] for c in combos.values()), "RPSS > 0 и нижняя граница 95% block-bootstrap CI > 0"),
+            "baseline_definition": "empirical tercile climatology per target month within verified span (prior +1)",
         },
     }
     art.update(legacy_blocks(combos, years))

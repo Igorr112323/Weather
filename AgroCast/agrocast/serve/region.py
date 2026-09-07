@@ -152,6 +152,11 @@ def region_block(world_dir, data_root, region="krai"):
             if hit is not None:
                 t += f", попадания {100 * hit:.0f}%"
             lines.append(t)
+        if s.get("schema") == "grid-skill-v2":
+            c2 = (s.get("combos") or {}).get("seasonal_t2m_l1") or {}
+            if c2:
+                mark = "подтверждён" if c2.get("skill_promoted") else "не подтверждён"
+                lines.append(f"продвижение t2m: {mark} по правилу «{c2.get('promotion_rule', '')}»")
         note = s.get("note_tp") or "осадки: навык не подтверждён — уровень климатологии"
         if s.get("schema") == "grid-skill-v2":
             n_cells = s.get("n_points", "?")

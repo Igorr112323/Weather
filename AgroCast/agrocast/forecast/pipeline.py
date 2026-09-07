@@ -21,9 +21,11 @@ def _r(x, nd):
 
 
 def _confidence(rpss_val):
+    from agrocast.backtest.metrics import CONFIDENCE_LOW, CONFIDENCE_MEDIUM
+
     if rpss_val is None or not np.isfinite(rpss_val):
         return {"rpss": None, "level": "unknown", "no_skill": False}
-    level = "low" if rpss_val < 0.02 else ("medium" if rpss_val < 0.06 else "high")
+    level = "low" if rpss_val < CONFIDENCE_LOW else ("medium" if rpss_val < CONFIDENCE_MEDIUM else "high")
     return {"rpss": _r(rpss_val, 4), "level": level, "no_skill": bool(rpss_val <= 0.0)}
 
 

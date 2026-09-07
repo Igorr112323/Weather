@@ -82,7 +82,8 @@ def main():
 
     pipe_all = pd.concat(frames, ignore_index=True)
     leads_by_mode = {"monthly": leads_m, "seasonal": [1]}
-    combos = spatial.summarize(pipe_all, modes=modes, leads=leads_by_mode, n_boot=a.n_boot, seed=a.seed)
+    combos = spatial.summarize(pipe_all, modes=modes, leads=leads_by_mode, n_boot=a.n_boot, seed=a.seed,
+                               artifact_dir=config.artifact_dir)
     by_point = spatial.per_point_summary(pipe_all)
     region_name = regions.REGIONS[a.region].get("name", a.region) if a.region in regions.REGIONS else a.region
     art = spatial.build_skill_artifact(

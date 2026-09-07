@@ -161,7 +161,7 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
         for (v, tm, ld), g in br.groupby(["variable", "target_month", "lead"]):
             obs = g["obs_tercile"].to_numpy(int)
             probs = g[["p0", "p1", "p2"]].to_numpy(float)
-            smap.append({"variable": v, "target_month": int(tm), "lead": int(ld), "rpss": float(rpss(probs, obs)), "n": len(g), "skill_source": skill_source})
+            smap.append({"variable": v, "target_month": int(tm), "lead": int(ld), "rpss": float(rpss(probs, obs, months=g["target_month"].to_numpy(int))), "n": len(g), "skill_source": skill_source})
         pd.DataFrame(smap).to_parquet(config.artifact_dir / skill_name(mode))
     reg.log_event("backtest", f"mode={mode} rows={len(records)} years={years[0]}..{years[-1]}")
     if return_pipeline:
@@ -184,5 +184,6 @@ def skill_summary(records):
     for (v, m), g in records.groupby(["variable", "model"]):
         obs = g["obs_tercile"].to_numpy(int)
         probs = g[["p0", "p1", "p2"]].to_numpy(float)
-        out.append({"variable": v, "model": m, "rpss": rpss(probs, obs), "n": len(g)})
+        months = g["target_month"].to_numpy(int) if "target_month" in g.columns else None
+        out.append({"variable": v, "model": m, "rpss": rpss(probs, obs, months=months), "n": len(g)})
     return pd.DataFrame(out)

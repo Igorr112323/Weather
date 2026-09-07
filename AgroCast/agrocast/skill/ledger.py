@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from agrocast.backtest.metrics import ece as ece_metric
 from agrocast.backtest.metrics import rps_rows, rpss
 from agrocast.forecast.asof import target_end_periods, walk_forward_masks
 
@@ -44,25 +45,6 @@ def record_hash(issue, lat, lon, variable, p, q):
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
-def ece(probs, obs, bins=10):
-
-    probs = np.asarray(probs, float)
-    obs = np.asarray(obs, int)
-    m = probs.max(axis=1)
-    dom = probs.argmax(axis=1)
-    hit = (dom == obs).astype(float)
-    idx = np.clip((m * bins).astype(int), 0, bins - 1)
-    num, den = 0.0, 0.0
-    for b in range(bins):
-        msk = idx == b
-        n = int(msk.sum())
-        if n < 5:
-            continue
-        num += n * abs(float(m[msk].mean()) - float(hit[msk].mean()))
-        den += n
-    return float(num / den) if den > 0 else None
-
-
 def _block(g, qcov80=None):
     if len(g) == 0:
         return None
@@ -72,11 +54,12 @@ def _block(g, qcov80=None):
     conf = probs.max(axis=1) > 0.45
     out = {
         "n": int(len(g)),
-        "rpss": round(float(rpss(probs, obs)), 3),
+        "rpss": round(float(rpss(probs, obs, months=(g["target_month"].to_numpy(int) if "target_month" in g.columns else None))), 3),
         "hit": round(float((dom == obs).mean()), 3),
         "hit_conf": round(float((dom[conf] == obs[conf]).mean()), 3) if conf.sum() >= 10 else None,
         "coverage_conf": round(float(conf.mean()), 3),
-        "ece": round(ece(probs, obs), 3) if ece(probs, obs) is not None else None,
+        "ece": ece_metric(probs, obs)["top_label"],
+        "ece_classwise": ece_metric(probs, obs)["classwise"],
     }
     return out
 

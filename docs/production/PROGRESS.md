@@ -443,3 +443,29 @@ bundle → ошибка, не тихий default); hindcast == ledger-строк
 - Мотивация: локальный расчёт длительностью 2–6 минут не имел отмены и конечного срока; ошибки FastAPI 422 (список pydantic-деталей) рисковали показаться нечитаемым; у интерфейса не было печати, focus-обводки и состояний пустоты/частичного результата.
 - Реализация (`static/desktop.js|html|css`): `AbortController` + дедлайн 600 000 мс с различающимися сообщениями «отменено»/«превышен срок» и сохранением уже скачанных данных; тикающий таймер длительности; `describeError` разворачивает pydantic-массив в строку «Проверьте форму: поле: причина», для 404 — явный текст, для прочего — «Ошибка сервера (HTTP …)»; пустой список точек ставит заблокированную опцию и отключает кнопку; отсутствие tp или t2m в сезоне подписывается как частичный результат; «данные устарели» при возрасте более 10 минут; в CSS добавлены `:focus-visible`, мобильная раскладка ≤700px и `@media print` (A4, скрытие кнопок/футера, светлый вывод JSON).
 - Проверено: `node web/check-dom.mjs` — 8 скриптов без комментариев и без опасных sink'ов; `tests/test_desktop_ui_t21.py` — 6 тестов включая E2E точка → расчёт → повторное открытие из кэша (payload идентичен, cached=true), структурированные 422/404, печать/фокус/viewport в отдаваемых ресурсах; `tests/test_desktop.py` — 26 ранее закрытых тестов зелёные; полный набор pytest — зелёный (см. итог прогона). Живой клик в браузере по новым контролам не выполнялся; API-контракт и DOM-разметка покрыты тестами.
+
+### Финальный запуск desktop-канала · T20-финал (2026-09-07)
+
+- Базис на коммите `8671bbe` (main, PR #8): **669 passed, 20 skipped, 0 failed** за 393 с
+  (полный `pytest tests -q` без `--basetemp`). 20 skipped — только browser/pgserver-флаги.
+  Обнаружен артефакт `--basetemp=/tmp/agrocast-pgtest/run`: один из backup/restore-тестов
+  удаляет basetemp через `shutil.rmtree`, после чего последующие `tmp_path`-тесты падают
+  `FileNotFoundError`; без явного basetemp — полное прохождение. Это не дефект кода,
+  а ограничение конкретной тестовой конфигурации.
+- Смоук встроенного сервера (аналог CI-шага): `prepare_environment("build-smoke")` →
+  `start_server()` → `GET /api/capabilities` → `local_mode: true`, `queue_intake: false`,
+  `hindcast: false`, `subscriptions: false`, `agro_recommendations: false`, `durable_queue: true`;
+  сервер стартует и завершается штатно за ~2 с.
+- Desktop-тесты: `tests/test_desktop.py` (9) + `tests/test_desktop_ui_t21.py` (6) — **15 passed**.
+- Статика: `node web/check-dom.mjs` — 8 first-party scripts без HTML-парсеров, string-execution,
+  inline-style sink'ов и browser-storage данных.
+- **Исправлен дефект `desktop/build.sh`:** `--distdir` → `--distpath` (PyInstaller принимает
+  только `--distpath`; старая опция давала `unrecognized arguments`).
+- Локальная PyInstaller-сборка бинаря невозможна: `libpython3.11.so.1.0` отсутствует
+  (Debian 12 minimal, пакет `libpython3.11` недоступен в репозитории). Это ожидаемое
+  ограничение песочницы; CI-сборка трёх ОС (ubuntu-22.04/macos-14/windows-latest)
+  использует setup-python с полной shared library.
+- **Квота GitHub Actions исчерпана** (2026-09-07): аннотация «recent account payments
+  have failed or your spending limit needs to be increased» на всех последних прогонах
+  (run 34139367677 и ранее); jobs завершаются за 2–4 с без steps=0. Это billing, не код;
+  тег `desktop-v0.1.0` и draft-release с SHA256SUMS отложены до восстановления оплаты.

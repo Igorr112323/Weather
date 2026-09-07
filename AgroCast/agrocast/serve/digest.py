@@ -72,8 +72,12 @@ def field_letter(field, payload):
     w = ins.get("water") or {}
     irr = w.get("irrigation_m3_ha") or {}
     if w:
-        lines.append(f"  Вода: осадки за сезон {rub((w.get('precip_mm') or {}).get('p50', 0))} мм, " + (f"дефицит {rub(w.get('deficit_mm', 0))} мм" if w.get("deficit_mm", 0) >= 0 else f"профицит {rub(-w.get('deficit_mm', 0))} мм") + f", запас почвы {rub(w.get('reserve_mm', 0))} мм")
-        lines.append(f"  Полив: медиана {rub(irr.get('p50', 0))} м³/га, сухой сценарий {rub(irr.get('p10', 0))} м³/га" + (f" → на всё поле {rub(irr.get('p10', 0) * area)} м³" if area else ""))
+        w_st = (w.get("policy") or {}).get("status")
+        surf = w.get("surface_theta")
+        lines.append(f"  Вода: осадки за сезон {rub((w.get('precip_mm') or {}).get('p50', 0))} мм, " + (f"дефицит {rub(w.get('deficit_mm', 0))} мм" if w.get("deficit_mm", 0) >= 0 else f"профицит {rub(-w.get('deficit_mm', 0))} мм") + (f", влажность слоя 0–7 см θ={surf} м³/м³ (индикатор; запас корнеобитаемого слоя не верифицирован и не рассчитывается)" if surf is not None else ""))
+        if w_st != "unavailable" and irr:
+            basis = "навык tp подтверждён" if w_st == "confirmed" else "ориентировочно: навык tp не подтверждён — не предписание"
+            lines.append(f"  Полив ({basis}): медиана {rub(irr.get('p50', 0))} м³/га, сухой сценарий (ET0 p90 / осадки p10) {rub(irr.get('p10', 0))} м³/га" + (f" → на всё поле {rub(irr.get('p10', 0) * area)} м³" if area else ""))
     ph = agro.get("phenology") or {}
     crop = next((c for c in ph.get("crops", []) if c.get("key") == crop_key), None)
     if crop:
@@ -84,7 +88,7 @@ def field_letter(field, payload):
     econ = agro.get("econ") or {}
     e = next((c for c in econ.get("crops", []) if c.get("key") == crop_key), None)
     if e and area:
-        lines.append(f"  Деньги: ожидаемый убыток без защиты {rub(e['risk_rub_ha'])} ₽/га → на поле {rub(e['risk_rub_ha'] * area)} ₽; полив ({rub(e['cost_irr_rub'])} ₽/га) — {e['irrigation']}, антистресс ({rub(e['cost_anti_rub'])} ₽/га) — {e['antistress']}")
+        lines.append(f"  Деньги (сценарная оценка, не гарантия дохода): ожидаемый убыток без защиты {rub(e['risk_rub_ha'])} ₽/га → на поле {rub(e['risk_rub_ha'] * area)} ₽; полив ({rub(e['cost_irr_rub'])} ₽/га) — {e['irrigation']}, антистресс ({rub(e['cost_anti_rub'])} ₽/га) — {e['antistress']}")
     for d in (agro.get("decisions") or [])[:2]:
         lines.append(f"  Решение: {d.get('label')} — {d.get('verdict')} (вероятность {round(100 * d.get('prob', 0))}%, порог {round(100 * d.get('ratio', 0))}%)")
     lines.append("")

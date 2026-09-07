@@ -4,8 +4,8 @@ from datetime import timedelta
 import numpy as np
 import pandas as pd
 
-WILTING = 0.10
-SOIL_DEPTH_MM = 2000.0
+from agrocast.agro import units
+
 KC_GENERIC = 0.85
 
 CROPS = [
@@ -66,7 +66,6 @@ def season_insight(members, lat, monthly, swvl_last, sat_crop=None, sat_crops=No
     df0 = members[0]
     months = sorted({d.month for d in df0.index})
     norms_t = _climate_norm(monthly, "t2m", months)
-    norms_p = _climate_norm(monthly, "tp", months)
     period_months = pd.period_range(df0.index[0], df0.index[-1], freq="M")
 
     dec_stats = {}
@@ -209,9 +208,8 @@ def season_insight(members, lat, monthly, swvl_last, sat_crop=None, sat_crops=No
             "crops": gdd_rows,
         }
 
-    reserve_mm = None
-    if swvl_last is not None and np.isfinite(swvl_last):
-        reserve_mm = round(max(0.0, (float(swvl_last) - WILTING) * SOIL_DEPTH_MM))
+    surface_theta = round(float(swvl_last), 3) if swvl_last is not None and np.isfinite(swvl_last) else None
+    usable = 0.0
     kc = KC_GENERIC
     for c in CROPS:
         if set(c["months"]) & set(months):
@@ -222,18 +220,20 @@ def season_insight(members, lat, monthly, swvl_last, sat_crop=None, sat_crops=No
     pr50 = float(np.median(tot_pr))
     etc50 = float(np.median(tot_et0)) * kc
     deficit = etc50 - pr50
-    usable = 0.4 * (reserve_mm or 0.0)
+    dry_need = max(0.0, float(np.quantile(tot_et0, 0.9) * kc - np.quantile(tot_pr, 0.1)))
     irrig = max(0.0, deficit - usable)
     water = {
-        "reserve_mm": reserve_mm,
-        "swvl": round(float(swvl_last), 3) if swvl_last is not None else None,
+        "reserve_mm": None,
+        "reserve_note": "запас корнеобитаемого слоя не рассчитывается: слой влажности 0–7 см (swvl1) не переносится на профиль 2 м без верификации агрономом",
+        "surface_theta": surface_theta,
         "kc": round(kc, 2),
         "et0_mm": q(tot_et0),
         "etc_mm": round(etc50),
         "precip_mm": q(tot_pr),
         "deficit_mm": round(deficit),
-        "irrigation_m3_ha": {"p10": round(max(0.0, (np.quantile(tot_et0, 0.9) * kc - np.quantile(tot_pr, 0.1)) * 10 - usable)),
-                              "p50": round(irrig * 10)},
+        "irrigation_m3_ha": {"p10": units.mm_to_m3_ha(max(0.0, dry_need - usable)),
+                             "p50": units.mm_to_m3_ha(irrig)},
+        "scenario_note": "p10 — сухой сценарий (ET0 90-го percentiля, осадки 10-го percentiля), обычно выше медианы; не нижняя граница распределения",
     }
 
     for d, key in zip(decades, sorted(dec_stats)):
@@ -241,7 +241,11 @@ def season_insight(members, lat, monthly, swvl_last, sat_crop=None, sat_crops=No
         need = np.array(st["et0"], float) * kc - np.array(st["pr"], float)
         d50 = max(0.0, float(np.quantile(need, 0.5)))
         ddry = max(0.0, float(np.quantile(st["et0"], 0.9) * kc - np.quantile(st["pr"], 0.1)))
-        d["irr_m3_ha"] = {"p50": round(d50 * 10), "p10": round(ddry * 10)}
+        d["irr_m3_ha"] = {"p50": units.mm_to_m3_ha(d50), "p10": units.mm_to_m3_ha(ddry)}
+        d["irr_note"] = "декадная дезагрегация: кредит запаса влаги не распределён (профиль не верифицирован), сумма p50 декад может превышать сезонную медиану — квантиль суммы не равен сумме квантилей"
+    if decades:
+        water["decade_sum_p50_m3_ha"] = float(sum(d["irr_m3_ha"]["p50"] for d in decades))
+        water["decade_season_ratio"] = round(water["decade_sum_p50_m3_ha"] / max(1.0, water["irrigation_m3_ha"]["p50"] or 0.0), 2) if water["irrigation_m3_ha"]["p50"] else None
 
     risks = []
 

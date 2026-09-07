@@ -15,9 +15,9 @@ FALLBACK_PRICE = {
 }
 
 
-def _verdict(loss, cost):
+def _verdict(loss, cost, confirmed=False):
     if loss >= cost:
-        return "окупается"
+        return "окупается (навык подтверждён)" if confirmed else "окупается (по сценарной оценке)"
     if loss >= 0.7 * cost:
         return "на грани"
     return "не окупается"
@@ -34,7 +34,8 @@ def _source_line(p, yield_t_ha=None, variety_name=None):
         f"{var} Параметры культуры (заморозки, САТ, окно сева) — по источникам: kccc.ru, rosgibrid.ru, "
         f"rosagrochim.ru и справочнику сортов. Стоимость полива ≈{RUB_PER_M3:g} ₽/м³ "
         f"(≈{int(4500 / RUB_PER_M3)} м³/га за полив 150 мм — типовая отраслевая оценка). "
-        f"Доли потерь от засухи/жары — типовые отраслевые оценки, уточните под свои затраты."
+        f"Доли потерь от засухи/жары — типовые отраслевые оценки, уточните под свои затраты. "
+        f"Деньги — сценарная оценка, не гарантия дохода."
     )
 
 
@@ -88,6 +89,7 @@ def econ_block(ph, drought_p=None, heat_p=None, price=None, yield_t_ha=None, var
                 "rub_per_m3": RUB_PER_M3,
                 "irrigation": _verdict(loss_dr, e["cost_irr"]),
                 "antistress": _verdict(loss_ht, e["cost_anti"]),
+                "money_note": "сценарная оценка на вероятностях прогноза и типовых отраслевых затратах; не гарантия дохода",
                 "risk_rub_ha": round(max(loss_dr, loss_ht) / 10) * 10,
             }
         )

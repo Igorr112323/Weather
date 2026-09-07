@@ -1,27 +1,17 @@
 import datetime as dt
 from pathlib import Path
 
-import numpy as np
 from agrocast.core.errors import IssueFreshnessError
 import pandas as pd
 
-from agrocast.core.mathutils import exp_weights
 from agrocast.core.timeutils import now_period
-from agrocast.features.dataset import PointDataset, training_data, make_test_row, feature_columns_for
-from agrocast.features.climatology import adaptive
-from agrocast.models import build_models
+from agrocast.features.dataset import PointDataset
 from agrocast.forecast.asof import effective_cutoff, release_context, validate_context
 from agrocast.forecast import pipeline
-from agrocast.blend.blender import Blender
-from agrocast.backtest.engine import load_skill_map, blender_name, skill_name
-from agrocast.blend.calibration import TercileCalibrator
-from agrocast.blend.blender import season_of
-from agrocast.blend.regime_clim import RegimeClimatology, SPECS, memory_z, tercile_grid
-from agrocast.models.nn_kernel import PooledNN
+from agrocast.backtest.engine import skill_name
 from agrocast.ingest.registry import Registry
 from agrocast.agro.generator import WeatherGenerator
 from agrocast.agro.indices import daily_indices, ensemble_indices, spi_block
-from agrocast.blend.conformal import ConformalQuantileCalibrator
 from agrocast.models.builder import MODEL_NAMES
 
 TERCILE_KEYS = ["below", "normal", "above"]
@@ -32,16 +22,26 @@ def _r(x, nd=2):
 
 
 def _what_to_do(agro):
+    from agrocast.agro.policy import CONFIRMED, UNAVAILABLE
 
     cards = []
     for d in agro.get("decisions") or []:
-        if d["verdict"] == "действовать":
+        if d["verdict"].startswith("действовать"):
             cards.append(
                 {
                     "action": d["label"],
                     "reason": f"вероятность события {round(d['prob'] * 100)}% выше порога окупаемости {round(d['ratio'] * 100)}%",
                     "note": d.get("note"),
                     "level": "high",
+                }
+            )
+        elif d["verdict"].startswith("решить после проверки"):
+            cards.append(
+                {
+                    "action": f"Ориентировочно (не предписание): {d['label']}",
+                    "reason": f"вероятность {round(d['prob'] * 100)}% около/выше порога {round(d['ratio'] * 100)}%, но навык прогноза {d.get('evidence_variable', 'tp')} не подтверждён — сверяйте с состоянием поля",
+                    "note": d.get("note"),
+                    "level": "info",
                 }
             )
         elif d["verdict"] == "на грани — решать вам":
@@ -55,33 +55,60 @@ def _what_to_do(agro):
             )
     fr = (agro.get("insight") or {}).get("frost") or {}
     fc = fr.get("crop") or {}
-    if fc.get("safe_date"):
-        cards.append(
-            {
-                "action": f"Сев {fc.get('name') or 'сорта'} — не раньше ~{fc['safe_date']}",
-                "reason": fc.get("verdict", ""),
-                "level": "high" if (fc.get("danger_at_sow_from") or 0) > 0.10 else "mid",
-            }
-        )
+    fc_st = (fc.get("policy") or {}).get("status")
+    if fc.get("safe_date") and fc_st != UNAVAILABLE:
+        if fc_st == CONFIRMED:
+            cards.append(
+                {
+                    "action": f"Сев {fc.get('name') or 'сорта'} — не раньше ~{fc['safe_date']}",
+                    "reason": fc.get("verdict", ""),
+                    "level": "high" if (fc.get("danger_at_sow_from") or 0) > 0.10 else "mid",
+                }
+            )
+        else:
+            cards.append(
+                {
+                    "action": f"Ориентировочно (не предписание): сев {fc.get('name') or 'сорта'} ~не раньше {fc['safe_date']}",
+                    "reason": "риск по морозу оценён без подтверждённого навыка — проверьте климатологию своего поля " + (fc.get("verdict", "") or ""),
+                    "level": "info",
+                }
+            )
     ins = agro.get("insight") or {}
     dr = ins.get("drought") or {}
-    if dr.get("irrigation_hint_m3_ha"):
-        cards.append(
-            {
-                "action": f"Запланировать полив ≈{dr['irrigation_hint_m3_ha']} м³/га",
-                "reason": f"ожидаемый дефицит влаги {dr.get('deficit_mm', '?')} мм · риск засухи: {dr.get('risk_level', '?')}",
-                "level": "high" if dr.get("risk_level") in ("высокий", "повышенный") else "mid",
-            }
-        )
+    dr_st = (dr.get("policy") or {}).get("status")
+    if dr.get("irrigation_hint_m3_ha") and dr_st not in (UNAVAILABLE,):
+        if dr_st == CONFIRMED:
+            cards.append(
+                {
+                    "action": f"Запланировать полив ≈{dr['irrigation_hint_m3_ha']} м³/га",
+                    "reason": f"ожидаемый дефицит влаги {dr.get('deficit_mm', '?')} мм · риск засухи: {dr.get('risk_level', '?')}",
+                    "level": "high" if dr.get("risk_level") in ("высокий", "повышенный") else "mid",
+                }
+            )
+        else:
+            cards.append(
+                {
+                    "action": f"Ориентировочно (не предписание): полив ≈{dr['irrigation_hint_m3_ha']} м³/га",
+                    "reason": f"оценка дефицита {dr.get('deficit_mm', '?')} мм по tp-прогнозу без подтверждённого навыка — сверяйте с влагозапасами поля",
+                    "level": "info",
+                }
+            )
     ph = agro.get("phenology") or {}
+    ev = (agro.get("policy") or {}).get("evidence") or {}
     for c in (ph.get("crops") or [])[:2]:
         for s in c.get("stages") or []:
             if s.get("prob", 0) >= 0.5 and s.get("action"):
+                crit = str(s.get("crit") or "")
+                var = "tp" if ("засух" in crit or "увлажн" in crit or "избыт" in crit) else "t2m"
+                if ev.get(var) == UNAVAILABLE:
+                    continue
+                directive = ev.get(var) == CONFIRMED
                 cards.append(
                     {
-                        "action": s["action"],
-                        "reason": f"{c.get('name', '')}: «{s.get('name', '')}» — вероятность события {round(s['prob'] * 100)}%",
-                        "level": "high",
+                        "action": ("" if directive else "Ориентировочно (не предписание): ") + s["action"],
+                        "reason": f"{c.get('name', '')}: «{s.get('name', '')}» — вероятность события {round(s['prob'] * 100)}%"
+                        + ("" if directive else " (навык не подтверждён)"),
+                        "level": "high" if directive else "info",
                     }
                 )
     seen, out = set(), []
@@ -233,8 +260,8 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                     if s_months:
                         try:
                             agro["drivers"] = {
-                                "t2m": top_drivers(pf, stds["t2m"], s_months[0], "t2m", 3),
-                                "tp": top_drivers(pf, stds["tp"], s_months[0], "tp", 2),
+                                "t2m": top_drivers(ctx["pf"], ctx["stds"]["t2m"], s_months[0], "t2m", 3),
+                                "tp": top_drivers(ctx["pf"], ctx["stds"]["tp"], s_months[0], "tp", 2),
                             }
                         except Exception:
                             pass
@@ -244,7 +271,15 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
                         drought_p = float(it0_p.get("below", 1.0 / 3.0))
                     warm = bool(set(s_months) & {5, 6, 7, 8})
                     heat_p = float(it0_t.get("above", 1.0 / 3.0)) if warm else None
-                    agro["decisions"] = decision_table(drought_p, heat_p)
+                    ev = None
+                    try:
+                        from agrocast.agro.policy import load_evidence
+
+                        ev = load_evidence(config, mode=mode)
+                        agro["_policy_evidence"] = ev
+                    except Exception:
+                        pass
+                    agro["decisions"] = decision_table(drought_p, heat_p, evidence=ev)
                 except Exception:
                     pass
                 try:
@@ -282,6 +317,11 @@ def forecast_point(config, lat, lon, start=None, horizon=3, variables=("t2m", "t
         pass
     if agro:
         try:
+            ev = agro.pop("_policy_evidence", None)
+            if ev:
+                from agrocast.agro.policy import tag_agro
+
+                tag_agro(agro, ev)
             agro["what_to_do"] = _what_to_do(agro)
         except Exception:
             pass

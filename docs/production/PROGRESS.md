@@ -465,7 +465,11 @@ bundle → ошибка, не тихий default); hindcast == ledger-строк
   (Debian 12 minimal, пакет `libpython3.11` недоступен в репозитории). Это ожидаемое
   ограничение песочницы; CI-сборка трёх ОС (ubuntu-22.04/macos-14/windows-latest)
   использует setup-python с полной shared library.
-- **Квота GitHub Actions исчерпана** (2026-09-07): аннотация «recent account payments
-  have failed or your spending limit needs to be increased» на всех последних прогонах
-  (run 34139367677 и ранее); jobs завершаются за 2–4 с без steps=0. Это billing, не код;
-  тег `desktop-v0.1.0` и draft-release с SHA256SUMS отложены до восстановления оплаты.
+- **Квота GitHub Actions восстановлена** (2026-09-07): billing обновлён, CI
+  desktop-builds полностью зелёный на теге `desktop-v0.1.0` (run 34148156133).
+  Матрица 3 ОС: тесты, smoke сервера и PyInstaller — ✅ ubuntu-22.04 (3m34s),
+  ✅ windows-latest, ✅ macos-14. Release job: zip-архивы + SHA256SUMS + draft
+  GitHub Release (4m31s). Артефакты: `AgroCast-windows-x64.zip`,
+  `AgroCast-macos-arm64.zip`, `AgroCast-linux-x64.zip`, `SHA256SUMS`.
+  Исправлены дефекты workflow: `--distdir` → `--distpath` в build.sh,
+  `contents: write` permission для release job, абсолютные пути в zip-шаге.

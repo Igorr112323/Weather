@@ -96,8 +96,8 @@ def test_bundle_integrity_is_line_ending_independent(tmp_path):
     from agrocast.desktop.app import _verify_bundle_integrity
 
     (tmp_path / "b").mkdir()
-    (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
-    (tmp_path / "b" / "c.txt").write_text("world", encoding="utf-8")
+    (tmp_path / "a.txt").write_bytes(b"hello\n")
+    (tmp_path / "b" / "c.txt").write_bytes(b"world\n")
     (tmp_path / "blob.bin").write_bytes(b"\x00\x01\x02")
 
     digest = hashlib.sha256()
@@ -111,8 +111,8 @@ def test_bundle_integrity_is_line_ending_independent(tmp_path):
 
     # Re-write the text files with CRLF line endings (simulating Windows checkout).
     for name in ("a.txt", "b/c.txt"):
-        data = (tmp_path / name).read_text(encoding="utf-8").replace("\n", "\r\n")
-        (tmp_path / name).write_text(data, encoding="utf-8")
+        p = tmp_path / name
+        p.write_bytes(p.read_bytes().replace(b"\n", b"\r\n"))
 
     _verify_bundle_integrity(tmp_path)  # must not raise even though text is CRLF
 
@@ -135,9 +135,9 @@ def test_bundle_integrity_os_independent_with_crlf(tmp_path):
 
     from agrocast.desktop.app import _bundle_content_bytes, _verify_bundle_integrity
 
-    (tmp_path / "a.txt").write_text("hello\nworld\n", encoding="utf-8")
+    (tmp_path / "a.txt").write_bytes(b"hello\nworld\n")
     (tmp_path / "b").mkdir()
-    (tmp_path / "b" / "c.txt").write_text("data\n", encoding="utf-8")
+    (tmp_path / "b" / "c.txt").write_bytes(b"data\n")
 
     # Compute the expected hash the same way the code does (posix paths + LF normalised).
     digest = hashlib.sha256()

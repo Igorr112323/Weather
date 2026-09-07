@@ -56,6 +56,8 @@ jobs:
         run: |
           set -o pipefail
           python -m PyInstaller --noconfirm desktop/AgroCast.spec 2>&1 | tee pyinstaller-output.log || { echo "::error::build: $(grep -A 12 -E 'Traceback|ERROR:' pyinstaller-output.log | tail -c 3400 | tr '\n' '|')"; exit 1; }
+      - name: Проверка данных внутри сборки
+        run: python -m scripts.verify_desktop_bundle dist/AgroCast/world
       - uses: actions/upload-artifact@v4
         with:
           name: agrocast-desktop-${{ matrix.os }}

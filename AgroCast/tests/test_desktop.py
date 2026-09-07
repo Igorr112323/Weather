@@ -124,6 +124,12 @@ def test_bundle_integrity_skips_without_marker(tmp_path):
     _verify_bundle_integrity(tmp_path)  # no integrity.json -> no-op
 
 
+def test_checked_in_world_bundle_integrity_is_valid():
+    from agrocast.desktop.app import _verify_bundle_integrity
+
+    _verify_bundle_integrity(Path(__file__).resolve().parents[1] / "world")
+
+
 def test_bundle_integrity_os_independent_with_crlf(tmp_path):
     """Regression: CRLF in text files or backslash paths must not change the hash.
 

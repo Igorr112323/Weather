@@ -323,6 +323,65 @@ class IdentityService:
             self._event(connection, current.id, current.organization_id, kind + ".deleted", resource_id)
 
 
+    def export_user(self, principal):
+        def plain(value):
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                return value
+            if isinstance(value, dict):
+                return {key: plain(item) for key, item in value.items()}
+            if isinstance(value, (list, tuple)):
+                return [plain(item) for item in value]
+            return str(value)
+
+        with self.engine.connect() as connection:
+            actor = self._actor(connection, principal, ALL_ROLES)
+            user_row = connection.execute(select(users).where(users.c.id == actor.id)).mappings().one()
+            out = {
+                "user": {key: plain(user_row[key]) for key in user_row.keys() if key not in ("password_hash", "password_salt")},
+                "resources": {},
+            }
+            for kind, table in RESOURCES.items():
+                if "owner_id" in table.c:
+                    rows = connection.execute(select(table).where(table.c.owner_id == actor.id)).mappings().all()
+                elif kind == "crops":
+                    rows = connection.execute(select(table).where(table.c.organization_id == actor.organization_id)).mappings().all()
+                else:
+                    rows = []
+                out["resources"][kind] = [{key: plain(row[key]) for key in row.keys()} for row in rows]
+            out["sessions_active"] = connection.execute(select(func.count()).select_from(sessions).where(sessions.c.user_id == actor.id)).scalar_one()
+        return out
+
+    def delete_account(self, principal, password):
+        with self.engine.begin() as connection:
+            user_row = connection.execute(select(users).where(users.c.id == principal.id)).mappings().first()
+            if user_row is None or not passwords.verify(user_row["password_hash"], password):
+                raise IdentityError("invalid_credentials", 403)
+            self._lock_organization(connection, principal.organization_id)
+            actor = self._actor(connection, principal, ALL_ROLES)
+            jobs = RESOURCES["jobs"]
+            busy = connection.execute(select(func.count()).select_from(jobs).where(
+                jobs.c.owner_id == actor.id, jobs.c.status.in_(("queued", "running")),
+            )).scalar_one()
+            if busy:
+                raise IdentityError("job_still_active", 409)
+            counts = {}
+            self._event(connection, actor.id, actor.organization_id, "account.deleted", actor.id)
+            for kind in ("publications", "jobs", "subscriptions", "fields"):
+                table = RESOURCES[kind]
+                result = connection.execute(delete(table).where(table.c.owner_id == actor.id))
+                counts[kind] = result.rowcount
+            crops = RESOURCES["crops"]
+            counts["crops"] = connection.execute(delete(crops).where(crops.c.owner_id == actor.id)).rowcount
+            connection.execute(delete(sessions).where(sessions.c.user_id == actor.id))
+            connection.execute(delete(users).where(users.c.id == actor.id))
+            remaining = connection.execute(select(func.count()).select_from(users).where(users.c.organization_id == actor.organization_id)).scalar_one()
+            if remaining == 0:
+                connection.execute(delete(organizations).where(organizations.c.id == actor.organization_id))
+                counts["organizations"] = 1
+            counts["sessions"] = 0
+        return {"deleted": counts}
+
+
     def variety_snapshot(self, principal, variety_id, revision):
         from agrocast.store.results import VarietySnapshot, fingerprint
 

@@ -10,8 +10,11 @@ from agrocast.core.contracts import EmptyQuery, ListQuery
 from agrocast.identity.credentials import IdentityError, Principal
 from agrocast.serve.errors import ERROR_RESPONSES
 from agrocast.serve.responses import (
-    LoginResponse, SessionResponse, UserResponse, UsersResponse, EventsResponse, FieldResponse, FieldsResponse,
+
+    AccountDeleteBody,
+    AccountExportResponse,
     CropResponse, CropsResponse, SubscriptionResponse, SubscriptionsResponse, JobResponse, JobsResponse,
+    LoginResponse, SessionResponse, UserResponse, UsersResponse, EventsResponse, FieldResponse, FieldsResponse,
     PublicationResponse, PublicationsResponse,
 )
 from agrocast.serve.account_models import (
@@ -97,6 +100,16 @@ def update_user(user_id: UUID, body: UserUpdateBody, request: Request, actor: Ac
 @router.get("/api/admin/events", response_model=EventsResponse)
 def audit_events(request: Request, actor: Actor, query: PageQuery):
     return {"events": request.app.state.identity.events(actor, query.limit)}
+
+
+@router.get("/api/account/export", response_model=AccountExportResponse)
+def account_export(request: Request, actor: Actor, query: NoQuery = EmptyQuery()):
+    return {"export": request.app.state.identity.export_user(actor)}
+
+
+@router.delete("/api/account", status_code=204)
+def account_delete(body: AccountDeleteBody, request: Request, actor: Actor, query: NoQuery = EmptyQuery()):
+    request.app.state.identity.delete_account(actor, body.password)
 
 
 @router.get("/api/fields", response_model=FieldsResponse)

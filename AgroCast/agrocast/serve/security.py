@@ -45,7 +45,11 @@ def allowed_roles(method, path):
             return ALL_ROLES
         if re.fullmatch(rf"/api/(fields|crops|subscriptions|jobs|publications)(/{RESOURCE_ID})?", path) or re.fullmatch(rf"/api/job/{RESOURCE_ID}", path):
             return ALL_ROLES
+        if path == "/api/account/export":
+            return ALL_ROLES
     if method == "POST" and path in {"/api/auth/logout", "/api/auth/password"}:
+        return ALL_ROLES
+    if method == "DELETE" and path == "/api/account":
         return ALL_ROLES
     if method == "POST" and path == "/api/admin/users":
         return ADMIN_ROLES

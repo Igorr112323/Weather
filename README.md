@@ -47,7 +47,8 @@ app factory, read-only bundle и проверяемый перенос/backup/re
 [Единый расчётный pipeline LIVE/hindcast/audit/refit](docs/production/PIPELINE.md). ·
 [Метрики навыка и калибровки: baseline, ECE, conformal, порог продвижения](docs/production/METRICS.md). ·
 [Агрономический чек-лист параметров и исключений агрорекомендаций](docs/production/AGRO_CHECKLIST.md). ·
-[Публикация наборов данных и обновление источников на машине пользователя](docs/production/BUNDLES.md).
+[Публикация наборов данных и обновление источников на машине пользователя](docs/production/BUNDLES.md). ·
+[Инвентарь прав на данные, приватность и экспорт/удаление аккаунта](docs/production/DATA_LICENSES.md).
 
 Новый и изменяемый код — строго без комментариев; пояснения и архитектурные
 решения оформляются в Markdown.

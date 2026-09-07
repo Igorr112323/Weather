@@ -227,6 +227,14 @@ class LocalInputsResponse(Contract):
     sources_through: dict[str, str | None]
 
 
+class AccountExportResponse(Contract):
+    export: dict
+
+
+class AccountDeleteBody(Contract):
+    password: Annotated[str, Field(min_length=8, max_length=256)]
+
+
 class LocalForecastResponse(Contract):
     cached: StrictBool
     payload: dict

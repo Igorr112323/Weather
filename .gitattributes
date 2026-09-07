@@ -1,1 +1,6 @@
 AgroCast/static/vendor/leaflet/LICENSE.txt -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+
+# The scientific data bundle must be byte-for-byte identical on every OS so the
+# sha256 integrity check (_verify_bundle_integrity) does not fail on Windows,
+# where git would otherwise normalize text files to CRLF and change their bytes.
+AgroCast/world/** -text

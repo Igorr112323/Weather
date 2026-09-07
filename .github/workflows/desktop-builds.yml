@@ -2,10 +2,7 @@ name: desktop-builds
 on:
   workflow_dispatch:
   push:
-    branches: [main, arena/01a075bf-weather]
-    paths:
-      - AgroCast/**
-      - .github/workflows/desktop-builds.yml
+    tags: ["desktop-v*"]
 jobs:
   build:
     strategy:

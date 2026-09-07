@@ -35,6 +35,13 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
         point = PointDataset(config, lat, lon, store)
     pf = point.predictor_frame()
     monthly = point.monthly()
+    from agrocast.core.observation import month_completeness, obs_revision, window_verdict
+
+    obs_frame = point.daily()
+    obs_vars = tuple(v for v in variables if v in obs_frame.columns)
+    obs_comp = month_completeness(obs_frame, variables=obs_vars)
+    obs_rev = obs_revision(obs_frame, variables=obs_vars)
+    pending_counts = {}
     if mode == "seasonal":
         leads = [1]
     ctx = pipeline.prepare_artifacts(config, point, variables, mode, season_len)
@@ -72,6 +79,10 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
                         continue
                     trow = std.loc[tgt]
                     obs_z = float(trow["z"])
+                    verdict_ok, verdict_reason = window_verdict(obs_comp, tgt, tgt_end, obs_z, variables=(v,))
+                    if not verdict_ok:
+                        pending_counts[verdict_reason] = pending_counts.get(verdict_reason, 0) + 1
+                        continue
                     obs_terc = int(0 if obs_z < float(trow["e1"]) else (1 if obs_z <= float(trow["e2"]) else 2))
                     for m_name, (mp, mq) in preds.items():
                         rows.append(
@@ -96,6 +107,7 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
                                 "q90": float(mq[2]),
                                 "obs_z": obs_z,
                                 "obs_tercile": obs_terc,
+                                "obs_revision": obs_rev,
                                 "mu": float(trow["mu"]),
                                 "sd": float(trow["sd"]),
                             }
@@ -121,10 +133,13 @@ def run_backtest(config, variables=("t2m", "tp"), start_months=None, leads=None,
                             "q90": float(calc["qz"][2]),
                             "obs_z": obs_z,
                             "obs_tercile": obs_terc,
+                            "obs_revision": obs_rev,
                             "mu": float(calc["mu"]),
                             "sd": float(calc["sd"]),
                         }
                     )
+    if pending_counts:
+        reg.log_event("backtest", f"observation pending {pending_counts} mode={mode}")
     records = pd.DataFrame(rows)
     if records.empty:
         reg.log_event("backtest", f"no records mode={mode}")

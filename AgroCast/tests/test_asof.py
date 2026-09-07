@@ -182,7 +182,7 @@ def test_future_data_cannot_move_earlier_predictions(synth_pair):
     rec_full = run_backtest(cfg_full, **kwargs)
     rec_trunc = run_backtest(cfg_trunc, **kwargs)
     assert not rec_full.empty
-    pd.testing.assert_frame_equal(rec_full, rec_trunc, check_exact=True)
+    pd.testing.assert_frame_equal(rec_full.drop(columns="obs_revision"), rec_trunc.drop(columns="obs_revision"), check_exact=True)
 
 
 def test_backtest_records_carry_verifiable_intervals(synth_pair):

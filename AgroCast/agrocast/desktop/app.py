@@ -42,6 +42,16 @@ def prepare_environment(home=None):
     return state, root
 
 
+def _bundle_content_bytes(path):
+    # The scientific data bundle must produce the same sha256 on every OS. Git
+    # may normalise text files to CRLF on Windows during checkout, so we fold
+    # line endings back to LF for text (non-binary) files before hashing.
+    data = path.read_bytes()
+    if b"\x00" in data[:8192]:
+        return data
+    return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
 def _verify_bundle_integrity(world_dir):
     import hashlib
 
@@ -53,7 +63,7 @@ def _verify_bundle_integrity(world_dir):
     for entry in sorted(world_dir.rglob("*")):
         if entry.is_file() and entry.name != "integrity.json":
             digest.update(str(entry.relative_to(world_dir)).encode())
-            digest.update(entry.read_bytes())
+            digest.update(_bundle_content_bytes(entry))
     actual = digest.hexdigest()[:16]
     if actual != expected.get("sha256_prefix"):
         raise RuntimeError(

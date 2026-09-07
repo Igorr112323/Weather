@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 import sys
@@ -5,6 +6,20 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
+
+# PyInstaller with console=False (windowed / GUI mode) sets sys.stdout and
+# sys.stderr to None. uvicorn's logging setup and the default log formatters
+# call sys.stdout.isatty() / sys.stderr.isatty() at import/config time and
+# crash with AttributeError ("Unable to configure formatter 'default'").
+# Replace a missing stdio stream with the null device so the app boots even
+# when there is no console attached.
+def _ensure_stdio():
+    for _stream_name in ("stdout", "stderr"):
+        if getattr(sys, _stream_name) is None:
+            setattr(sys, _stream_name, open(os.devnull, "w", encoding="utf-8"))
+
+
+_ensure_stdio()
 
 
 def bundled_root():
@@ -104,13 +119,28 @@ def start_server():
     raise RuntimeError("Local AgroCast server did not start: %r; check %s logs" % (last_error, settings.state_dir))
 
 
+def _report_fatal(error):
+    message = str(error)
+    try:
+        from PySide6.QtWidgets import QApplication, QMessageBox
+
+        app = QApplication.instance() or QApplication([])
+        QMessageBox.critical(None, "AgroCast не запустился", message)
+    except Exception:
+        # Windowed mode has no console; fall back to the (possibly null) stderr.
+        try:
+            print(message, file=sys.stderr)
+        except Exception:
+            pass
+    return 78
+
+
 def main(argv=None):
     state, _root = prepare_environment()
     try:
         server, thread, url = start_server()
-    except (RuntimeError, OSError) as error:
-        print(str(error), file=sys.stderr)
-        return 78
+    except Exception as error:
+        return _report_fatal(error)
     try:
         from PySide6.QtCore import QUrl
         from PySide6.QtGui import QIcon

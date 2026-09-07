@@ -42,6 +42,58 @@ def test_local_owner_is_provisioned_once(desktop_client, desktop_settings):
     assert rows[0].role == "admin"
 
 
+def test_windowed_stdio_guard_provides_streams():
+    # PyInstaller console=False sets sys.stdout/sys.stderr to None. The desktop
+    # entry point must substitute a real stream before uvicorn configures logging.
+    import sys
+
+    from agrocast.desktop.app import _ensure_stdio
+
+    original_out, original_err = sys.stdout, sys.stderr
+    try:
+        sys.stdout = None
+        sys.stderr = None
+        _ensure_stdio()
+        assert sys.stdout is not None and hasattr(sys.stdout, "write")
+        assert sys.stderr is not None and hasattr(sys.stderr, "write")
+        assert not isinstance(sys.stdout, type(None))
+        assert not isinstance(sys.stderr, type(None))
+    finally:
+        sys.stdout, sys.stderr = original_out, original_err
+
+
+def test_bundle_integrity_accepts_valid_marker(tmp_path):
+    import hashlib
+    import json
+
+    from agrocast.desktop.app import _verify_bundle_integrity
+
+    (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
+    (tmp_path / "b").mkdir()
+    (tmp_path / "b" / "c.txt").write_text("world", encoding="utf-8")
+
+    digest = hashlib.sha256()
+    for entry in sorted(tmp_path.rglob("*")):
+        if entry.is_file() and entry.name != "integrity.json":
+            digest.update(str(entry.relative_to(tmp_path)).encode())
+            digest.update(entry.read_bytes())
+    (tmp_path / "integrity.json").write_text(
+        json.dumps({"sha256_prefix": digest.hexdigest()[:16]}), encoding="utf-8"
+    )
+    _verify_bundle_integrity(tmp_path)  # must not raise (regression: json import)
+
+    (tmp_path / "a.txt").write_text("tampered", encoding="utf-8")
+    with pytest.raises(RuntimeError):
+        _verify_bundle_integrity(tmp_path)
+
+
+def test_bundle_integrity_skips_without_marker(tmp_path):
+    from agrocast.desktop.app import _verify_bundle_integrity
+
+    (tmp_path / "a.txt").write_text("hello", encoding="utf-8")
+    _verify_bundle_integrity(tmp_path)  # no integrity.json -> no-op
+
+
 def test_desktop_icon_is_bundled_linked_and_served(desktop_client):
     from agrocast.serve import browser_policy
     assert (browser_policy.STATIC / "agrocast.png").exists()

@@ -2,8 +2,22 @@ import json
 import math
 
 
+def _normalize(value):
+    if isinstance(value, dict):
+        out = {}
+        for key, item in value.items():
+            text = key if isinstance(key, str) else str(key)
+            if text in out:
+                raise ValueError("duplicate normalized JSON key")
+            out[text] = _normalize(item)
+        return out
+    if isinstance(value, (list, tuple)):
+        return [_normalize(item) for item in value]
+    return value
+
+
 def canonical_json(value):
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    return json.dumps(_normalize(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
 
 
 def strict_json(value):

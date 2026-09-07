@@ -32,6 +32,31 @@ def scope():
     return CacheScope(namespace="owned", owner_id=uuid4(), organization_id=uuid4())
 
 
+
+
+def test_canonical_json_roundtrip_is_idempotent_for_numeric_keys():
+    from agrocast.core.jsoncodec import canonical_json, strict_json
+
+    payload = {"by_month": {5: 0.4, 12: 0.7, 1: 0.9}, "tuples": (1, 2.5), "nested": [{2: "b", "20": "a"}]}
+    encoded = canonical_json(payload)
+    assert canonical_json(strict_json(encoded)) == encoded
+    assert canonical_json({"k": {10: 1, 2: 2}}) == canonical_json({"k": {"10": 1, "2": 2}})
+    with pytest.raises(ValueError, match="duplicate normalized"):
+        canonical_json({1: "int", "1": "str"})
+
+
+def test_result_cache_hits_payload_with_numeric_keys(tmp_path, request_spec, releases, scope):
+    from agrocast.store.results import ResultCache, ResultIdentity
+
+    identity = ResultIdentity.point(request_spec, releases, {"random_state": 7}, scope)
+    cache = ResultCache(tmp_path)
+    payload = {"frost": {"p_frost_day_by_month": {5: 0.4, 12: 0.7}}, "values": (1.5, 2.5)}
+    cache.write(identity, payload)
+    hit = cache.read(identity)
+    assert hit is not None
+    assert hit.payload["frost"] == {"p_frost_day_by_month": {"5": 0.4, "12": 0.7}}
+
+
 @pytest.mark.parametrize("changes", [
     {"start": "2026-03"}, {"lat": 46.25000001}, {"lon": 38.25000001}, {"region": "rostov"},
     {"point_id": "P02"}, {"horizon": 6}, {"mode": "seasonal", "season_len": 3},

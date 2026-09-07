@@ -443,3 +443,55 @@ bundle → ошибка, не тихий default); hindcast == ledger-строк
 - Мотивация: локальный расчёт длительностью 2–6 минут не имел отмены и конечного срока; ошибки FastAPI 422 (список pydantic-деталей) рисковали показаться нечитаемым; у интерфейса не было печати, focus-обводки и состояний пустоты/частичного результата.
 - Реализация (`static/desktop.js|html|css`): `AbortController` + дедлайн 600 000 мс с различающимися сообщениями «отменено»/«превышен срок» и сохранением уже скачанных данных; тикающий таймер длительности; `describeError` разворачивает pydantic-массив в строку «Проверьте форму: поле: причина», для 404 — явный текст, для прочего — «Ошибка сервера (HTTP …)»; пустой список точек ставит заблокированную опцию и отключает кнопку; отсутствие tp или t2m в сезоне подписывается как частичный результат; «данные устарели» при возрасте более 10 минут; в CSS добавлены `:focus-visible`, мобильная раскладка ≤700px и `@media print` (A4, скрытие кнопок/футера, светлый вывод JSON).
 - Проверено: `node web/check-dom.mjs` — 8 скриптов без комментариев и без опасных sink'ов; `tests/test_desktop_ui_t21.py` — 6 тестов включая E2E точка → расчёт → повторное открытие из кэша (payload идентичен, cached=true), структурированные 422/404, печать/фокус/viewport в отдаваемых ресурсах; `tests/test_desktop.py` — 26 ранее закрытых тестов зелёные; полный набор pytest — зелёный (см. итог прогона). Живой клик в браузере по новым контролам не выполнялся; API-контракт и DOM-разметка покрыты тестами.
+
+### Финальный запуск desktop-канала · T20-финал (2026-09-07)
+
+- Базис на коммите `8671bbe` (main, PR #8): **669 passed, 20 skipped, 0 failed** за 393 с
+  (полный `pytest tests -q` без `--basetemp`). 20 skipped — только browser/pgserver-флаги.
+  Обнаружен артефакт `--basetemp=/tmp/agrocast-pgtest/run`: один из backup/restore-тестов
+  удаляет basetemp через `shutil.rmtree`, после чего последующие `tmp_path`-тесты падают
+  `FileNotFoundError`; без явного basetemp — полное прохождение. Это не дефект кода,
+  а ограничение конкретной тестовой конфигурации.
+- Смоук встроенного сервера (аналог CI-шага): `prepare_environment("build-smoke")` →
+  `start_server()` → `GET /api/capabilities` → `local_mode: true`, `queue_intake: false`,
+  `hindcast: false`, `subscriptions: false`, `agro_recommendations: false`, `durable_queue: true`;
+  сервер стартует и завершается штатно за ~2 с.
+- Desktop-тесты: `tests/test_desktop.py` (9) + `tests/test_desktop_ui_t21.py` (6) — **15 passed**.
+- Статика: `node web/check-dom.mjs` — 8 first-party scripts без HTML-парсеров, string-execution,
+  inline-style sink'ов и browser-storage данных.
+- **Исправлен дефект `desktop/build.sh`:** `--distdir` → `--distpath` (PyInstaller принимает
+  только `--distpath`; старая опция давала `unrecognized arguments`).
+- Локальная PyInstaller-сборка бинаря невозможна: `libpython3.11.so.1.0` отсутствует
+  (Debian 12 minimal, пакет `libpython3.11` недоступен в репозитории). Это ожидаемое
+  ограничение песочницы; CI-сборка трёх ОС (ubuntu-22.04/macos-14/windows-latest)
+  использует setup-python с полной shared library.
+### Полная автономность десктоп-приложения (2026-09-07)
+
+- **Интернет не требуется:** в desktop-режиме (`AGROCAST_DESKTOP=1`) приложение
+  не делает ни одного внешнего HTTP-запроса. Проверено статическим анализом
+  (grep внешних endpoints) и smoke-тестом встроенного сервера.
+- **`market/source.py`:** в desktop-режиме `corn_price` не пытается скачать
+  цену с Yahoo Finance (раньше timeout 10 сек при каждом расчёте) — сразу
+  использует кэш или seed из bundle. Поле `offline_mode: true` в ответе.
+- **`serve/pipeline.py:ensure_point`:** в desktop-режиме для точек вне bundle
+  (не из 28 контрольных точек КРА) — явная ошибка вместо попытки скачать CPC
+  из интернета. Все 28 точек КРА внутри bundle — расчёт без сети.
+- **`/api/local/autonomy`:** новый endpoint — проверяет, что все компоненты
+  для автономной работы на месте: bundle активен, market seed, world ready,
+  config, krai_grid, zarr-источники. Поле `internet_required: false`.
+- **UI:** индикатор автономности в заголовке (зелёный «Автономный режим —
+  интернет не нужен» / жёлтый с перечнем недостающих компонентов). Текст
+  «Как это работает» обновлён: интернет не упоминается. Статусная строка:
+  «Расчёт полностью локальный — интернет не требуется».
+- **Проверки:** check-dom.mjs ✅, ruff F,E9 ✅, 15 desktop-тестов ✅,
+  smoke-сервер ✅ (autonomous: internet_required=false, 12 zarr-источников),
+  полный suite 669 passed / 20 skipped ✅.
+
+- **Квота GitHub Actions восстановлена** (2026-09-07): billing обновлён, CI
+  desktop-builds полностью зелёный на теге `desktop-v0.1.0` (run 34148156133).
+  Матрица 3 ОС: тесты, smoke сервера и PyInstaller — ✅ ubuntu-22.04 (3m34s),
+  ✅ windows-latest, ✅ macos-14. Release job: zip-архивы + SHA256SUMS + draft
+  GitHub Release (4m31s). Артефакты: `AgroCast-windows-x64.zip`,
+  `AgroCast-macos-arm64.zip`, `AgroCast-linux-x64.zip`, `SHA256SUMS`.
+  Исправлены дефекты workflow: `--distdir` → `--distpath` в build.sh,
+  `contents: write` permission для release job, абсолютные пути в zip-шаге.

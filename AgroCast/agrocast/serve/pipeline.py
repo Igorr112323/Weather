@@ -111,6 +111,8 @@ def _fit_artifacts(cfg, log):
 
 
 def ensure_point(cfg, world_dir, log):
+    import os
+
     marker = Path(cfg.data_dir) / "ready.json"
     if marker.exists():
         log("данные точки уже готовы")
@@ -127,6 +129,11 @@ def ensure_point(cfg, world_dir, log):
         and cfg.region.lon_max <= wcfg.region.lon_max
     )
     if not inside:
+        if os.environ.get("AGROCAST_DESKTOP", "") == "1":
+            raise RuntimeError(
+                "точка (%.2f, %.2f) вне набора данных программы; расчёт невозможен без интернета"
+                % (cfg.region.lat_min, cfg.region.lon_min)
+            )
         log("скачиваю суточные наблюдения CPC для точки (1979–2026, обычно 2–6 минут)")
         fetch_cpc_daily(cfg, workers=4)
         log("суточные данные готовы")

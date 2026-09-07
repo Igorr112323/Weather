@@ -23,7 +23,28 @@ def prepare_environment(home=None):
     os.environ["AGROCAST_DESKTOP"] = "1"
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox --disable-gpu")
     os.environ.setdefault("QT_LOGGING_RULES", "*.warning=false")
+    _verify_bundle_integrity(root / "world")
     return state, root
+
+
+def _verify_bundle_integrity(world_dir):
+    import hashlib
+
+    marker = world_dir / "integrity.json"
+    if not marker.exists():
+        return
+    expected = json.loads(marker.read_text(encoding="utf-8"))
+    digest = hashlib.sha256()
+    for entry in sorted(world_dir.rglob("*")):
+        if entry.is_file() and entry.name != "integrity.json":
+            digest.update(str(entry.relative_to(world_dir)).encode())
+            digest.update(entry.read_bytes())
+    actual = digest.hexdigest()[:16]
+    if actual != expected.get("sha256_prefix"):
+        raise RuntimeError(
+            "Набор данных повреждён или изменён (ожидался %s, получен %s). Переустановите приложение."
+            % (expected.get("sha256_prefix"), actual)
+        )
 
 
 def _wait_until_ready(url, errors, timeout=120.0):

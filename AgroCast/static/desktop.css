@@ -32,6 +32,8 @@ pre#raw { background:#0f1c24; color:#dfe9ee; padding:12px; border-radius:10px; o
 details summary { cursor:pointer; color:#2e4c5e; }
 code { background:#eef4f7; padding:1px 6px; border-radius:6px; }
 footer { color:#51646f; padding:0 28px 22px; font-size:12.5px; }
+.autonomy-ok { display:inline-block; margin-top:6px; padding:4px 12px; border-radius:8px; background:#d4edda; color:#155724; font-size:13px; font-weight:600; }
+.autonomy-warn { display:inline-block; margin-top:6px; padding:4px 12px; border-radius:8px; background:#fff3cd; color:#856404; font-size:13px; font-weight:600; }
 @media (max-width:700px) { main, header { padding-left:14px; padding-right:14px; } }
 button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid #e3b46c; outline-offset: 2px; }
 button:focus:not(:focus-visible) { outline: none; }

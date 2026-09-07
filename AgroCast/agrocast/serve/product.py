@@ -181,6 +181,50 @@ def local_inputs(request: Request, query: NoQuery = EmptyQuery()):
     return collect_inputs(settings)
 
 
+@router.get("/api/local/autonomy")
+def local_autonomy(request: Request, query: NoQuery = EmptyQuery()):
+    settings = request.app.state.settings
+    if not settings.desktop_mode:
+        raise APIError("desktop_only", 403)
+    from agrocast.bundle.releases import active_release
+    from pathlib import Path as _P
+
+    checks = {}
+    bundle_ok = False
+    active = active_release(settings.bundles_dir)
+    if active and not active.get("problems"):
+        bundle_ok = True
+    checks["bundle"] = {"ok": bundle_ok, "release_id": active["release_id"] if active else None}
+    world = _P(settings.world_dir)
+    seed = world / "artifacts" / "market_seed.json"
+    checks["market_seed"] = {"ok": seed.exists()}
+    ready = world / "ready.json"
+    checks["world_ready"] = {"ok": ready.exists()}
+    config = world / "config.json"
+    checks["world_config"] = {"ok": config.exists()}
+    zarr_dir = world / "zarr"
+    zarr_sources = []
+    if zarr_dir.is_dir():
+        for child in sorted(zarr_dir.iterdir()):
+            if child.is_dir():
+                zarr_sources.append(child.name)
+    checks["zarr_sources"] = zarr_sources
+    grid = world / "artifacts" / "krai_grid.json"
+    checks["krai_grid"] = {"ok": grid.exists()}
+    all_ok = all([
+        checks["bundle"]["ok"],
+        checks["market_seed"]["ok"],
+        checks["world_ready"]["ok"],
+        checks["world_config"]["ok"],
+        checks["krai_grid"]["ok"],
+    ])
+    return {
+        "autonomous": bool(all_ok),
+        "checks": checks,
+        "internet_required": False,
+    }
+
+
 @router.post("/api/local/forecast", response_model=LocalForecastResponse)
 def local_forecast(request: Request, spec: ForecastSpec):
     settings = request.app.state.settings

@@ -66,6 +66,8 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/desktop-v')
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -74,22 +76,32 @@ jobs:
           path: downloads
       - name: Упаковка, контрольные суммы, draft-релиз
         run: |
-          set -euo pipefail
+          set -euxo pipefail
+          echo "--- downloads tree ---"
+          find downloads -maxdepth 3 -type f | head -20 || true
+          echo "--- downloads dirs ---"
+          ls -la downloads/ || true
           mkdir -p assets
-          cd downloads
-          for name in agrocast-desktop-*; do
+          for d in downloads/agrocast-desktop-*; do
+            [ -d "$d" ] || continue
+            name="$(basename "$d")"
             case "$name" in
               *windows*) out="AgroCast-windows-x64.zip" ;;
-              *macos*)   out="AgroCast-macos-arm64.tar.gz" ;;
-              *)         out="AgroCast-linux-x64.tar.gz" ;;
+              *macos*)   out="AgroCast-macos-arm64.zip" ;;
+              *)         out="AgroCast-linux-x64.zip" ;;
             esac
-            ( cd "$name" && zip -qr "../../assets/$out" . )
+            (cd "$d" && zip -qr "${GITHUB_WORKSPACE}/assets/$out" .)
           done
-          cd ../assets
+          echo "--- assets ---"
+          ls -lh assets/
+          cd assets
           sha256sum AgroCast-* > SHA256SUMS
+          cat SHA256SUMS
+          echo "--- creating release ---"
           gh release create "$GITHUB_REF_NAME" --draft \
+            --repo "$GITHUB_REPOSITORY" \
             --title "AgroCast desktop $GITHUB_REF_NAME" \
-            --notes "Сборка прогнана на том же коммите: матрица desktop-тестов, смоук сервера без GUI и PyInstaller-артефакты (job build). Архивы не подписаны — сверьте SHA256SUMS перед установкой. Научный допуск и агро-верификация выпускаются по RELEASE_CHECKLIST закрытого пилота; агрорекомендации публикуются только с маркировкой подтверждённости. В состав включен read-only seed-bundle (world/) с производными NOAA и Copernicus-данными; права и атрибуции — docs/production/DATA_LICENSES.md. Откат набора данных: scripts/bundle_publish rollback." \
+            --notes "Сборка прогнана на том же коммите: матрица desktop-тестов, смоук сервера без GUI и PyInstaller-артефакты (job build). Архивы не подписаны — сверьте SHA256SUMS перед установкой. Научный допуск и агро-верификация — по RELEASE_CHECKLIST. В состав включен read-only seed-bundle (world/) с производными NOAA и Copernicus-данными; права — docs/production/DATA_LICENSES.md. Откат данных: scripts/bundle_publish rollback." \
             AgroCast-* SHA256SUMS
         env:
           GH_TOKEN: ${{ github.token }}

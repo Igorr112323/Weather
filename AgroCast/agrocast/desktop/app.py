@@ -52,19 +52,34 @@ def _bundle_content_bytes(path):
     return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
 
 
-def _verify_bundle_integrity(world_dir):
+def _bundle_files(world_dir):
+    return sorted(
+        (
+            entry
+            for entry in world_dir.rglob("*")
+            if entry.is_file() and entry.name != "integrity.json"
+        ),
+        key=lambda entry: entry.relative_to(world_dir).as_posix(),
+    )
+
+
+def _bundle_digest(world_dir):
     import hashlib
 
+    digest = hashlib.sha256()
+    for entry in _bundle_files(world_dir):
+        relative = entry.relative_to(world_dir).as_posix()
+        digest.update(relative.encode("utf-8"))
+        digest.update(_bundle_content_bytes(entry))
+    return digest.hexdigest()
+
+
+def _verify_bundle_integrity(world_dir):
     marker = world_dir / "integrity.json"
     if not marker.exists():
         return
     expected = json.loads(marker.read_text(encoding="utf-8"))
-    digest = hashlib.sha256()
-    for entry in sorted(world_dir.rglob("*")):
-        if entry.is_file() and entry.name != "integrity.json":
-            digest.update(entry.relative_to(world_dir).as_posix().encode())
-            digest.update(_bundle_content_bytes(entry))
-    actual = digest.hexdigest()[:16]
+    actual = _bundle_digest(world_dir)[:16]
     if actual != expected.get("sha256_prefix"):
         raise RuntimeError(
             "Набор данных повреждён или изменён (ожидался %s, получен %s). Переустановите приложение."
@@ -146,8 +161,8 @@ def _report_fatal(error):
 
 
 def main(argv=None):
-    state, _root = prepare_environment()
     try:
+        state, _root = prepare_environment()
         server, thread, url = start_server()
     except Exception as error:
         return _report_fatal(error)

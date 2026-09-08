@@ -15,7 +15,7 @@ CONTENT_SECURITY_POLICY = "; ".join((
     "script-src-attr 'none'",
     "style-src 'self'",
     "style-src-attr 'none'",
-    "img-src 'self' data: https://tile.openstreetmap.org",
+    "img-src 'self' data: https://tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.cartocdn.com https://*.tile.openstreetmap.fr https://tile.openstreetmap.fr https://*.tile.openstreetmap.org",
     "font-src 'self'",
     "connect-src 'self'",
     "object-src 'none'",

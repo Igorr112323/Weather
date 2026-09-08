@@ -30,8 +30,25 @@ async function api(path, options = {}) {
 }
 
 const REGION_BOUNDS = [[43.2, 36.1], [47.3, 42.4]];
-const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const OSM_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
+const TILE_PROVIDERS = [
+  {
+    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>',
+    subdomains: "abcd"
+  },
+  {
+    url: "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+    attribution: '© OpenStreetMap contributors, Tiles style by Humanitarian OSM Team',
+    subdomains: "abc"
+  },
+  {
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    subdomains: "abc"
+  }
+];
+const OSM_TILE_URL = TILE_PROVIDERS[0].url;
+const OSM_ATTRIBUTION = TILE_PROVIDERS[0].attribution;
 
 let map = null;
 let points = [];
@@ -42,10 +59,30 @@ function initMap() {
   try {
     if (typeof L === "undefined" || !L.map) throw new Error("Leaflet not loaded");
     map = L.map("map", { zoomControl: true, attributionControl: true });
-    try {
-      L.tileLayer(OSM_TILE_URL, { maxZoom: 19, attribution: OSM_ATTRIBUTION }).addTo(map);
-    } catch (tileError) {
-      // тайлы OSM могут быть недоступны в РФ без VPN — оставляем серый фон
+    let tileAdded = false;
+    for (const provider of TILE_PROVIDERS) {
+      try {
+        const layer = L.tileLayer(provider.url, {
+          maxZoom: 19,
+          attribution: provider.attribution,
+          subdomains: provider.subdomains || "abc",
+          crossOrigin: true
+        });
+        // пробуем добавить, если упадёт — пробуем следующий провайдер
+        layer.on("tileerror", () => {
+          // тихо игнорируем ошибки отдельных тайлов — карта остаётся, точки видны
+        });
+        layer.addTo(map);
+        tileAdded = true;
+        break;
+      } catch (tileError) {
+        continue;
+      }
+    }
+    if (!tileAdded) {
+      // без тайлов — просто серый фон, но карта и точки работают (без VPN)
+      const mapEl = document.getElementById("map");
+      if (mapEl) mapEl.style.background = "#e6eef3";
     }
     map.fitBounds(REGION_BOUNDS);
     map.on("click", (event) => {

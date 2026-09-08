@@ -138,9 +138,9 @@ function populateFallback() {
     o.textContent = p.id + " — " + p.lat.toFixed(2) + "°N " + p.lon.toFixed(2) + "°E";
     sel.appendChild(o);
   }
+  // всегда показываем список — карта может не прогрузиться, а точки выбрать нужно
   wrap.hidden = points.length === 0;
-  // если карта не инициализировалась — показываем список явно
-  if (!map || typeof L === "undefined") wrap.hidden = false;
+  if (points.length > 0) wrap.hidden = false;
 }
 
 function selectPoint(point) {

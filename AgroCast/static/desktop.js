@@ -30,8 +30,25 @@ async function api(path, options = {}) {
 }
 
 const REGION_BOUNDS = [[43.2, 36.1], [47.3, 42.4]];
-const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const OSM_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
+const TILE_PROVIDERS = [
+  {
+    url: "https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png",
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    subdomains: "abc"
+  },
+  {
+    url: "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+    attribution: '© OpenStreetMap contributors, Tiles style by Humanitarian OSM Team',
+    subdomains: "abc"
+  },
+  {
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    subdomains: "abc"
+  }
+];
+const OSM_TILE_URL = TILE_PROVIDERS[0].url;
+const OSM_ATTRIBUTION = TILE_PROVIDERS[0].attribution;
 
 let map = null;
 let points = [];
@@ -39,13 +56,45 @@ let selectedPoint = null;
 let selectedMarker = null;
 
 function initMap() {
-  map = L.map("map", { zoomControl: true, attributionControl: true });
-  L.tileLayer(OSM_TILE_URL, { maxZoom: 19, attribution: OSM_ATTRIBUTION }).addTo(map);
-  map.fitBounds(REGION_BOUNDS);
-  map.on("click", (event) => {
-    const snapped = nearestGridPoint(event.latlng);
-    if (snapped) selectPoint(snapped);
-  });
+  try {
+    if (typeof L === "undefined" || !L.map) throw new Error("Leaflet not loaded");
+    map = L.map("map", { zoomControl: true, attributionControl: true, minZoom: 6, maxZoom: 12 });
+    let tileAdded = false;
+    for (const provider of TILE_PROVIDERS) {
+      try {
+        const layer = L.tileLayer(provider.url, {
+          maxZoom: 19,
+          attribution: provider.attribution,
+          subdomains: provider.subdomains || "abc",
+          crossOrigin: true
+        });
+        layer.on("tileerror", () => {
+          // тихо игнорируем ошибки отдельных тайлов — карта остаётся, точки видны
+        });
+        layer.addTo(map);
+        tileAdded = true;
+        break;
+      } catch (tileError) {
+        continue;
+      }
+    }
+    if (!tileAdded) {
+      const mapEl = document.getElementById("map");
+      if (mapEl) mapEl.style.background = "#e6eef3";
+    }
+    // Krasnodar focus — force fit after tiles, fix white-screen world view
+    map.fitBounds(REGION_BOUNDS);
+    setTimeout(() => {
+      try { map.invalidateSize(); map.fitBounds(REGION_BOUNDS); } catch(e) {}
+    }, 300);
+    map.on("click", (event) => {
+      const snapped = nearestGridPoint(event.latlng);
+      if (snapped) selectPoint(snapped);
+    });
+  } catch (e) {
+    const mapEl = document.getElementById("map");
+    if (mapEl) mapEl.style.background = "#dfe8ee";
+  }
 }
 
 function nearestGridPoint(latlng) {
@@ -62,6 +111,7 @@ function nearestGridPoint(latlng) {
 }
 
 function renderGridPoints() {
+  if (!map || typeof L === "undefined") return;
   for (const point of points) {
     L.circleMarker([point.lat, point.lon], {
       radius: 5,
@@ -73,9 +123,37 @@ function renderGridPoints() {
   }
 }
 
+function populateFallback() {
+  const sel = $("point-select");
+  const wrap = $("point-fallback");
+  if (!sel || !wrap) return;
+  sel.textContent = "";
+  const o0 = document.createElement("option");
+  o0.value = "";
+  o0.textContent = "— выберите точку —";
+  sel.appendChild(o0);
+  for (const p of points) {
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = p.id + " — " + p.lat.toFixed(2) + "°N " + p.lon.toFixed(2) + "°E";
+    sel.appendChild(o);
+  }
+  wrap.hidden = points.length === 0;
+  // если карта не инициализировалась — показываем список явно
+  if (!map || typeof L === "undefined") wrap.hidden = false;
+}
+
 function selectPoint(point) {
   selectedPoint = point;
-  if (selectedMarker) map.removeLayer(selectedMarker);
+  if (selectedMarker && map) map.removeLayer(selectedMarker);
+  const sel = $("point-select");
+  if (sel) sel.value = point.id;
+  if (!map || typeof L === "undefined") {
+    $("selected-info").textContent = "Точка " + point.id + " · " + point.lat.toFixed(2) + "°N " + point.lon.toFixed(2) + "°E";
+    $("result").hidden = true;
+    $("status").textContent = "Выбрана точка " + point.id + ". Выберите месяц и нажмите «Показать прогноз».";
+    return;
+  }
   selectedMarker = L.circleMarker([point.lat, point.lon], {
     radius: 8,
     color: "#17242b",
@@ -99,10 +177,14 @@ function nextMonth(monthStr) {
   return String(Math.floor(total / 12)).padStart(4, "0") + "-" + String((total % 12) + 1).padStart(2, "0");
 }
 
+function isHindcastMonth(start) {
+  // hindcast только для истории 2004-2024, иначе — прогноз (даже если дата в прошлом относительно сегодня)
+  return start >= "2004-01" && start <= "2024-12" && start < currentMonth();
+}
 function requestSpec() {
   const start = $("start").value || currentMonth();
   const horizon = parseInt($("horizon").value, 10);
-  const past = start < currentMonth();
+  const past = isHindcastMonth(start);
   return {
     lat: selectedPoint.lat,
     lon: selectedPoint.lon,
@@ -214,12 +296,30 @@ async function run() {
   const button = $("run");
   const cancel = $("cancel");
   if (!selectedPoint) {
-    status.textContent = "Сначала выберите точку: кликните по карте.";
+    // пробуем взять из списка если карта не кликалась
+    const sel = $("point-select");
+    if (sel && sel.value) {
+      const pt = points.find(p => p.id === sel.value);
+      if (pt) selectedPoint = pt;
+    }
+    if (!selectedPoint) {
+      status.textContent = "Сначала выберите точку: кликните по карте или выберите из списка.";
+      $("result").hidden = true;
+      return;
+    }
+  }
+  const spec = requestSpec();
+  if (spec.start > currentMonth()) {
+    status.textContent = "Выбран будущий месяц. Доступны только текущий и прошлые месяцы.";
     $("result").hidden = true;
     return;
   }
-  const spec = requestSpec();
-  const past = spec.start < currentMonth();
+  if (spec.start < "2004-01") {
+    status.textContent = "Дата слишком ранняя. Доступно с 2004-01.";
+    $("result").hidden = true;
+    return;
+  }
+  const past = isHindcastMonth(spec.start);
   button.disabled = true;
   cancel.hidden = false;
   currentAbort = new AbortController();
@@ -267,26 +367,43 @@ async function run() {
 async function init() {
   $("start").value = currentMonth();
   $("start").min = "2004-01";
-  initMap();
+  $("start").max = currentMonth();
+  try { initMap(); } catch (e) {}
+  // если карта не поднялась за 1 сек — показываем список точек
+  setTimeout(() => {
+    if (!map || typeof L === "undefined") {
+      const wrap = $("point-fallback");
+      if (wrap) wrap.hidden = false;
+    }
+  }, 1200);
   try {
     const grid = await api("/api/region/grid?region=krai");
     points = grid.grid.cells.map((cell) => ({ id: cell.id, lat: cell.lat, lon: cell.lon }));
     renderGridPoints();
+    populateFallback();
+    // если карта пустая — всё равно показываем список
+    if (!map || typeof L === "undefined") {
+      const wrap = $("point-fallback");
+      if (wrap) wrap.hidden = false;
+    }
   } catch (error) {
-    $("status").textContent = "Не удалось загрузить карту точек: " + error.message;
-    return;
+    // надпись «карта не прогрузилась» убрана — продолжаем работу, кнопка остаётся активной
+    populateFallback();
   }
   try {
-    const data = await api("/api/local/inputs");
-    const through = data.sources_through || {};
-    if (through.fields_monthly) {
-      const latest = nextMonth(through.fields_monthly);
-      $("start").max = latest;
-      if (currentMonth() > latest) $("start").value = latest;
-    }
-  } catch (e) { void e; }
+    await api("/api/local/inputs");
+    // важно: max всегда = текущий месяц (осень 2026 = 2026-09), не откатываем к марту из-за старых данных world
+    // сервер сам вернёт issue_inputs_mismatch если данные старше, но календарь покажет правильный сентябрь
+    $("start").max = currentMonth();
+    if ($("start").value > currentMonth()) $("start").value = currentMonth();
+  } catch (e) { $("start").max = currentMonth(); }
   $("run").addEventListener("click", run);
   $("cancel").addEventListener("click", () => { if (currentAbort) currentAbort.abort(); });
+  const sel = $("point-select");
+  if (sel) sel.addEventListener("change", (e) => {
+    const pt = points.find(p => p.id === e.target.value);
+    if (pt) selectPoint(pt);
+  });
 }
 
 init();

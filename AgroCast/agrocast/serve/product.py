@@ -62,6 +62,11 @@ def disabled():
     raise APIError("pilot_operation_disabled", 403, PILOT_WARNING)
 
 
+def compute_error_message(exc):
+    reason = str(exc)
+    return f"{type(exc).__name__}: {reason}" if reason else type(exc).__name__
+
+
 def validate_pilot_target(request):
     if request.region != RegionId.KRAI:
         raise APIError("pilot_region_disabled", 403)
@@ -221,12 +226,9 @@ def local_forecast(request: Request, spec: ForecastSpec):
         return run_forecast(settings, spec, principal)
     except IssueFreshnessError:
         raise APIError("issue_inputs_mismatch", 422, "Запрошенный месяц новее последних полных входов; прогноз не публикуется") from None
-    except (ValueError, RuntimeError) as exc:
-        log.error("Локальный расчёт не завершился: %s: %s", type(exc).__name__, exc)
-        raise APIError("compute_failed", 500, str(exc)) from None
     except Exception as exc:
-        log.error("Необработанная ошибка локального расчёта: %s: %s", type(exc).__name__, exc)
-        raise APIError("compute_failed", 500, "Локальный расчёт не завершился; входные данные и кэш сохранены") from None
+        log.error("Локальный расчёт не завершился: %s %s", request.method, request.url.path, exc_info=exc)
+        raise APIError("compute_failed", 500, compute_error_message(exc)) from None
 
 
 @router.post("/api/local/hindcast")
@@ -262,12 +264,9 @@ def local_hindcast(request: Request, spec: ForecastSpec):
             log=lambda message: None,
         )
         return result
-    except (ValueError, RuntimeError) as exc:
-        log.error("Hindcast не завершился: %s: %s", type(exc).__name__, exc)
-        raise APIError("compute_failed", 500, str(exc)) from None
     except Exception as exc:
-        log.error("Необработанная ошибка hindcast: %s: %s", type(exc).__name__, exc)
-        raise APIError("compute_failed", 500, "Проверка на истории не завершилась") from None
+        log.error("Hindcast не завершился: %s %s", request.method, request.url.path, exc_info=exc)
+        raise APIError("compute_failed", 500, compute_error_message(exc)) from None
 
 
 @router.get("/desktop.html", response_class=HTMLResponse, include_in_schema=False)

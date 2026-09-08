@@ -1,70 +1,64 @@
-:root { color-scheme: light; --ink:#17242b; --line:#d7e0e6; --bg:#f4f7f9; --accent:#1c6b3c; }
+:root { color-scheme: light; --ink:#17242b; --line:#d7e0e6; --bg:#f4f7f9; --accent:#1c6b3c; --gold:#e3b46c; }
 * { box-sizing:border-box; }
-body { margin:0; font:15px/1.5 system-ui,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); }
-header { padding:22px 28px 10px; }
-h1 { margin:0; font-size:26px; letter-spacing:.3px; }
-.tag { margin:4px 0 0; color:#51646f; }
-main { display:flex; flex-direction:column; gap:16px; padding:8px 28px 28px; max-width:1100px; }
-.card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:18px 20px; }
-.card h2 { margin:0 0 10px; font-size:19px; }
-.hint { color:#51646f; font-size:13.5px; margin:6px 0; }
-.status { margin:8px 0 0; font-size:14px; }
-footer { color:#51646f; padding:0 28px 22px; font-size:12.5px; }
+body { margin:0; font:15px/1.5 system-ui,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:#dfe8ee; }
 
-/* Tabs */
-.tabs { display:flex; gap:4px; margin-bottom:8px; }
-.tab { background:#eef4f7; color:var(--ink); border-radius:10px 10px 0 0; padding:10px 20px; font-size:15px; font-weight:500; border:none; cursor:pointer; }
-.tab.active { background:var(--accent); color:#fff; }
-.tab:hover:not(.active) { background:#d7e0e6; }
+/* Полноэкранная карта */
+#map { position:fixed; inset:0; z-index:0; }
+.leaflet-container { background:#dfe8ee; font:14px/1.4 system-ui,"Segoe UI",Roboto,sans-serif; }
 
-/* Map container */
-#map-container, #hindcast-map-container { position:relative; margin-bottom:16px; }
-#map-svg, #hindcast-map-svg { width:100%; max-width:600px; display:block; margin:0 auto; cursor:pointer; }
-.map-title { font-size:14px; fill:#41545f; font-weight:500; }
-.coord-label { font-size:10px; fill:#71847f; }
+/* Плавающая шапка */
+.overlay-title { position:fixed; top:12px; left:12px; z-index:1000; background:rgba(255,255,255,.94); border:1px solid var(--line); border-radius:12px; padding:10px 16px; box-shadow:0 2px 10px rgba(23,36,43,.12); }
+.overlay-title h1 { margin:0; font-size:20px; letter-spacing:.3px; }
+.tag { margin:2px 0 0; color:#51646f; font-size:13px; }
 
-/* Point markers on SVG map */
-.map-point { cursor:pointer; }
-.map-point circle { fill:rgba(28,107,60,0.7); stroke:#fff; stroke-width:2; }
-.map-point:hover circle { fill:rgba(28,107,60,1); }
-.map-point.selected circle { fill:#e3b46c; stroke:#17242b; stroke-width:2.5; }
-.map-point text { font-size:9px; fill:#17242b; text-anchor:middle; pointer-events:none; }
-.map-point.selected text { font-weight:bold; }
+/* Панель управления */
+.panel { position:fixed; top:12px; right:12px; z-index:1000; width:370px; max-width:calc(100vw - 24px); max-height:calc(100vh - 24px); overflow:auto; background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:0 2px 12px rgba(23,36,43,.16); }
+.panel h2 { margin:0 0 8px; font-size:18px; }
+.selected-info { text-align:left; margin:0 0 4px; font-size:14px; color:#41545f; min-height:22px; }
+.hint { color:#51646f; font-size:13px; margin:6px 0; }
+.status { margin:8px 0 0; font-size:14px; min-height:21px; }
 
-.selected-info { text-align:center; margin-top:8px; font-size:14px; color:#41545f; min-height:24px; }
-
-/* Controls */
-.controls-row { display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap; margin:8px 0; }
+/* Управление */
+.controls-row { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin:10px 0; }
 .control-group { display:flex; flex-direction:column; gap:4px; }
 label { font-size:13px; color:#41545f; }
-select, input { padding:9px 10px; border:1px solid var(--line); border-radius:8px; font-size:15px; background:#fff; }
-button { border:0; border-radius:10px; padding:12px 22px; font-size:16px; cursor:pointer; background:var(--accent); color:#fff; }
+select, input { padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:15px; background:#fff; }
+button { border:0; border-radius:10px; padding:11px 18px; font-size:15px; cursor:pointer; background:var(--accent); color:#fff; }
 button:disabled { opacity:.55; cursor:progress; }
-button.secondary { background:#2e4c5e; font-size:14px; padding:9px 16px; }
+button.secondary { background:#2e4c5e; font-size:14px; padding:9px 16px; margin-top:8px; }
+#run { width:100%; }
+#cancel { width:100%; }
 
-/* Forecast results */
+/* Результаты */
+#result { margin-top:12px; border-top:1px solid var(--line); padding-top:10px; }
+#result h4 { margin:0 0 8px; font-size:14px; }
 .season { border-top:1px solid var(--line); padding:10px 0; }
+.season:first-of-type { border-top:0; }
 .season h4 { margin:0 0 6px; font-size:15px; }
 .prob { display:flex; gap:12px; flex-wrap:wrap; margin:4px 0; }
 .prob-name { font-weight:600; }
 .prob-below,.prob-normal,.prob-above { background:#eef4f7; border-radius:8px; padding:3px 9px; font-size:13.5px; }
 
-button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid #e3b46c; outline-offset: 2px; }
+/* Подписи точек на карте */
+.leaflet-tooltip { background:#fff; border:1px solid var(--line); box-shadow:0 1px 4px rgba(23,36,43,.2); font-size:12px; font-weight:600; color:var(--ink); }
+
+button:focus-visible, select:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
 button:focus:not(:focus-visible) { outline: none; }
 
 @media (max-width:700px) {
-  main, header { padding-left:14px; padding-right:14px; }
+  .panel { top:auto; bottom:0; right:0; left:0; width:auto; max-width:none; max-height:55vh; border-radius:14px 14px 0 0; }
+  .overlay-title { padding:8px 12px; }
+  .overlay-title h1 { font-size:17px; }
+  .tag { display:none; }
   .controls-row { flex-direction:column; align-items:stretch; gap:10px; }
   .control-group { width:100%; }
   select, input { width:100%; }
 }
 
 @media print {
-  header .tag, footer, button, .tabs, .controls-row button { display:none; }
+  #map, .overlay-title, button, .leaflet-control-container { display:none; }
   body { background:#fff; color:#111; }
-  main { max-width:none; padding:0; }
-  .card { border:1px solid #999; border-radius:0; break-inside:avoid; }
+  .panel { position:static; width:auto; max-width:none; max-height:none; border:1px solid #999; border-radius:0; box-shadow:none; }
   .season { border-top:1px solid #ccc; }
-  #map-svg, #hindcast-map-svg { max-width:100%; }
   @page { size:A4; margin:12mm; }
 }

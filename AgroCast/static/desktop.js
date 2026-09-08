@@ -1,7 +1,9 @@
+import {node} from '/assets/dom.js';
+
 const $ = (id) => document.getElementById(id);
 
 function describeError(response, body) {
-  const detail = body && (body.detail ?? body.code ?? body.message);
+  const detail = body && body.detail;
   if (Array.isArray(detail)) {
     const parts = detail.slice(0, 3).map((item) => {
       const where = Array.isArray(item.loc) ? item.loc.filter((p) => p !== "body").join(" → ") : "";
@@ -9,7 +11,13 @@ function describeError(response, body) {
     });
     return "Проверьте форму: " + parts.join("; ");
   }
-  if (typeof detail === "string" && detail) return detail;
+  const reason = body && (body.error ?? body.message);
+  if (typeof reason === "string" && reason) {
+    if (response.status === 404 && reason === "resource_not_found") {
+      return "Ресурс не найден (404). Обновите список данных.";
+    }
+    return reason;
+  }
   if (response.status === 404) return "Ресурс не найден (404). Обновите список данных.";
   return "Ошибка сервера (HTTP " + response.status + ").";
 }
@@ -21,88 +29,63 @@ async function api(path, options = {}) {
   return body;
 }
 
-function initTabs() {
-  const tabs = document.querySelectorAll(".tab");
-  tabs.forEach((tab) => {
-    tab.addEventListener("click", () => {
-      tabs.forEach((t) => t.classList.remove("active"));
-      tab.classList.add("active");
-      const target = tab.dataset.tab;
-      $("forecast-tab").hidden = target !== "forecast";
-      $("hindcast-tab").hidden = target !== "hindcast";
-      $("reports-tab").hidden = target !== "reports";
-      if (target === "reports") loadReports();
-    });
-  });
-}
+const REGION_BOUNDS = [[43.2, 36.1], [47.3, 42.4]];
+const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const OSM_ATTRIBUTION = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
 
-const MAP_BOUNDS = { latMin: 43.5, latMax: 47.0, lonMin: 36.5, lonMax: 42.0 };
-const SVG_BOUNDS = { x: 50, y: 50, w: 500, h: 320 };
-
-function latLonToSvg(lat, lon) {
-  const x = SVG_BOUNDS.x + ((lon - MAP_BOUNDS.lonMin) / (MAP_BOUNDS.lonMax - MAP_BOUNDS.lonMin)) * SVG_BOUNDS.w;
-  const y = SVG_BOUNDS.y + ((MAP_BOUNDS.latMax - lat) / (MAP_BOUNDS.latMax - MAP_BOUNDS.latMin)) * SVG_BOUNDS.h;
-  return { x, y };
-}
-
+let map = null;
 let points = [];
 let selectedPoint = null;
-let hindcastSelectedPoint = null;
+let selectedMarker = null;
 
-function createMapPoint(group, point, isSelected, onClick) {
-  const pos = latLonToSvg(point.lat, point.lon);
-  const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  g.setAttribute("class", "map-point" + (isSelected ? " selected" : ""));
-  g.setAttribute("data-id", point.id);
-  const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-  circle.setAttribute("cx", pos.x);
-  circle.setAttribute("cy", pos.y);
-  circle.setAttribute("r", isSelected ? "8" : "6");
-  g.appendChild(circle);
-  const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
-  txt.setAttribute("x", pos.x);
-  txt.setAttribute("y", pos.y - 12);
-  txt.textContent = point.id;
-  g.appendChild(txt);
-  g.addEventListener("click", (e) => {
-    e.stopPropagation();
-    onClick(point);
+function initMap() {
+  map = L.map("map", { zoomControl: true, attributionControl: true });
+  L.tileLayer(OSM_TILE_URL, { maxZoom: 19, attribution: OSM_ATTRIBUTION }).addTo(map);
+  map.fitBounds(REGION_BOUNDS);
+  map.on("click", (event) => {
+    const snapped = nearestGridPoint(event.latlng);
+    if (snapped) selectPoint(snapped);
   });
-  group.appendChild(g);
 }
 
-function renderMapPoints(group, allPoints, selected, onClick) {
-  group.textContent = "";
-  for (const point of allPoints) {
-    createMapPoint(group, point, selected && selected.id === point.id, onClick);
+function nearestGridPoint(latlng) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const point of points) {
+    const distance = latlng.distanceTo(L.latLng(point.lat, point.lon));
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = point;
+    }
+  }
+  return best;
+}
+
+function renderGridPoints() {
+  for (const point of points) {
+    L.circleMarker([point.lat, point.lon], {
+      radius: 5,
+      color: "#1c6b3c",
+      weight: 1.5,
+      fillColor: "#1c6b3c",
+      fillOpacity: 0.4,
+    }).addTo(map).bindTooltip(node("span", point.id), { direction: "top", offset: L.point(0, -6) });
   }
 }
 
-function selectForecastPoint(point) {
+function selectPoint(point) {
   selectedPoint = point;
-  refreshForecastMap();
-  $("selected-info").textContent = point.id + " · " + point.lat.toFixed(2) + "°N " + point.lon.toFixed(2) + "°E";
-}
-
-function selectHindcastPoint(point) {
-  hindcastSelectedPoint = point;
-  refreshHindcastMap();
-  $("hindcast-selected-info").textContent = point.id + " · " + point.lat.toFixed(2) + "°N " + point.lon.toFixed(2) + "°E";
-}
-
-function refreshForecastMap() {
-  renderMapPoints($("map-points"), points, selectedPoint, selectForecastPoint);
-}
-
-function refreshHindcastMap() {
-  renderMapPoints($("hindcast-map-points"), points, hindcastSelectedPoint, selectHindcastPoint);
-}
-
-async function loadPointsInit() {
-  const grid = await api("/api/region/grid?region=krai");
-  points = grid.grid.cells.map((cell) => ({ id: cell.id, lat: cell.lat, lon: cell.lon }));
-  refreshForecastMap();
-  refreshHindcastMap();
+  if (selectedMarker) map.removeLayer(selectedMarker);
+  selectedMarker = L.circleMarker([point.lat, point.lon], {
+    radius: 8,
+    color: "#17242b",
+    weight: 2,
+    fillColor: "#e3b46c",
+    fillOpacity: 0.95,
+  }).addTo(map).bringToFront();
+  $("selected-info").textContent = "Точка " + point.id + " · " + point.lat.toFixed(2) + "°N " + point.lon.toFixed(2) + "°E";
+  $("result").hidden = true;
+  $("status").textContent = "Выбрана точка " + point.id + ". Выберите месяц и нажмите «Показать прогноз».";
 }
 
 function currentMonth() {
@@ -114,6 +97,22 @@ function nextMonth(monthStr) {
   const [year, month] = monthStr.split("-").map(Number);
   const total = year * 12 + (month - 1) + 1;
   return String(Math.floor(total / 12)).padStart(4, "0") + "-" + String((total % 12) + 1).padStart(2, "0");
+}
+
+function requestSpec() {
+  const start = $("start").value || currentMonth();
+  const horizon = parseInt($("horizon").value, 10);
+  const past = start < currentMonth();
+  return {
+    lat: selectedPoint.lat,
+    lon: selectedPoint.lon,
+    point_id: selectedPoint.id,
+    start,
+    horizon,
+    mode: horizon === 1 ? "monthly" : "seasonal",
+    season_len: horizon === 1 ? 1 : 3,
+    kind: past ? "hindcast" : "forecast",
+  };
 }
 
 function el(tag, className, text) {
@@ -137,7 +136,7 @@ function renderSummary(payload) {
   const box = $("summary");
   box.textContent = "";
   if (!selectedPoint) return;
-  box.appendChild(el("h4", "", selectedPoint.id + " · " + selectedPoint.lat.toFixed(2) + "°N " + selectedPoint.lon.toFixed(2) + "°E"));
+  box.appendChild(el("h4", "", "Прогноз · " + selectedPoint.id + " · " + selectedPoint.lat.toFixed(2) + "°N " + selectedPoint.lon.toFixed(2) + "°E"));
   const seasons = payload.seasons || [];
   if (!seasons.length) {
     box.appendChild(el("p", "status", "Нет данных для этого периода."));
@@ -163,88 +162,15 @@ function renderSummary(payload) {
   }
 }
 
-let currentAbort = null;
-let elapsedTimer = null;
-let timedOut = false;
-
-function stopElapsed() {
-  if (elapsedTimer !== null) { clearInterval(elapsedTimer); elapsedTimer = null; }
-}
-
-function startElapsed(statusEl) {
-  const started = Date.now();
-  const tick = () => {
-    const seconds = Math.round((Date.now() - started) / 1000);
-    statusEl.textContent = "Расчёт: " + seconds + " с…";
-  };
-  tick();
-  stopElapsed();
-  elapsedTimer = setInterval(tick, 1000);
-}
-
-async function runForecast() {
-  const status = $("status");
-  const button = $("run");
-  const cancel = $("cancel");
-  if (!selectedPoint) {
-    status.textContent = "Сначала выберите точку на карте.";
-    return;
-  }
-  const start = $("start").value || currentMonth();
-  button.disabled = true;
-  cancel.hidden = false;
-  currentAbort = new AbortController();
-  timedOut = false;
-  const deadline = setTimeout(() => {
-    timedOut = true;
-    currentAbort && currentAbort.abort();
-  }, 600000);
-  startElapsed(status);
-  try {
-    const out = await api("/api/local/forecast", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        lat: selectedPoint.lat,
-        lon: selectedPoint.lon,
-        point_id: selectedPoint.id,
-        start,
-        horizon: 3,
-        mode: "seasonal",
-        season_len: 3,
-      }),
-      signal: currentAbort.signal,
-    });
-    renderSummary(out.payload);
-    $("result").hidden = false;
-    status.textContent = out.cached ? "Результат из кэша." : "Готово.";
-  } catch (error) {
-    stopElapsed();
-    if (error && error.name === "AbortError") {
-      status.textContent = timedOut
-        ? "Расчёт длился слишком долго и был остановлен. Попробуйте повторить."
-        : "Расчёт отменён.";
-    } else {
-      status.textContent = "Ошибка: " + error.message;
-    }
-  } finally {
-    clearTimeout(deadline);
-    stopElapsed();
-    currentAbort = null;
-    cancel.hidden = true;
-    button.disabled = false;
-  }
-}
-
 function renderHindcastSummary(data) {
-  const box = $("hindcast-summary");
+  const box = $("summary");
   box.textContent = "";
   if (!data || !data.items || !data.items.length) {
     box.appendChild(el("p", "status", "Нет данных для этого периода."));
     return;
   }
-  if (hindcastSelectedPoint) {
-    box.appendChild(el("h4", "", hindcastSelectedPoint.id + " · " + data.start));
+  if (selectedPoint) {
+    box.appendChild(el("h4", "", "Проверка на истории · " + selectedPoint.id + " · " + data.start));
   }
   if (data.summary) {
     const t = data.summary.t2m || {};
@@ -265,76 +191,89 @@ function renderHindcastSummary(data) {
   }
 }
 
-async function runHindcast() {
-  const status = $("hindcast-status");
-  const button = $("hindcast-run");
-  if (!hindcastSelectedPoint) {
-    status.textContent = "Сначала выберите точку на карте.";
+let currentAbort = null;
+let elapsedTimer = null;
+let timedOut = false;
+
+function stopElapsed() {
+  if (elapsedTimer !== null) { clearInterval(elapsedTimer); elapsedTimer = null; }
+}
+
+function startElapsed(statusEl, prefix) {
+  const started = Date.now();
+  const tick = () => {
+    statusEl.textContent = prefix + Math.round((Date.now() - started) / 1000) + " с…";
+  };
+  tick();
+  stopElapsed();
+  elapsedTimer = setInterval(tick, 1000);
+}
+
+async function run() {
+  const status = $("status");
+  const button = $("run");
+  const cancel = $("cancel");
+  if (!selectedPoint) {
+    status.textContent = "Сначала выберите точку: кликните по карте.";
+    $("result").hidden = true;
     return;
   }
-  const year = parseInt($("hindcast-start").value, 10);
-  if (!year || year < 2004 || year > 2024) {
-    status.textContent = "Выберите год от 2004 до 2024.";
-    return;
-  }
+  const spec = requestSpec();
+  const past = spec.start < currentMonth();
   button.disabled = true;
-  status.textContent = "Проверяю…";
+  cancel.hidden = false;
+  currentAbort = new AbortController();
+  timedOut = false;
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    if (currentAbort) currentAbort.abort();
+  }, 600000);
+  startElapsed(status, past ? "Проверка на истории: " : "Расчёт: ");
   try {
-    const out = await api("/api/local/hindcast", {
+    const path = past ? "/api/local/hindcast" : "/api/local/forecast";
+    const out = await api(path, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        lat: hindcastSelectedPoint.lat,
-        lon: hindcastSelectedPoint.lon,
-        point_id: hindcastSelectedPoint.id,
-        start: year + "-01",
-        horizon: 6,
-        mode: "seasonal",
-        season_len: 3,
-        kind: "hindcast",
-      }),
+      body: JSON.stringify(spec),
+      signal: currentAbort.signal,
     });
-    renderHindcastSummary(out);
-    $("hindcast-result").hidden = false;
-    status.textContent = "Готово.";
+    if (past) {
+      renderHindcastSummary(out);
+      status.textContent = "Готово: показана проверка на историю с " + out.start + ".";
+    } else {
+      renderSummary(out.payload);
+      status.textContent = out.cached ? "Готово (результат из кэша)." : "Готово.";
+    }
+    $("result").hidden = false;
   } catch (error) {
-    status.textContent = "Ошибка: " + error.message;
+    stopElapsed();
+    $("result").hidden = true;
+    if (error && error.name === "AbortError") {
+      status.textContent = timedOut
+        ? "Расчёт длился слишком долго и был остановлен. Попробуйте повторить."
+        : "Расчёт отменён.";
+    } else {
+      status.textContent = "Ошибка: " + error.message;
+    }
   } finally {
+    clearTimeout(deadline);
+    stopElapsed();
+    currentAbort = null;
+    cancel.hidden = true;
     button.disabled = false;
   }
 }
 
-async function loadReports() {
-  const container = $("reports-list");
-  try {
-    const data = await api("/api/local/inputs");
-    const entries = data.results_cache.entries || [];
-    container.textContent = "";
-    if (!entries.length) {
-      container.appendChild(el("p", "hint", "Пока нет сохранённых расчётов."));
-      return;
-    }
-    container.appendChild(el("p", "hint", "Сохранено расчётов: " + data.results_cache.total));
-    for (const entry of entries) {
-      const row = el("div", "season");
-      const ts = entry.stored_at ? new Date(entry.stored_at * 1000).toLocaleDateString("ru-RU") : "—";
-      row.appendChild(el("p", "hint", entry.key + " · " + ts));
-      container.appendChild(row);
-    }
-  } catch (error) {
-    container.textContent = "";
-    container.appendChild(el("p", "status", "Не удалось загрузить: " + error.message));
-  }
-}
-
 async function init() {
-  initTabs();
   $("start").value = currentMonth();
+  $("start").min = "2004-01";
+  initMap();
   try {
-    await loadPointsInit();
+    const grid = await api("/api/region/grid?region=krai");
+    points = grid.grid.cells.map((cell) => ({ id: cell.id, lat: cell.lat, lon: cell.lon }));
+    renderGridPoints();
   } catch (error) {
-    $("status").textContent = "Не удалось загрузить точки: " + error.message;
-    $("hindcast-status").textContent = "Не удалось загрузить точки: " + error.message;
+    $("status").textContent = "Не удалось загрузить карту точек: " + error.message;
     return;
   }
   try {
@@ -346,9 +285,8 @@ async function init() {
       if (currentMonth() > latest) $("start").value = latest;
     }
   } catch (e) { void e; }
-  $("run").addEventListener("click", runForecast);
+  $("run").addEventListener("click", run);
   $("cancel").addEventListener("click", () => { if (currentAbort) currentAbort.abort(); });
-  $("hindcast-run").addEventListener("click", runHindcast);
 }
 
 init();

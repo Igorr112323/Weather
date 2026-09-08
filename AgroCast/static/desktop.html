@@ -4,121 +4,42 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AgroCast — локальные прогнозы</title>
+<link rel="stylesheet" href="/assets/vendor/leaflet/leaflet.css" integrity="sha384-3Zp5dU/2e36sCZIslNy0nR/CpV0m2JOEp63JIiahU1YkB0LiKui1CUM8nml2lmU2" crossorigin="anonymous">
 <link rel="stylesheet" href="/assets/desktop.css">
 <link rel="icon" type="image/png" href="/assets/agrocast.png">
-<script type="module" src="/assets/desktop.js"></script>
+<script src="/assets/vendor/leaflet/leaflet.js" integrity="sha384-/ebwMPBNh/7cTi+L/d2x6DmcjCLDgJc3BRKB1mGbTgltaFzFP0Mi2YU9I0YGhmjx" crossorigin="anonymous" defer></script>
+<script type="module" src="/assets/desktop.js" defer></script>
 </head>
 <body>
-<header>
+<div id="map" role="application" aria-label="Карта Краснодарского края"></div>
+<header class="overlay-title">
 <h1>AgroCast</h1>
 <p class="tag">Агропрогнозы для Краснодарского края</p>
 </header>
-<main>
-<div class="tabs">
-<button class="tab active" data-tab="forecast">Прогноз</button>
-<button class="tab" data-tab="hindcast">Прошлые годы</button>
-<button class="tab" data-tab="reports">Отчёты</button>
-</div>
-
-<section id="forecast-tab" class="card">
-<h2>Выберите точку на карте</h2>
-<div id="map-container">
-<svg id="map-svg" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid meet">
-<rect width="600" height="400" fill="#e8f0e8" rx="8"/>
-<text x="300" y="20" text-anchor="middle" class="map-title">Краснодарский край</text>
-<!-- Grid lines -->
-<line x1="50" y1="50" x2="50" y2="370" stroke="#c0d0c0" stroke-width="0.5"/>
-<line x1="175" y1="50" x2="175" y2="370" stroke="#c0d0c0" stroke-width="0.5"/>
-<line x1="300" y1="50" x2="300" y2="370" stroke="#c0d0c0" stroke-width="0.5"/>
-<line x1="425" y1="50" x2="425" y2="370" stroke="#c0d0c0" stroke-width="0.5"/>
-<line x1="550" y1="50" x2="550" y2="370" stroke="#c0d0c0" stroke-width="0.5"/>
-<line x1="50" y1="50" x2="550" y2="50" stroke="#c0d0c0" stroke-width="0.5"/>
-<line x1="50" y1="130" x2="550" y2="130" stroke="#c0d0c0" stroke-width="0.5"/>
-<line x1="50" y1="210" x2="550" y2="210" stroke="#c0d0c0" stroke-width="0.5"/>
-<line x1="50" y1="290" x2="550" y2="290" stroke="#c0d0c0" stroke-width="0.5"/>
-<line x1="50" y1="370" x2="550" y2="370" stroke="#c0d0c0" stroke-width="0.5"/>
-<!-- Coordinate labels -->
-<text x="50" y="390" text-anchor="middle" class="coord-label">37.5°E</text>
-<text x="175" y="390" text-anchor="middle" class="coord-label">38.5°E</text>
-<text x="300" y="390" text-anchor="middle" class="coord-label">39.5°E</text>
-<text x="425" y="390" text-anchor="middle" class="coord-label">40.5°E</text>
-<text x="550" y="390" text-anchor="middle" class="coord-label">41.5°E</text>
-<text x="30" y="55" text-anchor="end" class="coord-label">46.5°N</text>
-<text x="30" y="135" text-anchor="end" class="coord-label">46.0°N</text>
-<text x="30" y="215" text-anchor="end" class="coord-label">45.5°N</text>
-<text x="30" y="295" text-anchor="end" class="coord-label">45.0°N</text>
-<text x="30" y="375" text-anchor="end" class="coord-label">44.5°N</text>
-<!-- Points will be added by JS -->
-<g id="map-points"></g>
-</svg>
-<div id="selected-info" class="selected-info">Кликните на точку</div>
-</div>
+<aside class="panel">
+<h2>Сезонный прогноз</h2>
+<div id="selected-info" class="selected-info">Кликните по карте — будет выбрана ближайшая точка сетки</div>
+<p class="hint">Прошлые месяцы (2004–2024) автоматически проверяются на истории.</p>
 <div class="controls-row">
 <div class="control-group">
 <label for="start">Месяц выпуска</label>
 <input id="start" type="month">
 </div>
+<div class="control-group">
+<label for="horizon">Интервал</label>
+<select id="horizon">
+<option value="1">1 месяц</option>
+<option value="3" selected>3 месяца</option>
+<option value="6">6 месяцев</option>
+</select>
+</div>
+</div>
 <button id="run" type="button" class="big">Показать прогноз</button>
 <button id="cancel" type="button" class="secondary" hidden>Отменить</button>
-</div>
-<p id="status" role="status" aria-live="polite" class="status">Выберите точку и месяц.</p>
+<p id="status" role="status" aria-live="polite" class="status">Выберите точку на карте и месяц выпуска.</p>
 <div id="result" hidden>
 <div id="summary"></div>
 </div>
-</section>
-
-<section id="hindcast-tab" class="card" hidden>
-<h2>Проверка на истории</h2>
-<p class="hint">Сравните прогноз с фактом за прошлые годы (2004–2024).</p>
-<div id="hindcast-map-container">
-<svg id="hindcast-map-svg" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid meet">
-<rect width="600" height="400" fill="#f0e8e8" rx="8"/>
-<text x="300" y="20" text-anchor="middle" class="map-title">Краснодарский край — проверка</text>
-<line x1="50" y1="50" x2="50" y2="370" stroke="#d0c0c0" stroke-width="0.5"/>
-<line x1="175" y1="50" x2="175" y2="370" stroke="#d0c0c0" stroke-width="0.5"/>
-<line x1="300" y1="50" x2="300" y2="370" stroke="#d0c0c0" stroke-width="0.5"/>
-<line x1="425" y1="50" x2="425" y2="370" stroke="#d0c0c0" stroke-width="0.5"/>
-<line x1="550" y1="50" x2="550" y2="370" stroke="#d0c0c0" stroke-width="0.5"/>
-<line x1="50" y1="50" x2="550" y2="50" stroke="#d0c0c0" stroke-width="0.5"/>
-<line x1="50" y1="130" x2="550" y2="130" stroke="#d0c0c0" stroke-width="0.5"/>
-<line x1="50" y1="210" x2="550" y2="210" stroke="#d0c0c0" stroke-width="0.5"/>
-<line x1="50" y1="290" x2="550" y2="290" stroke="#d0c0c0" stroke-width="0.5"/>
-<line x1="50" y1="370" x2="550" y2="370" stroke="#d0c0c0" stroke-width="0.5"/>
-<text x="50" y="390" text-anchor="middle" class="coord-label">37.5°E</text>
-<text x="175" y="390" text-anchor="middle" class="coord-label">38.5°E</text>
-<text x="300" y="390" text-anchor="middle" class="coord-label">39.5°E</text>
-<text x="425" y="390" text-anchor="middle" class="coord-label">40.5°E</text>
-<text x="550" y="390" text-anchor="middle" class="coord-label">41.5°E</text>
-<text x="30" y="55" text-anchor="end" class="coord-label">46.5°N</text>
-<text x="30" y="135" text-anchor="end" class="coord-label">46.0°N</text>
-<text x="30" y="215" text-anchor="end" class="coord-label">45.5°N</text>
-<text x="30" y="295" text-anchor="end" class="coord-label">45.0°N</text>
-<text x="30" y="375" text-anchor="end" class="coord-label">44.5°N</text>
-<g id="hindcast-map-points"></g>
-</svg>
-<div id="hindcast-selected-info" class="selected-info">Кликните на точку</div>
-</div>
-<div class="controls-row">
-<div class="control-group">
-<label for="hindcast-start">Год</label>
-<input id="hindcast-start" type="number" min="2004" max="2024" value="2020">
-</div>
-<button id="hindcast-run" type="button" class="big">Проверить</button>
-</div>
-<p id="hindcast-status" role="status" aria-live="polite" class="status">Выберите точку и год.</p>
-<div id="hindcast-result" hidden>
-<div id="hindcast-summary"></div>
-</div>
-</section>
-
-<section id="reports-tab" class="card" hidden>
-<h2>Отчёты</h2>
-<div id="reports-list">
-<p class="hint">Здесь будут сохранённые результаты расчётов.</p>
-</div>
-<div id="cache-info"></div>
-</section>
-</main>
-<footer><p>AgroCast · локальный режим</p></footer>
+</aside>
 </body>
 </html>

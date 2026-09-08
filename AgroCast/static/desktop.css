@@ -58,3 +58,13 @@ button:focus:not(:focus-visible) { outline: none; }
   .control-group { width:100%; }
   select, input { width:100%; }
 }
+
+@media print {
+  header .tag, footer, button, .tabs, .controls-row button { display:none; }
+  body { background:#fff; color:#111; }
+  main { max-width:none; padding:0; }
+  .card { border:1px solid #999; border-radius:0; break-inside:avoid; }
+  .season { border-top:1px solid #ccc; }
+  #map-svg, #hindcast-map-svg { max-width:100%; }
+  @page { size:A4; margin:12mm; }
+}

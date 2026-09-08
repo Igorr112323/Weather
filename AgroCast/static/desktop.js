@@ -1,18 +1,17 @@
 const $ = (id) => document.getElementById(id);
 
-// --- API helpers ---
 function describeError(response, body) {
   const detail = body && (body.detail ?? body.code ?? body.message);
   if (Array.isArray(detail)) {
     const parts = detail.slice(0, 3).map((item) => {
       const where = Array.isArray(item.loc) ? item.loc.filter((p) => p !== "body").join(" → ") : "";
-      return (where ? where + ": " : "") + String(item.msg ?? item.message ?? "ошибка");
+      return (where ? where + ": " : "") + String(item.msg ?? item.message ?? "ошибка поля");
     });
-    return parts.join("; ");
+    return "Проверьте форму: " + parts.join("; ");
   }
   if (typeof detail === "string" && detail) return detail;
-  if (response.status === 404) return "Ресурс не найден";
-  return "Ошибка сервера (HTTP " + response.status + ")";
+  if (response.status === 404) return "Ресурс не найден (404). Обновите список данных.";
+  return "Ошибка сервера (HTTP " + response.status + ").";
 }
 
 async function api(path, options = {}) {
@@ -22,7 +21,6 @@ async function api(path, options = {}) {
   return body;
 }
 
-// --- Tabs ---
 function initTabs() {
   const tabs = document.querySelectorAll(".tab");
   tabs.forEach((tab) => {
@@ -38,8 +36,6 @@ function initTabs() {
   });
 }
 
-// --- Coordinate to SVG mapping ---
-// Krasnodar Krai bounding box: lat 43.5-47.0, lon 36.5-42.0
 const MAP_BOUNDS = { latMin: 43.5, latMax: 47.0, lonMin: 36.5, lonMax: 42.0 };
 const SVG_BOUNDS = { x: 50, y: 50, w: 500, h: 320 };
 
@@ -49,63 +45,51 @@ function latLonToSvg(lat, lon) {
   return { x, y };
 }
 
-// --- Points and Map ---
 let points = [];
 let selectedPoint = null;
 let hindcastSelectedPoint = null;
 
-function createMapPoint(svg, group, point, isSelected, onClick) {
+function createMapPoint(group, point, isSelected, onClick) {
   const pos = latLonToSvg(point.lat, point.lon);
   const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
   g.setAttribute("class", "map-point" + (isSelected ? " selected" : ""));
   g.setAttribute("data-id", point.id);
-
   const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
   circle.setAttribute("cx", pos.x);
   circle.setAttribute("cy", pos.y);
   circle.setAttribute("r", isSelected ? "8" : "6");
   g.appendChild(circle);
-
-  const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-  text.setAttribute("x", pos.x);
-  text.setAttribute("y", pos.y - 12);
-  text.textContent = point.id;
-  g.appendChild(text);
-
+  const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  txt.setAttribute("x", pos.x);
+  txt.setAttribute("y", pos.y - 12);
+  txt.textContent = point.id;
+  g.appendChild(txt);
   g.addEventListener("click", (e) => {
     e.stopPropagation();
     onClick(point);
   });
-
   group.appendChild(g);
-  return g;
 }
 
 function renderMapPoints(group, allPoints, selected, onClick) {
   group.textContent = "";
   for (const point of allPoints) {
-    createMapPoint(null, group, point, selected && selected.id === point.id, onClick);
+    createMapPoint(group, point, selected && selected.id === point.id, onClick);
   }
 }
 
-async function loadPoints() {
-  const grid = await api("/api/region/grid?region=krai");
-  points = grid.grid.cells.map((cell) => ({ id: cell.id, lat: cell.lat, lon: cell.lon }));
-
-  renderMapPoints($("map-points"), points, selectedPoint, (point) => {
-    selectedPoint = point;
-    renderMapPoints($("map-points"), points, selectedPoint, arguments.callee);
-    $("selected-info").textContent = `${point.id} · ${point.lat.toFixed(2)}°N ${point.lon.toFixed(2)}°E`;
-  });
-
-  renderMapPoints($("hindcast-map-points"), points, hindcastSelectedPoint, (point) => {
-    hindcastSelectedPoint = point;
-    renderMapPoints($("hindcast-map-points"), points, hindcastSelectedPoint, arguments.callee);
-    $("hindcast-selected-info").textContent = `${point.id} · ${point.lat.toFixed(2)}°N ${point.lon.toFixed(2)}°E`;
-  });
+function selectForecastPoint(point) {
+  selectedPoint = point;
+  refreshForecastMap();
+  $("selected-info").textContent = point.id + " · " + point.lat.toFixed(2) + "°N " + point.lon.toFixed(2) + "°E";
 }
 
-// Re-render maps with proper closures
+function selectHindcastPoint(point) {
+  hindcastSelectedPoint = point;
+  refreshHindcastMap();
+  $("hindcast-selected-info").textContent = point.id + " · " + point.lat.toFixed(2) + "°N " + point.lon.toFixed(2) + "°E";
+}
+
 function refreshForecastMap() {
   renderMapPoints($("map-points"), points, selectedPoint, selectForecastPoint);
 }
@@ -114,19 +98,6 @@ function refreshHindcastMap() {
   renderMapPoints($("hindcast-map-points"), points, hindcastSelectedPoint, selectHindcastPoint);
 }
 
-function selectForecastPoint(point) {
-  selectedPoint = point;
-  refreshForecastMap();
-  $("selected-info").textContent = `${point.id} · ${point.lat.toFixed(2)}°N ${point.lon.toFixed(2)}°E`;
-}
-
-function selectHindcastPoint(point) {
-  hindcastSelectedPoint = point;
-  refreshHindcastMap();
-  $("hindcast-selected-info").textContent = `${point.id} · ${point.lat.toFixed(2)}°N ${point.lon.toFixed(2)}°E`;
-}
-
-// Override loadPoints to use proper closures
 async function loadPointsInit() {
   const grid = await api("/api/region/grid?region=krai");
   points = grid.grid.cells.map((cell) => ({ id: cell.id, lat: cell.lat, lon: cell.lon }));
@@ -134,7 +105,6 @@ async function loadPointsInit() {
   refreshHindcastMap();
 }
 
-// --- Forecast ---
 function currentMonth() {
   const now = new Date();
   return now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0");
@@ -147,10 +117,10 @@ function nextMonth(monthStr) {
 }
 
 function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = String(text);
-  return node;
+  const nd = document.createElement(tag);
+  if (className) nd.className = className;
+  if (text !== undefined) nd.textContent = String(text);
+  return nd;
 }
 
 function tercileRow(label, probs, words) {
@@ -158,7 +128,7 @@ function tercileRow(label, probs, words) {
   row.appendChild(el("span", "prob-name", label));
   for (const key of ["below", "normal", "above"]) {
     const value = probs && probs[key];
-    row.appendChild(el("span", "prob-" + key, `${words[key]}: ${value === undefined ? "—" : Math.round(value * 100) + "%"}`));
+    row.appendChild(el("span", "prob-" + key, words[key] + ": " + (value === undefined ? "—" : Math.round(value * 100) + "%")));
   }
   return row;
 }
@@ -167,7 +137,7 @@ function renderSummary(payload) {
   const box = $("summary");
   box.textContent = "";
   if (!selectedPoint) return;
-  box.appendChild(el("h4", "", `${selectedPoint.id} · ${selectedPoint.lat.toFixed(2)}°N ${selectedPoint.lon.toFixed(2)}°E`));
+  box.appendChild(el("h4", "", selectedPoint.id + " · " + selectedPoint.lat.toFixed(2) + "°N " + selectedPoint.lon.toFixed(2) + "°E"));
   const seasons = payload.seasons || [];
   if (!seasons.length) {
     box.appendChild(el("p", "status", "Нет данных для этого периода."));
@@ -184,7 +154,7 @@ function renderSummary(payload) {
       card.appendChild(tercileRow("Осадки", item.tp.tercile_probs, { below: "меньше нормы", normal: "около нормы", above: "больше нормы" }));
       const p50 = item.tp.quantiles_mm && item.tp.quantiles_mm.p50;
       const normal = item.tp.normal_mm;
-      card.appendChild(el("p", "hint", `Медиана: ${p50 == null ? "—" : Math.round(p50) + " мм"} · норма: ${normal == null ? "—" : Math.round(normal) + " мм"}`));
+      card.appendChild(el("p", "hint", "Медиана: " + (p50 == null ? "—" : Math.round(p50) + " мм") + " · норма: " + (normal == null ? "—" : Math.round(normal) + " мм")));
     }
     if (!item.t2m && !item.tp) {
       card.appendChild(el("p", "status", "Нет данных для этого сезона."));
@@ -195,6 +165,7 @@ function renderSummary(payload) {
 
 let currentAbort = null;
 let elapsedTimer = null;
+let timedOut = false;
 
 function stopElapsed() {
   if (elapsedTimer !== null) { clearInterval(elapsedTimer); elapsedTimer = null; }
@@ -215,18 +186,20 @@ async function runForecast() {
   const status = $("status");
   const button = $("run");
   const cancel = $("cancel");
-
   if (!selectedPoint) {
     status.textContent = "Сначала выберите точку на карте.";
     return;
   }
-
   const start = $("start").value || currentMonth();
   button.disabled = true;
   cancel.hidden = false;
   currentAbort = new AbortController();
+  timedOut = false;
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    currentAbort && currentAbort.abort();
+  }, 600000);
   startElapsed(status);
-
   try {
     const out = await api("/api/local/forecast", {
       method: "POST",
@@ -248,11 +221,14 @@ async function runForecast() {
   } catch (error) {
     stopElapsed();
     if (error && error.name === "AbortError") {
-      status.textContent = "Расчёт отменён.";
+      status.textContent = timedOut
+        ? "Расчёт длился слишком долго и был остановлен. Попробуйте повторить."
+        : "Расчёт отменён.";
     } else {
       status.textContent = "Ошибка: " + error.message;
     }
   } finally {
+    clearTimeout(deadline);
     stopElapsed();
     currentAbort = null;
     cancel.hidden = true;
@@ -260,7 +236,6 @@ async function runForecast() {
   }
 }
 
-// --- Hindcast ---
 function renderHindcastSummary(data) {
   const box = $("hindcast-summary");
   box.textContent = "";
@@ -269,22 +244,22 @@ function renderHindcastSummary(data) {
     return;
   }
   if (hindcastSelectedPoint) {
-    box.appendChild(el("h4", "", `${hindcastSelectedPoint.id} · ${data.start}`));
+    box.appendChild(el("h4", "", hindcastSelectedPoint.id + " · " + data.start));
   }
   if (data.summary) {
     const t = data.summary.t2m || {};
     const p = data.summary.tp || {};
-    box.appendChild(el("p", "hint", `Температура: ${t.hits || 0}/${t.total || 0} попаданий · Осадки: ${p.hits || 0}/${p.total || 0} попаданий`));
+    box.appendChild(el("p", "hint", "Температура: " + (t.hits || 0) + "/" + (t.total || 0) + " попаданий · Осадки: " + (p.hits || 0) + "/" + (p.total || 0) + " попаданий"));
   }
   for (const item of data.items) {
     const card = el("div", "season");
-    card.appendChild(el("h4", "", `${item.year} г., месяц ${item.target_month}`));
+    card.appendChild(el("h4", "", item.year + " г., месяц " + item.target_month));
     for (const v of ["t2m", "tp"]) {
       if (!item[v]) continue;
       const d = item[v];
       const label = v === "t2m" ? "Температура" : "Осадки";
       const unit = d.unit === "c" ? "°C" : "мм";
-      card.appendChild(el("p", "hint", `${label}: факт ${d.fact} ${unit}, прогноз ${d.p50} ${unit}, норма ${d.norm} ${unit} · попал: ${d.hit ? "✓" : "✗"}`));
+      card.appendChild(el("p", "hint", label + ": факт " + d.fact + " " + unit + ", прогноз " + d.p50 + " " + unit + ", норма " + d.norm + " " + unit + " · попал: " + (d.hit ? "✓" : "✗")));
     }
     box.appendChild(card);
   }
@@ -293,21 +268,17 @@ function renderHindcastSummary(data) {
 async function runHindcast() {
   const status = $("hindcast-status");
   const button = $("hindcast-run");
-
   if (!hindcastSelectedPoint) {
     status.textContent = "Сначала выберите точку на карте.";
     return;
   }
-
   const year = parseInt($("hindcast-start").value, 10);
   if (!year || year < 2004 || year > 2024) {
     status.textContent = "Выберите год от 2004 до 2024.";
     return;
   }
-
   button.disabled = true;
   status.textContent = "Проверяю…";
-
   try {
     const out = await api("/api/local/hindcast", {
       method: "POST",
@@ -333,10 +304,8 @@ async function runHindcast() {
   }
 }
 
-// --- Reports tab ---
 async function loadReports() {
   const container = $("reports-list");
-  const cacheInfo = $("cache-info");
   try {
     const data = await api("/api/local/inputs");
     const entries = data.results_cache.entries || [];
@@ -345,11 +314,11 @@ async function loadReports() {
       container.appendChild(el("p", "hint", "Пока нет сохранённых расчётов."));
       return;
     }
-    container.appendChild(el("p", "hint", `Сохранено расчётов: ${data.results_cache.total}`));
+    container.appendChild(el("p", "hint", "Сохранено расчётов: " + data.results_cache.total));
     for (const entry of entries) {
       const row = el("div", "season");
       const ts = entry.stored_at ? new Date(entry.stored_at * 1000).toLocaleDateString("ru-RU") : "—";
-      row.appendChild(el("p", "hint", `${entry.key} · ${ts}`));
+      row.appendChild(el("p", "hint", entry.key + " · " + ts));
       container.appendChild(row);
     }
   } catch (error) {
@@ -358,11 +327,9 @@ async function loadReports() {
   }
 }
 
-// --- Init ---
 async function init() {
   initTabs();
   $("start").value = currentMonth();
-
   try {
     await loadPointsInit();
   } catch (error) {
@@ -370,8 +337,6 @@ async function init() {
     $("hindcast-status").textContent = "Не удалось загрузить точки: " + error.message;
     return;
   }
-
-  // Set max month based on data availability
   try {
     const data = await api("/api/local/inputs");
     const through = data.sources_through || {};
@@ -380,8 +345,7 @@ async function init() {
       $("start").max = latest;
       if (currentMonth() > latest) $("start").value = latest;
     }
-  } catch (e) { /* non-critical */ }
-
+  } catch (e) { void e; }
   $("run").addEventListener("click", runForecast);
   $("cancel").addEventListener("click", () => { if (currentAbort) currentAbort.abort(); });
   $("hindcast-run").addEventListener("click", runHindcast);

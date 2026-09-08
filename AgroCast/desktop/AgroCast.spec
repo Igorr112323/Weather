@@ -58,6 +58,7 @@ exe = EXE(
     upx=False,
     console=False,
     disable_windowed_traceback=False,
+    contents_directory="_internal",
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,

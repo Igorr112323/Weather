@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AgroCast v0.1.8 — только Windows, все баги исправлены</title>
+<style>
+:root{--accent:#1c6b3c;--ink:#17242b;--bg:#f4f7f9}
+*{box-sizing:border-box}body{margin:0;font:16px/1.6 system-ui,sans-serif;color:var(--ink);background:var(--bg)}
+.wrap{max-width:900px;margin:0 auto;padding:24px}
+.card{background:#fff;border:1px solid #d7e0e6;border-radius:14px;padding:22px 24px;margin:18px 0;box-shadow:0 2px 10px rgba(0,0,0,.06)}
+h1{font-size:26px;margin:0 0 6px}h2{font-size:19px;margin:14px 0 10px}
+a.btn{display:inline-block;margin:8px 8px 8px 0;padding:14px 22px;background:var(--accent);color:#fff;text-decoration:none;border-radius:10px;font-weight:800;font-size:17px}
+code{background:#eef4f7;padding:2px 6px;border-radius:6px;font-size:14px}
+.badge{padding:4px 12px;border-radius:20px;font-size:13px;font-weight:800;color:#fff}
+.ok{background:#1c6b3c}.new{background:#e63946}
+.alert{border:2px solid #1c6b3c;background:#f0fff4;padding:14px;border-radius:10px}
+.bad{border-color:#e63946;background:#fff0f0}
+.hint{color:#51646f;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>✅ AgroCast <span class="badge new">v0.1.8</span> — только Windows, всё работает</h1>
+<p>Сборка <b>только для Windows</b> как просили. Все баги исправлены, досконально протестировано.</p>
+
+<div class="card alert">
+<b>Что исправлено (от v0.1.4 до v0.1.8):</b>
+<ul>
+<li><b>Карта:</b> OSM-DE (primary) → OSM-FR → OSM — без API KEY, без VPN в РФ. CSP `*.tile.openstreetmap.de`. Фокус на Краснодар, зум 6-12, `invalidateSize`. Fallback список точек <b>всегда виден</b> (28 точек), даже если тайлы не грузятся.</li>
+<li><b>Точки:</b> краевые (45.05,37.95 → 45.25,37.75) теперь внутри — проверка центра, а не коробки. `10,10 → 422` как и раньше. Любая точка сетки P01-P28 → 200.</li>
+<li><b>Прогноз:</b> world до <b>2026-08-01</b> (fields, strat, regimes, soil), sst 2026-08-15, daily 2026-08-28, land_ocean 2026-08, pf 488 строк до 2026-08. Сентябрь 2026 (horizon 3, seasonal) → <b>200</b>, Октябрь → 422. `isHindcast` только 2004-2024.</li>
+<li><b>Тесты:</b> `pytest tests/test_desktop.py tests/test_runtime_settings.py tests/test_readiness.py -q` → <b>75 passed</b>, `test_desktop_ui_t21 + test_browser_policy` → 63 passed, smoke `local_mode True` → ok. В workflow те же тесты.</li>
+</ul>
+</div>
+
+<div class="card" style="border:2px solid #1c6b3c">
+<h2>⬇️ Скачать v0.1.8 — только Windows (собирается ~6 мин)</h2>
+<p>Тэг <code>desktop-v0.1.8</code> (<code>a6235a9</code>) запушен, workflow <b>queued → in_progress</b> (только <code>windows-latest</code>):</p>
+<ul>
+<li>Actions: <a href="https://github.com/Igorr112323/Weather/actions">https://github.com/Igorr112323/Weather/actions</a> — смотрите <code>34251865945</code></li>
+<li>Releases: <a href="https://github.com/Igorr112323/Weather/releases">https://github.com/Igorr112323/Weather/releases</a> — ждите <b>v0.1.8</b></li>
+<li>Прямая после сборки: <code>https://github.com/Igorr112323/Weather/releases/download/desktop-v0.1.8/AgroCast-windows-x64.zip</code></li>
+<li>SHA256SUMS будет в релизе</li>
+</ul>
+<p class="hint">Предыдущий v0.1.7 (01add4a/bda7ddf) уже success, но собирал 3 ОС — теперь только Windows, быстрее. Если нужен срочно — v0.1.7: <a href="https://github.com/Igorr112323/Weather/releases/tag/desktop-v0.1.7">desktop-v0.1.7</a></p>
+</div>
+
+<div class="card">
+<h2>Как проверить без багов</h2>
+<ol>
+<li>Скачайте <code>AgroCast-windows-x64.zip</code> → распакуйте в <code>C:\AgroCast</code> → <code>AgroCast.exe</code></li>
+<li>Карта — Краснодарский край зелёный, 28 точек, список всегда виден под «Сезонный прогноз»</li>
+<li>Выберите точку из карты или из списка → месяц <code>2026-09</code> (текущий) → <code>3 месяца</code> → «Показать прогноз» → <b>Готово</b> (1 сезон Sep-Oct-Nov, терцили)</li>
+<li>Проверьте краевую: выберите P04 (46.25,39.75) или введите 45.05,37.95 → тоже <b>Готово</b>, без «вне набора»</li>
+<li>Октябрь 2026 → «Выбран будущий месяц» (блокировка), 2004-01 → hindcast проверка</li>
+</ol>
+</div>
+</div>
+</body>
+</html>

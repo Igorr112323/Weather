@@ -6,7 +6,7 @@
         },
         "snow_eur/.zarray": {
             "chunks": [
-                938
+                944
             ],
             "compressor": {
                 "blocksize": 0,
@@ -20,7 +20,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                938
+                944
             ],
             "zarr_format": 2
         },
@@ -45,7 +45,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                938
+                944
             ],
             "zarr_format": 2
         },
@@ -54,11 +54,11 @@
                 "time"
             ],
             "calendar": "proleptic_gregorian",
-            "units": "days since 1948-01-01 00:00:00"
+            "units": "days since 1948-01-01"
         },
         "u10/.zarray": {
             "chunks": [
-                938
+                944
             ],
             "compressor": {
                 "blocksize": 0,
@@ -72,7 +72,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                938
+                944
             ],
             "zarr_format": 2
         },
@@ -83,7 +83,7 @@
         },
         "z50/.zarray": {
             "chunks": [
-                938
+                944
             ],
             "compressor": {
                 "blocksize": 0,
@@ -97,7 +97,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                938
+                944
             ],
             "zarr_format": 2
         },

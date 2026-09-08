@@ -1,6 +1,6 @@
-const $ = (id) => document.getElementById(id);
+import {node} from '/assets/dom.js';
 
-/* ---------- API и ошибки ---------- */
+const $ = (id) => document.getElementById(id);
 
 function describeError(response, body) {
   const detail = body && body.detail;
@@ -28,8 +28,6 @@ async function api(path, options = {}) {
   if (!response.ok) throw new Error(describeError(response, body));
   return body;
 }
-
-/* ---------- Карта ---------- */
 
 const REGION_BOUNDS = [[43.2, 36.1], [47.3, 42.4]];
 const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
@@ -71,7 +69,7 @@ function renderGridPoints() {
       weight: 1.5,
       fillColor: "#1c6b3c",
       fillOpacity: 0.4,
-    }).addTo(map).bindTooltip(point.id, { direction: "top", offset: L.point(0, -6) });
+    }).addTo(map).bindTooltip(node("span", point.id), { direction: "top", offset: L.point(0, -6) });
   }
 }
 
@@ -89,8 +87,6 @@ function selectPoint(point) {
   $("result").hidden = true;
   $("status").textContent = "Выбрана точка " + point.id + ". Выберите месяц и нажмите «Показать прогноз».";
 }
-
-/* ---------- Даты и интервалы ---------- */
 
 function currentMonth() {
   const now = new Date();
@@ -118,8 +114,6 @@ function requestSpec() {
     kind: past ? "hindcast" : "forecast",
   };
 }
-
-/* ---------- Отрисовка результатов ---------- */
 
 function el(tag, className, text) {
   const nd = document.createElement(tag);
@@ -197,8 +191,6 @@ function renderHindcastSummary(data) {
   }
 }
 
-/* ---------- Запуск расчёта ---------- */
-
 let currentAbort = null;
 let elapsedTimer = null;
 let timedOut = false;
@@ -271,8 +263,6 @@ async function run() {
     button.disabled = false;
   }
 }
-
-/* ---------- Инициализация ---------- */
 
 async function init() {
   $("start").value = currentMonth();

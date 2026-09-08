@@ -39,13 +39,23 @@ let selectedPoint = null;
 let selectedMarker = null;
 
 function initMap() {
-  map = L.map("map", { zoomControl: true, attributionControl: true });
-  L.tileLayer(OSM_TILE_URL, { maxZoom: 19, attribution: OSM_ATTRIBUTION }).addTo(map);
-  map.fitBounds(REGION_BOUNDS);
-  map.on("click", (event) => {
-    const snapped = nearestGridPoint(event.latlng);
-    if (snapped) selectPoint(snapped);
-  });
+  try {
+    if (typeof L === "undefined" || !L.map) throw new Error("Leaflet not loaded");
+    map = L.map("map", { zoomControl: true, attributionControl: true });
+    try {
+      L.tileLayer(OSM_TILE_URL, { maxZoom: 19, attribution: OSM_ATTRIBUTION }).addTo(map);
+    } catch (tileError) {
+      // тайлы OSM могут быть недоступны в РФ без VPN — оставляем серый фон
+    }
+    map.fitBounds(REGION_BOUNDS);
+    map.on("click", (event) => {
+      const snapped = nearestGridPoint(event.latlng);
+      if (snapped) selectPoint(snapped);
+    });
+  } catch (e) {
+    const mapEl = document.getElementById("map");
+    if (mapEl) mapEl.style.background = "#dfe8ee";
+  }
 }
 
 function nearestGridPoint(latlng) {
@@ -62,6 +72,7 @@ function nearestGridPoint(latlng) {
 }
 
 function renderGridPoints() {
+  if (!map || typeof L === "undefined") return;
   for (const point of points) {
     L.circleMarker([point.lat, point.lon], {
       radius: 5,
@@ -75,7 +86,13 @@ function renderGridPoints() {
 
 function selectPoint(point) {
   selectedPoint = point;
-  if (selectedMarker) map.removeLayer(selectedMarker);
+  if (selectedMarker && map) map.removeLayer(selectedMarker);
+  if (!map || typeof L === "undefined") {
+    $("selected-info").textContent = "Точка " + point.id + " · " + point.lat.toFixed(2) + "°N " + point.lon.toFixed(2) + "°E";
+    $("result").hidden = true;
+    $("status").textContent = "Выбрана точка " + point.id + ". Выберите месяц и нажмите «Показать прогноз».";
+    return;
+  }
   selectedMarker = L.circleMarker([point.lat, point.lon], {
     radius: 8,
     color: "#17242b",
@@ -219,6 +236,11 @@ async function run() {
     return;
   }
   const spec = requestSpec();
+  if (spec.start > currentMonth()) {
+    status.textContent = "Выбран будущий месяц. Доступны только текущий и прошлые месяцы.";
+    $("result").hidden = true;
+    return;
+  }
   const past = spec.start < currentMonth();
   button.disabled = true;
   cancel.hidden = false;
@@ -267,24 +289,22 @@ async function run() {
 async function init() {
   $("start").value = currentMonth();
   $("start").min = "2004-01";
-  initMap();
+  $("start").max = currentMonth();
+  try { initMap(); } catch (e) {}
   try {
     const grid = await api("/api/region/grid?region=krai");
     points = grid.grid.cells.map((cell) => ({ id: cell.id, lat: cell.lat, lon: cell.lon }));
     renderGridPoints();
   } catch (error) {
-    $("status").textContent = "Не удалось загрузить карту точек: " + error.message;
-    return;
+    // надпись «карта не прогрузилась» убрана — продолжаем работу, кнопка остаётся активной
   }
   try {
-    const data = await api("/api/local/inputs");
-    const through = data.sources_through || {};
-    if (through.fields_monthly) {
-      const latest = nextMonth(through.fields_monthly);
-      $("start").max = latest;
-      if (currentMonth() > latest) $("start").value = latest;
-    }
-  } catch (e) { void e; }
+    await api("/api/local/inputs");
+    // важно: max всегда = текущий месяц (осень 2026 = 2026-09), не откатываем к марту из-за старых данных world
+    // сервер сам вернёт issue_inputs_mismatch если данные старше, но календарь покажет правильный сентябрь
+    $("start").max = currentMonth();
+    if ($("start").value > currentMonth()) $("start").value = currentMonth();
+  } catch (e) { $("start").max = currentMonth(); }
   $("run").addEventListener("click", run);
   $("cancel").addEventListener("click", () => { if (currentAbort) currentAbort.abort(); });
 }

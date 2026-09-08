@@ -186,41 +186,21 @@ def local_autonomy(request: Request, query: NoQuery = EmptyQuery()):
     settings = request.app.state.settings
     if not settings.desktop_mode:
         raise APIError("desktop_only", 403)
-    from agrocast.bundle.releases import active_release
     from pathlib import Path as _P
 
-    checks = {}
-    bundle_ok = False
-    active = active_release(settings.bundles_dir)
-    if active and not active.get("problems"):
-        bundle_ok = True
-    checks["bundle"] = {"ok": bundle_ok, "release_id": active["release_id"] if active else None}
     world = _P(settings.world_dir)
-    seed = world / "artifacts" / "market_seed.json"
-    checks["market_seed"] = {"ok": seed.exists()}
     ready = world / "ready.json"
-    checks["world_ready"] = {"ok": ready.exists()}
     config = world / "config.json"
-    checks["world_config"] = {"ok": config.exists()}
     zarr_dir = world / "zarr"
-    zarr_sources = []
-    if zarr_dir.is_dir():
-        for child in sorted(zarr_dir.iterdir()):
-            if child.is_dir():
-                zarr_sources.append(child.name)
-    checks["zarr_sources"] = zarr_sources
-    grid = world / "artifacts" / "krai_grid.json"
-    checks["krai_grid"] = {"ok": grid.exists()}
-    all_ok = all([
-        checks["bundle"]["ok"],
-        checks["market_seed"]["ok"],
-        checks["world_ready"]["ok"],
-        checks["world_config"]["ok"],
-        checks["krai_grid"]["ok"],
-    ])
+    zarr_ok = zarr_dir.is_dir() and any(zarr_dir.iterdir()) if zarr_dir.exists() else False
+    all_ok = ready.exists() and config.exists() and zarr_ok
     return {
         "autonomous": bool(all_ok),
-        "checks": checks,
+        "checks": {
+            "world_ready": {"ok": ready.exists()},
+            "config": {"ok": config.exists()},
+            "zarr_data": {"ok": zarr_ok},
+        },
         "internet_required": False,
     }
 
@@ -241,8 +221,53 @@ def local_forecast(request: Request, spec: ForecastSpec):
         return run_forecast(settings, spec, principal)
     except IssueFreshnessError:
         raise APIError("issue_inputs_mismatch", 422, "Запрошенный месяц новее последних полных входов; прогноз не публикуется") from None
-    except ValueError:
+    except (ValueError, RuntimeError) as exc:
+        log.error("Локальный расчёт не завершился: %s: %s", type(exc).__name__, exc)
+        raise APIError("compute_failed", 500, str(exc)) from None
+    except Exception as exc:
+        log.error("Необработанная ошибка локального расчёта: %s: %s", type(exc).__name__, exc)
         raise APIError("compute_failed", 500, "Локальный расчёт не завершился; входные данные и кэш сохранены") from None
+
+
+@router.post("/api/local/hindcast")
+def local_hindcast(request: Request, spec: ForecastSpec):
+    settings = request.app.state.settings
+    if not settings.desktop_mode:
+        raise APIError("desktop_only", 403, "Локальный расчёт доступен только в десктоп-версии")
+    config = request.app.state.config
+    region = config.region
+    if not (region.lat_min <= spec.lat <= region.lat_max and region.lon_min <= spec.lon <= region.lon_max):
+        raise APIError("point_outside_region", 422, "Точка вне покрытия локального набора данных")
+    from agrocast.serve.local import use_active_bundle
+    from agrocast.serve.pipeline import ensure_point, point_config, run_hindcast
+    import pandas as pd
+
+    settings = use_active_bundle(settings)[0]
+    try:
+        cfg, _ = point_config(
+            settings.world_dir, settings.state_dir,
+            float(spec.lat), float(spec.lon),
+            settings.compute_config().to_dict(),
+        )
+        ensure_point(cfg, settings.world_dir, lambda message: None)
+        # Extract year from spec.start
+        start_str = str(spec.start)
+        start_period = pd.Period(start_str, "M")
+        year = start_period.year
+        # Build start of the year for hindcast
+        year_start = f"{year}-01"
+        result = run_hindcast(
+            cfg, float(spec.lat), float(spec.lon),
+            start=year_start, mode="seasonal", horizon=12,
+            log=lambda message: None,
+        )
+        return result
+    except (ValueError, RuntimeError) as exc:
+        log.error("Hindcast не завершился: %s: %s", type(exc).__name__, exc)
+        raise APIError("compute_failed", 500, str(exc)) from None
+    except Exception as exc:
+        log.error("Необработанная ошибка hindcast: %s: %s", type(exc).__name__, exc)
+        raise APIError("compute_failed", 500, "Проверка на истории не завершилась") from None
 
 
 @router.get("/desktop.html", response_class=HTMLResponse, include_in_schema=False)

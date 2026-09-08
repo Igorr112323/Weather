@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AgroCast — локальные прогнозы</title>
-<link rel="stylesheet" href="/assets/vendor/leaflet/leaflet.css" integrity="sha384-3Zp5dU/2e36sCZIslNy0nR/CpV0m2JOEp63JIiahU1YkB0LiKui1CUM8nml2lmU2" crossorigin="anonymous">
+<link rel="stylesheet" href="/assets/vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="/assets/desktop.css">
 <link rel="icon" type="image/png" href="/assets/agrocast.png">
-<script src="/assets/vendor/leaflet/leaflet.js" integrity="sha384-/ebwMPBNh/7cTi+L/d2x6DmcjCLDgJc3BRKB1mGbTgltaFzFP0Mi2YU9I0YGhmjx" crossorigin="anonymous" defer></script>
-<script type="module" src="/assets/desktop.js" defer></script>
+<script src="/assets/vendor/leaflet/leaflet.js"></script>
+<script type="module" src="/assets/desktop.js"></script>
 </head>
 <body>
 <div id="map" role="application" aria-label="Карта Краснодарского края"></div>
@@ -19,6 +19,10 @@
 <aside class="panel">
 <h2>Сезонный прогноз</h2>
 <div id="selected-info" class="selected-info">Кликните по карте — будет выбрана ближайшая точка сетки</div>
+<div id="point-fallback" hidden>
+<label for="point-select">Или выберите точку из списка:</label>
+<select id="point-select"></select>
+</div>
 <div class="controls-row">
 <div class="control-group">
 <label for="start">Месяц выпуска</label>

@@ -84,9 +84,31 @@ function renderGridPoints() {
   }
 }
 
+function populateFallback() {
+  const sel = $("point-select");
+  const wrap = $("point-fallback");
+  if (!sel || !wrap) return;
+  sel.textContent = "";
+  const o0 = document.createElement("option");
+  o0.value = "";
+  o0.textContent = "— выберите точку —";
+  sel.appendChild(o0);
+  for (const p of points) {
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = p.id + " — " + p.lat.toFixed(2) + "°N " + p.lon.toFixed(2) + "°E";
+    sel.appendChild(o);
+  }
+  wrap.hidden = points.length === 0;
+  // если карта не инициализировалась — показываем список явно
+  if (!map || typeof L === "undefined") wrap.hidden = false;
+}
+
 function selectPoint(point) {
   selectedPoint = point;
   if (selectedMarker && map) map.removeLayer(selectedMarker);
+  const sel = $("point-select");
+  if (sel) sel.value = point.id;
   if (!map || typeof L === "undefined") {
     $("selected-info").textContent = "Точка " + point.id + " · " + point.lat.toFixed(2) + "°N " + point.lon.toFixed(2) + "°E";
     $("result").hidden = true;
@@ -291,12 +313,26 @@ async function init() {
   $("start").min = "2004-01";
   $("start").max = currentMonth();
   try { initMap(); } catch (e) {}
+  // если карта не поднялась за 1 сек — показываем список точек
+  setTimeout(() => {
+    if (!map || typeof L === "undefined") {
+      const wrap = $("point-fallback");
+      if (wrap) wrap.hidden = false;
+    }
+  }, 1200);
   try {
     const grid = await api("/api/region/grid?region=krai");
     points = grid.grid.cells.map((cell) => ({ id: cell.id, lat: cell.lat, lon: cell.lon }));
     renderGridPoints();
+    populateFallback();
+    // если карта пустая — всё равно показываем список
+    if (!map || typeof L === "undefined") {
+      const wrap = $("point-fallback");
+      if (wrap) wrap.hidden = false;
+    }
   } catch (error) {
     // надпись «карта не прогрузилась» убрана — продолжаем работу, кнопка остаётся активной
+    populateFallback();
   }
   try {
     await api("/api/local/inputs");
@@ -307,6 +343,11 @@ async function init() {
   } catch (e) { $("start").max = currentMonth(); }
   $("run").addEventListener("click", run);
   $("cancel").addEventListener("click", () => { if (currentAbort) currentAbort.abort(); });
+  const sel = $("point-select");
+  if (sel) sel.addEventListener("change", (e) => {
+    const pt = points.find(p => p.id === e.target.value);
+    if (pt) selectPoint(pt);
+  });
 }
 
 init();

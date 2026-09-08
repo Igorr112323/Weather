@@ -31,6 +31,30 @@ def test_desktop_page_declares_states_and_cancel(desktop_client):
     assert 'name="viewport"' in page.text
 
 
+def test_desktop_page_is_single_view_with_leaflet_map(desktop_client):
+    page = desktop_client.get("/desktop.html")
+    assert page.status_code == 200
+    text = page.text
+    # одна вкладка: старые вкладки и отдельные секции удалены
+    assert "data-tab" not in text
+    assert "hindcast-tab" not in text
+    assert "reports-tab" not in text
+    assert "hindcast-map" not in text
+    # Leaflet-карта с SRI-пinned ассетами
+    assert "/assets/vendor/leaflet/leaflet.css" in text
+    assert "/assets/vendor/leaflet/leaflet.js" in text
+    assert "integrity=" in text
+    assert 'id="map"' in text
+    # интервал 1/3/6 месяцев
+    assert 'id="horizon"' in text
+    for label in ("1 месяц", "3 месяца", "6 месяцев"):
+        assert label in text
+    # без упоминания «локальный режим»
+    assert "локальный режим" not in text
+    assert desktop_client.get("/").status_code == 200
+    assert "локальный режим" not in desktop_client.get("/").text
+
+
 def test_desktop_css_has_focus_mobile_and_print(desktop_client):
     css = desktop_client.get("/assets/desktop.css")
     assert css.status_code == 200
@@ -48,6 +72,31 @@ def test_desktop_js_wires_abort_and_readonly_errors(desktop_client):
     assert "[object Object]" not in js.text
     assert "Ресурс не найден (404)" in js.text
     assert "Проверьте форму" in js.text
+
+
+def test_desktop_js_snaps_map_click_to_grid_and_auto_hindcast(desktop_client):
+    js = desktop_client.get("/assets/desktop.js").text
+    # клик в любую точку карты → snap к ближайшей точке сетки
+    assert "L.map(" in js
+    assert "nearestGridPoint" in js
+    assert "distanceTo" in js
+    # тайлы OSM разрешены и используются
+    assert "tile.openstreetmap.org" in js
+    # прошлые даты уходят в hindcast автоматически
+    assert "/api/local/hindcast" in js
+    assert "/api/local/forecast" in js
+    # реальные причины ошибок читаются из поля error
+    assert "body.error" in js
+
+
+def test_desktop_csp_allows_osm_tiles(desktop_client):
+    from agrocast.serve import browser_policy
+
+    response = desktop_client.get("/desktop.html")
+    csp = response.headers["content-security-policy"]
+    assert csp == browser_policy.CONTENT_SECURITY_POLICY
+    assert "https://tile.openstreetmap.org" in browser_policy.CONTENT_SECURITY_POLICY
+    assert "img-src 'self' data: https://tile.openstreetmap.org" in browser_policy.CONTENT_SECURITY_POLICY
 
 
 def test_unknown_api_path_returns_structured_404(desktop_client):

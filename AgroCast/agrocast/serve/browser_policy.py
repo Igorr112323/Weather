@@ -15,7 +15,7 @@ CONTENT_SECURITY_POLICY = "; ".join((
     "script-src-attr 'none'",
     "style-src 'self'",
     "style-src-attr 'none'",
-    "img-src 'self' data:",
+    "img-src 'self' data: https://tile.openstreetmap.org",
     "font-src 'self'",
     "connect-src 'self'",
     "object-src 'none'",

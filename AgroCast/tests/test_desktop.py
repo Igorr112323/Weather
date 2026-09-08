@@ -254,6 +254,33 @@ def test_local_forecast_computes_caches_and_skips_queue_tables(desktop_client, d
     assert publication_rows == 0
 
 
+def test_local_forecast_error_returns_real_reason(desktop_client, monkeypatch):
+    # Пользователь должен видеть конкретную причину, а не просто «compute_failed».
+    def broken(*args, **kwargs):
+        raise RuntimeError("PointDataset: zarr group not found")
+
+    monkeypatch.setattr("agrocast.forecast.orchestrator.forecast_point", broken)
+    response = desktop_client.post("/api/local/forecast", json=POINT)
+    assert response.status_code == 500
+    body = response.json()
+    assert body["code"] == "compute_failed"
+    assert "PointDataset: zarr group not found" in body["error"]
+    assert "RuntimeError" in body["error"]
+
+
+def test_local_hindcast_error_returns_real_reason(desktop_client, monkeypatch):
+    def broken(*args, **kwargs):
+        raise ValueError("для этой даты нет записей проверки")
+
+    monkeypatch.setattr("agrocast.serve.pipeline.run_hindcast", broken)
+    response = desktop_client.post("/api/local/hindcast", json={**POINT, "start": "2020-06"})
+    assert response.status_code == 500
+    body = response.json()
+    assert body["code"] == "compute_failed"
+    assert "для этой даты нет записей проверки" in body["error"]
+    assert "ValueError" in body["error"]
+
+
 def test_local_forecast_validates_shape_region_and_content_type(desktop_client):
     response = desktop_client.post("/api/local/forecast", json={"lat": 10.0, "lon": 10.0, "start": "2026-10"})
     assert response.status_code == 422

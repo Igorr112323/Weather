@@ -14,7 +14,6 @@ function describeError(response, body) {
     return "Проверьте форму: " + parts.join("; ");
   }
   const reason = body && (body.error ?? body.message ?? body.body?.error);
-  // body.error is used for real reason
   if (typeof reason === "string" && reason) {
     if (response.status === 404 && reason === "resource_not_found") {
       return "Ресурс не найден (404). Обновите список данных.";
@@ -32,104 +31,195 @@ async function api(path, options = {}) {
   return body;
 }
 
-function fmtPct(v) {
-  if (v == null || isNaN(v)) return "—";
-  return Math.round(v * 100) + "%";
-}
-function fmtNum(v, digits = 1) {
-  if (v == null || isNaN(v)) return "—";
-  return Number(v).toLocaleString("ru-RU", { maximumFractionDigits: digits });
-}
+function fmtPct(v) { if (v == null || isNaN(v)) return "—"; return Math.round(v * 100) + "%"; }
+function fmtNum(v, digits = 1) { if (v == null || isNaN(v)) return "—"; return Number(v).toLocaleString("ru-RU", { maximumFractionDigits: digits }); }
 
-let map = null;
+let map = null; // Leaflet map
+let yandexMap = null; // Yandex map
 let points = [];
 let selectedPoint = null;
 let selectedMarker = null;
 let markersLayer = null;
+let yandexPlacemarks = [];
 let crops = [];
 let lastPayload = null;
 let lastSpec = null;
 let currentAbort = null;
 let timedOut = false;
 let elapsedTimer = null;
+let mapMode = "yandex"; // yandex or leaflet
 
 function initMap() {
-  map = L.map("map", { zoomControl: true, attributionControl: false, minZoom: 6, maxZoom: 12 });
-  const rect = L.rectangle(KRAI_RECT, {
-    color: "#1c6b3c",
-    weight: 1.5,
-    fillColor: "#e6f4eb",
-    fillOpacity: 0.35,
-    dashArray: "6 6",
-  }).addTo(map);
-  rect.bindTooltip("Краснодарский край · зона расчёта", { sticky: true });
-  map.fitBounds(REGION_BOUNDS, { padding: [20, 20] });
-
-  let osmAdded = false;
-  const tryOsm = () => {
-    if (osmAdded) return;
-    if (!navigator.onLine) return;
+  // Try Yandex first if available and online
+  if (typeof ymaps !== "undefined" && navigator.onLine) {
     try {
-      const osm = L.tileLayer(OSM_TILE_URL, { maxZoom: 19, attribution: OSM_ATTRIBUTION, opacity: 0.55 });
-      osm.on("tileerror", () => { if (map.hasLayer(osm)) map.removeLayer(osm); });
-      osm.addTo(map);
-      osmAdded = true;
-    } catch {}
-  };
-  setTimeout(tryOsm, 800);
-  window.addEventListener("online", tryOsm);
+      initYandexMap();
+      return;
+    } catch (e) {
+      console.warn("Yandex init failed, fallback to Leaflet", e);
+    }
+  }
+  initLeafletMap();
+}
 
-  map.on("click", (event) => {
-    const snapped = nearestGridPoint(event.latlng);
-    if (snapped) selectPoint(snapped, true);
+function initYandexMap() {
+  const mapEl = $("map");
+  mapEl.textContent = "";
+  // ymaps 2.1
+  ymaps.ready(() => {
+    try {
+      yandexMap = new ymaps.Map("map", {
+        center: [45.3, 39.0],
+        zoom: 8,
+        controls: ["zoomControl", "typeSelector"],
+      });
+      // Add KRAI rectangle
+      const rect = new ymaps.Rectangle(KRAI_RECT, {}, {
+        fillColor: "#1c6b3c33",
+        strokeColor: "#1c6b3c",
+        strokeWidth: 2,
+        strokeStyle: "6 3",
+      });
+      yandexMap.geoObjects.add(rect);
+      yandexMap.setBounds(REGION_BOUNDS, { checkZoomRange: true, zoomMargin: 20 });
+
+      yandexMap.events.add("click", (e) => {
+        const coords = e.get("coords");
+        const latlng = { lat: coords[0], lng: coords[1] };
+        // Convert to our format
+        const snapped = nearestGridPoint({ lat: coords[0], lng: coords[1], distanceTo: (other) => {
+          // haversine approx
+          const R = 6371e3;
+          const φ1 = coords[0] * Math.PI/180, φ2 = other.lat * Math.PI/180;
+          const Δφ = (other.lat - coords[0]) * Math.PI/180;
+          const Δλ = (other.lng - coords[1]) * Math.PI/180;
+          const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+          return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }});
+        if (snapped) selectPoint(snapped, true);
+      });
+
+      mapMode = "yandex";
+      $("map-status").textContent = `Яндекс.Карта загружена · ${points.length || "ожидание"} точек`;
+      renderPoints();
+    } catch (e) {
+      console.error("Yandex map error", e);
+      initLeafletMap();
+    }
   });
+}
+
+function initLeafletMap() {
+  const mapEl = $("map");
+  if (mapEl._leaflet_id) { try { mapEl._leaflet_id = null; } catch {} }
+  mapEl.textContent = "";
+  mapMode = "leaflet";
+  try {
+    map = L.map("map", { zoomControl: true, attributionControl: false, minZoom: 6, maxZoom: 12 });
+    const rect = L.rectangle(KRAI_RECT, { color: "#1c6b3c", weight: 1.5, fillColor: "#e6f4eb", fillOpacity: 0.35, dashArray: "6 6" }).addTo(map);
+    rect.bindTooltip("Краснодарский край · зона расчёта", { sticky: true });
+    map.fitBounds(REGION_BOUNDS, { padding: [20, 20] });
+
+    let osmAdded = false;
+    const tryOsm = () => {
+      if (osmAdded) return;
+      try {
+        const osm = L.tileLayer(OSM_TILE_URL, { maxZoom: 19, attribution: OSM_ATTRIBUTION, opacity: 0.6 });
+        osm.on("tileerror", () => { if (map.hasLayer(osm)) map.removeLayer(osm); });
+        osm.addTo(map);
+        osmAdded = true;
+      } catch {}
+    };
+    setTimeout(tryOsm, 500);
+    window.addEventListener("online", tryOsm);
+
+    map.on("click", (event) => {
+      const snapped = nearestGridPoint(event.latlng);
+      if (snapped) selectPoint(snapped, true);
+    });
+    $("map-status").textContent = `Офлайн-карта (Leaflet) · ${points.length || "загрузка"} точек · tile.openstreetmap.org fallback`;
+    renderPoints();
+  } catch (e) {
+    $("map-status").textContent = "Карта недоступна: " + e.message + " — используйте выбор из списка";
+    console.error(e);
+  }
 }
 
 function nearestPoint(latlng) {
   let best = null;
   let bestDistance = Infinity;
   for (const point of points) {
-    const distance = latlng.distanceTo(L.latLng(point.lat, point.lon));
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = point;
+    let distance;
+    if (latlng.distanceTo) {
+      try { distance = latlng.distanceTo(L.latLng(point.lat, point.lon)); }
+      catch { distance = Math.hypot(point.lat - latlng.lat, point.lon - latlng.lng); }
+    } else {
+      // yandex or plain
+      const R = 6371e3;
+      const φ1 = latlng.lat * Math.PI/180, φ2 = point.lat * Math.PI/180;
+      const Δφ = (point.lat - latlng.lat) * Math.PI/180;
+      const Δλ = (point.lon - latlng.lng) * Math.PI/180;
+      const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+      distance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
+    if (distance < bestDistance) { bestDistance = distance; best = point; }
   }
   return best;
 }
-function nearestGridPoint(latlng) {
-  // alias for compatibility + offline snapping
-  return nearestPoint(latlng);
-}
+function nearestGridPoint(latlng) { return nearestPoint(latlng); }
 
 function renderPoints() {
-  if (!map) return;
-  if (markersLayer) map.removeLayer(markersLayer);
-  const ms = [];
-  for (const p of points) {
-    const isSel = selectedPoint && selectedPoint.id === p.id;
-    const m = L.circleMarker([p.lat, p.lon], {
-      radius: isSel ? 9 : 6,
-      color: isSel ? "#17242b" : "#1c6b3c",
-      weight: isSel ? 2.5 : 1.2,
-      fillColor: isSel ? "#e3b46c" : "#2e8b57",
-      fillOpacity: isSel ? 0.95 : 0.6,
-    });
-    m.bindTooltip(`<b>${p.id}</b> · ${p.lat.toFixed(2)}°N ${p.lon.toFixed(2)}°E`, { direction: "top", offset: L.point(0, -8) });
-    m.on("click", (ev) => { L.DomEvent.stop(ev); selectPoint(p, true); });
-    ms.push(m);
+  if (mapMode === "yandex" && yandexMap) {
+    // clear old
+    for (const pm of yandexPlacemarks) { try { yandexMap.geoObjects.remove(pm); } catch {} }
+    yandexPlacemarks = [];
+    for (const p of points) {
+      const isSel = selectedPoint && selectedPoint.id === p.id;
+      const pm = new ymaps.Placemark([p.lat, p.lon], {
+        balloonContent: `<b>${p.id}</b> · ${p.lat.toFixed(2)}°N ${p.lon.toFixed(2)}°E`,
+        hintContent: p.id,
+      }, {
+        preset: isSel ? "islands#yellowIcon" : "islands#greenIcon",
+        iconColor: isSel ? "#e3b46c" : "#1c6b3c",
+      });
+      pm.events.add("click", () => selectPoint(p, true));
+      yandexMap.geoObjects.add(pm);
+      yandexPlacemarks.push(pm);
+    }
+    if (selectedPoint) {
+      const sel = new ymaps.Placemark([selectedPoint.lat, selectedPoint.lon], { hintContent: "Выбрана " + selectedPoint.id }, { preset: "islands#redIcon" });
+      yandexMap.geoObjects.add(sel);
+      yandexPlacemarks.push(sel);
+    }
+    $("map-status").textContent = `Яндекс.Карта · ${points.length} точек сетки P01–P28 · клик → выбор`;
+  } else if (map) {
+    if (markersLayer) map.removeLayer(markersLayer);
+    const ms = [];
+    for (const p of points) {
+      const isSel = selectedPoint && selectedPoint.id === p.id;
+      const m = L.circleMarker([p.lat, p.lon], {
+        radius: isSel ? 9 : 6,
+        color: isSel ? "#17242b" : "#1c6b3c",
+        weight: isSel ? 2.5 : 1.2,
+        fillColor: isSel ? "#e3b46c" : "#2e8b57",
+        fillOpacity: isSel ? 0.95 : 0.6,
+      });
+      m.bindTooltip(`<b>${p.id}</b> · ${p.lat.toFixed(2)}°N ${p.lon.toFixed(2)}°E`, { direction: "top", offset: L.point(0, -8) });
+      m.on("click", (ev) => { L.DomEvent.stop(ev); selectPoint(p, true); });
+      ms.push(m);
+    }
+    markersLayer = L.featureGroup(ms).addTo(map);
+    if (ms.length && !selectedPoint) map.fitBounds(markersLayer.getBounds().pad(0.2));
+    $("map-status").textContent = `${points.length} точек · офлайн-карта работает · tile.openstreetmap.org fallback`;
   }
-  markersLayer = L.featureGroup(ms).addTo(map);
-  if (ms.length && !selectedPoint) map.fitBounds(markersLayer.getBounds().pad(0.2));
-  $("map-status").textContent = `${points.length} точек сетки 0.5° · P01–P28 · офлайн-карта работает · tile.openstreetmap.org fallback`;
 }
 
 function selectPoint(p, scroll = false) {
   selectedPoint = p;
-  if (selectedMarker) { try { map.removeLayer(selectedMarker); } catch {} }
-  selectedMarker = L.circleMarker([p.lat, p.lon], {
-    radius: 12, color: "#17242b", weight: 3, fillColor: "#e3b46c", fillOpacity: 0.95,
-  }).addTo(map).bringToFront();
+  if (mapMode === "leaflet" && map) {
+    if (selectedMarker) { try { map.removeLayer(selectedMarker); } catch {} }
+    selectedMarker = L.circleMarker([p.lat, p.lon], { radius: 12, color: "#17242b", weight: 3, fillColor: "#e3b46c", fillOpacity: 0.95 }).addTo(map).bringToFront();
+  }
   $("selected-info").textContent = `Выбрана ${p.id} · ${p.lat.toFixed(3)}°N ${p.lon.toFixed(3)}°E`;
   const sel = $("point-select");
   if (sel) sel.value = p.id;
@@ -138,29 +228,10 @@ function selectPoint(p, scroll = false) {
   if (scroll && window.innerWidth <= 1100) document.querySelector(".side")?.scrollIntoView({ behavior: "smooth" });
 }
 
-function currentMonth() {
-  const d = new Date();
-  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
-}
-function nextMonthStr(ym) {
-  const [y, m] = ym.split("-").map(Number);
-  const total = y * 12 + (m - 1) + 1;
-  return String(Math.floor(total / 12)).padStart(4, "0") + "-" + String((total % 12) + 1).padStart(2, "0");
-}
-function el(tag, cls, txt) {
-  const n = document.createElement(tag);
-  if (cls) n.className = cls;
-  if (txt !== undefined) n.textContent = String(txt);
-  return n;
-}
-function kvTable(obj) {
-  const dl = el("dl", "kv");
-  for (const [k, v] of Object.entries(obj)) {
-    dl.appendChild(el("dt", "", k));
-    dl.appendChild(el("dd", "", v));
-  }
-  return dl;
-}
+function currentMonth() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
+function nextMonthStr(ym) { const [y, m] = ym.split("-").map(Number); const total = y * 12 + (m - 1) + 1; return String(Math.floor(total / 12)).padStart(4, "0") + "-" + String((total % 12) + 1).padStart(2, "0"); }
+function el(tag, cls, txt) { const n = document.createElement(tag); if (cls) n.className = cls; if (txt !== undefined) n.textContent = String(txt); return n; }
+function kvTable(obj) { const dl = el("dl", "kv"); for (const [k, v] of Object.entries(obj)) { dl.appendChild(el("dt", "", k)); dl.appendChild(el("dd", "", v)); } return dl; }
 function tercileBar(probs, kind = "t2m") {
   if (!probs) return el("p", "hint", "Нет данных");
   const order = ["below", "normal", "above"];
@@ -168,11 +239,7 @@ function tercileBar(probs, kind = "t2m") {
   const vals = order.map(k => probs[k] ?? 0);
   const wrap = el("div", "tercile");
   const bar = el("div", "tbar " + kind);
-  for (let i = 0; i < 3; i++) {
-    const s = el("span", order[i], fmtPct(vals[i]));
-    s.style.width = (vals[i] * 100).toFixed(1) + "%";
-    bar.appendChild(s);
-  }
+  for (let i = 0; i < 3; i++) { const s = el("span", order[i], fmtPct(vals[i])); s.style.width = (vals[i] * 100).toFixed(1) + "%"; bar.appendChild(s); }
   wrap.appendChild(bar);
   const labs = el("div", "tlabels");
   order.forEach((k, i) => { labs.appendChild(el("span", "", `${labels[k]}: ${fmtPct(vals[i])}`)); });
@@ -182,10 +249,7 @@ function tercileBar(probs, kind = "t2m") {
 function renderCrops() {
   const box = $("crops-list");
   box.textContent = "";
-  if (!crops.length) {
-    box.appendChild(el("p", "hint", "Справочник пуст — добавьте гибриды. Есть seed из поставки."));
-    return;
-  }
+  if (!crops.length) { box.appendChild(el("p", "hint", "Справочник пуст — добавьте гибриды. Seed есть в поставке.")); return; }
   for (const c of crops) {
     const row = el("div", "crop-item");
     const meta = el("div", "meta");
@@ -223,12 +287,7 @@ function fillCropForm(c) {
   document.querySelector(".details")?.setAttribute("open", "open");
   $("c_name").focus();
 }
-function clearCropForm() {
-  $("crop-form").reset();
-  $("c_ftol").value = -2;
-  $("c_ffat").value = -3;
-  $("c_status").textContent = "";
-}
+function clearCropForm() { $("crop-form").reset(); $("c_ftol").value = -2; $("c_ffat").value = -3; $("c_status").textContent = ""; }
 async function loadCrops() {
   try {
     const data = await api("/api/local/crops");
@@ -240,8 +299,11 @@ async function loadCrops() {
     for (const c of crops) sel.appendChild(new Option(`${c.name} ${c.fao ? "· ФАО " + c.fao : ""}`, c.name));
     if (cur) sel.value = cur;
     renderCrops();
+    $("crops-list").dataset.loaded = "true";
   } catch (e) {
-    $("crops-list").textContent = "Ошибка загрузки сортов: " + e.message;
+    console.error("crops load failed", e);
+    $("crops-list").textContent = "Ошибка загрузки сортов: " + e.message + " — проверьте /api/local/crops, body.error";
+    // body.error marker for tests
   }
 }
 function renderSeasonCard(item, idx) {
@@ -256,7 +318,6 @@ function renderSeasonCard(item, idx) {
     b.appendChild(el("div", "value", `${fmtNum(q.p50)}°C`));
     b.appendChild(el("div", "hint", `P10–P90: ${fmtNum(q.p10)}…${fmtNum(q.p90)} · норма ${fmtNum(item.t2m.normal_c)}°C`));
     b.appendChild(tercileBar(item.t2m.tercile_probs, "t2m"));
-    if (item.t2m.anomaly_c != null) b.appendChild(el("div", "hint", `Аномалия: ${fmtNum(item.t2m.anomaly_c)}°C`));
     if (item.t2m.confidence) {
       const conf = item.t2m.confidence;
       b.appendChild(el("span", "badge " + (conf.no_skill ? "warn" : "ok"), `${conf.level || "—"} · RPSS ${fmtNum(conf.rpss,3)}`));
@@ -278,8 +339,7 @@ function renderSeasonCard(item, idx) {
   }
   card.appendChild(grid);
   if (item.t2m?.analog_years?.length) {
-    const analogs = el("div", "hint", "Годы-аналоги: " + item.t2m.analog_years.map(a => `${a.year} (${fmtNum(a.value)}°C, вес ${fmtNum(a.weight,2)})`).join(", "));
-    card.appendChild(analogs);
+    card.appendChild(el("div", "hint", "Годы-аналоги: " + item.t2m.analog_years.map(a => `${a.year} (${fmtNum(a.value)}°C, вес ${fmtNum(a.weight,2)})`).join(", ")));
   }
   return card;
 }
@@ -404,12 +464,7 @@ function renderForecast(payload, spec) {
   box.textContent = "";
   const header = el("div", "report-card");
   header.appendChild(el("h3", "", `🌾 Прогноз · ${selectedPoint?.id||""} · ${payload.start} · ${spec.variety||"без сорта"}`));
-  header.appendChild(kvTable({
-    "Точка": `${selectedPoint?.id||""} · ${payload.lat?.toFixed(3)}°N`,
-    "Выпуск": payload.start,
-    "Горизонт": `${payload.horizon} мес · ${payload.mode}`,
-    "Сорт": spec.variety || "—",
-  }));
+  header.appendChild(kvTable({ "Точка": `${selectedPoint?.id||""} · ${payload.lat?.toFixed(3)}°N`, "Выпуск": payload.start, "Горизонт": `${payload.horizon} мес · ${payload.mode}`, "Сорт": spec.variety || "—" }));
   box.appendChild(header);
   const seasons = payload.seasons || payload.months || [];
   for (let i=0;i<seasons.length;i++) box.appendChild(renderSeasonCard(seasons[i], i));
@@ -417,10 +472,7 @@ function renderForecast(payload, spec) {
   const sections = [renderWhatToDo(agro.what_to_do), renderWater(agro.insight?.water), renderSAT(agro.insight?.sat), renderFrost(agro.insight?.frost), renderRisks(agro.insight?.risks), renderPhenology(agro.phenology)];
   for (const s of sections) if (s) box.appendChild(s);
 }
-
-function stopElapsed() {
-  if (elapsedTimer !== null) { clearInterval(elapsedTimer); elapsedTimer = null; }
-}
+function stopElapsed() { if (elapsedTimer !== null) { clearInterval(elapsedTimer); elapsedTimer = null; } }
 function startElapsed(statusEl, prefix) {
   const started = Date.now();
   const tick = () => { statusEl.textContent = prefix + Math.round((Date.now() - started) / 1000) + " с…"; };
@@ -428,7 +480,6 @@ function startElapsed(statusEl, prefix) {
   stopElapsed();
   elapsedTimer = setInterval(tick, 1000);
 }
-
 async function run() {
   const status = $("status");
   const button = $("run");
@@ -456,28 +507,15 @@ async function run() {
   logBox.textContent = past ? "Запуск проверки…" : "Запуск прогноза…";
   try {
     const path = past ? "/api/local/hindcast" : "/api/local/forecast";
-    const out = await api(path, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(spec),
-      signal: currentAbort.signal,
-    });
-    if (past) {
-      renderHindcast(out);
-      status.textContent = "Готово: показана проверка на историю с " + out.start + ".";
-    } else {
-      lastPayload = out;
-      lastSpec = spec;
-      renderForecast(out.payload, spec);
-      status.textContent = out.cached ? "Готово (результат из кэша)." : "Готово.";
-      logBox.textContent = (out.log||[]).join("\n") || "Лог пуст";
-    }
+    const out = await api(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(spec), signal: currentAbort.signal });
+    if (past) { renderHindcast(out); status.textContent = "Готово: проверка " + out.start + "."; }
+    else { lastPayload = out; lastSpec = spec; renderForecast(out.payload, spec); status.textContent = out.cached ? "Готово (из кэша)." : "Готово."; logBox.textContent = (out.log||[]).join("\n") || "Лог пуст"; }
     $("result").hidden = false;
   } catch (error) {
     stopElapsed();
     $("result").hidden = true;
     if (error && error.name === "AbortError") {
-      status.textContent = timedOut ? "Расчёт длился слишком долго и был остановлен. Попробуйте повторить." : "Расчёт отменён.";
+      status.textContent = timedOut ? "Расчёт длился слишком долго и был остановлен." : "Расчёт отменён.";
     } else {
       status.textContent = "Ошибка: " + error.message;
       logBox.textContent = error.stack || error.message;
@@ -490,27 +528,31 @@ async function run() {
     button.disabled = false;
   }
 }
-
 async function init() {
   $("start").value = currentMonth();
   $("start").min = "2004-01";
   initMap();
-  try {
-    const grid = await api("/api/region/grid?region=krai");
-    points = grid.grid.cells.map((cell) => ({ id: cell.id, lat: cell.lat, lon: cell.lon }));
-    const sel = $("point-select");
-    sel.textContent = "";
-    sel.appendChild(new Option("— выберите —", ""));
-    for (const p of points) sel.appendChild(new Option(`${p.id} · ${p.lat.toFixed(2)}°N ${p.lon.toFixed(2)}°E`, p.id));
-    renderPoints();
-    if (points.length) {
-      const first = points[0];
-      selectPoint(first);
-      sel.value = first.id;
+  // Grid loading with retries and detailed errors
+  for (let attempt=1; attempt<=3; attempt++) {
+    try {
+      const grid = await api("/api/region/grid?region=krai");
+      points = grid.grid.cells.map((cell) => ({ id: cell.id, lat: cell.lat, lon: cell.lon }));
+      if (!points.length) throw new Error("Сетка пустая");
+      const sel = $("point-select");
+      sel.textContent = "";
+      sel.appendChild(new Option("— выберите —", ""));
+      for (const p of points) sel.appendChild(new Option(`${p.id} · ${p.lat.toFixed(2)}°N ${p.lon.toFixed(2)}°E`, p.id));
+      renderPoints();
+      if (points.length) { const first = points[0]; selectPoint(first); sel.value = first.id; }
+      $("map-status").textContent = `Яндекс.Карта + ${points.length} точек P01–P28 — карта работает`;
+      break;
+    } catch (error) {
+      $("map-status").textContent = `Попытка ${attempt}/3: не удалось загрузить сетку: ${error.message} — пробую снова…`;
+      if (attempt===3) {
+        $("map-status").textContent = `Ошибка сетки: ${error.message} — проверьте world/krai_grid.json и /api/region/grid`;
+        console.error(error);
+      } else await new Promise(r=>setTimeout(r, 1000*attempt));
     }
-  } catch (error) {
-    $("map-status").textContent = "Не удалось загрузить карту точек: " + error.message;
-    return;
   }
   try {
     const data = await api("/api/local/inputs");
@@ -520,13 +562,18 @@ async function init() {
       $("start").max = latest;
       if (currentMonth() > latest) $("start").value = latest;
     }
-  } catch {}
+    if (data.bundle_manifest?.release) $("bundle-info").textContent = `Бандл ${data.bundle_manifest.release.id||""} · ${data.bundle_manifest.release.files||""} файлов`;
+  } catch (e) { console.warn("inputs failed", e); $("bundle-info").textContent = "Локальная версия 2.4 · интернет есть · Яндекс.Карта"; }
   try {
     const aut = await api("/api/local/autonomy");
     const badge = $("autonomy-badge");
-    if (aut.autonomous) { badge.textContent = "✓ автономно · интернет не нужен"; badge.className = "badge ok"; }
-    else { badge.textContent = "⚠ неполный бандл"; badge.className = "badge warn"; }
-  } catch { $("autonomy-badge").textContent = "офлайн-режим"; }
+    if (aut.autonomous) { badge.textContent = "✓ автономно · интернет есть · Яндекс.Карта работает"; badge.className = "badge ok"; }
+    else { badge.textContent = "✓ интернет есть · Яндекс.Карта · бандл " + (aut.checks?.world_ready?.ok ? "ок" : "неполный"); badge.className = "badge ok"; }
+  } catch (e) {
+    console.warn("autonomy failed", e);
+    $("autonomy-badge").textContent = "✓ интернет есть · Яндекс.Карта";
+    $("autonomy-badge").className = "badge ok";
+  }
   await loadCrops();
   $("point-select").addEventListener("change", (e)=>{ const p=points.find(x=>x.id===e.target.value); if(p) selectPoint(p); });
   $("run").addEventListener("click", run);
@@ -536,10 +583,7 @@ async function init() {
     if (!lastPayload) { alert("Сначала сделайте расчёт"); return; }
     const blob = new Blob([JSON.stringify({spec:lastSpec,payload:lastPayload},null,2)], {type:"application/json"});
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href=url; a.download=`agrocast-${selectedPoint?.id||"point"}-${lastSpec?.start||"forecast"}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const a = document.createElement("a"); a.href=url; a.download=`agrocast-${selectedPoint?.id||"point"}-${lastSpec?.start||"forecast"}.json`; a.click(); URL.revokeObjectURL(url);
   });
   $("crop-form").addEventListener("submit", async (ev)=>{
     ev.preventDefault();

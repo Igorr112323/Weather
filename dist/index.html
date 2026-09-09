@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>AgroCast 2.4 — Скачать EXE с Яндекс.Картой</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:900px;margin:40px auto;padding:20px;background:#f4f7f5}
+.card{background:#fff;border:1px solid #d6e2d8;border-radius:14px;padding:28px;box-shadow:0 6px 24px rgba(0,0,0,.08)}
+h1{margin:0 0 8px}h2{margin:20px 0 10px}
+a.btn{display:inline-block;padding:14px 24px;background:#1c6b3c;color:#fff;border-radius:12px;text-decoration:none;margin:10px 0;font-weight:700;font-size:16px}
+a.btn:hover{background:#2e8b57;transform:translateY(-1px)}
+a.btn.exe{background:linear-gradient(135deg,#1c6b3c,#2e8b57);font-size:20px;padding:18px 32px}
+.hint{color:#5a6e5d;font-size:13px;margin:4px 0 12px}
+.badge{display:inline-block;padding:4px 10px;border-radius:999px;background:#e6f4eb;color:#1c6b3c;font-weight:700;font-size:12px;margin-left:8px}
+ul{line-height:1.7}
+pre{background:#0f1e14;color:#d7e9d8;padding:14px;border-radius:10px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>AgroCast <span style="background:#1c6b3c;color:#fff;padding:2px 12px;border-radius:999px;font-size:14px">2.4 EXE Яндекс.Карта</span></h1>
+<p>Фикс всех багов 1.1 — карта теперь Яндекс, а не пустая офлайн.</p>
+
+<h2>⬇ Скачать EXE 2.4 — карта работает</h2>
+
+<p><a class="btn exe" href="AgroCast-2.4-exe.zip">⬇ AgroCast-2.4-exe.zip — 52 МБ — ЯНДЕКС КАРТА + КРАСИВЫЕ ОТЧЕТЫ + БАЗА КУКУРУЗЫ</a> <span class="badge">2.4 рекомендуется</span></p>
+<p class="hint">Внутри: agrocast/ + static/ (2.4 с Яндекс) + world/ (60М) + AgroCast.exe/.bat/.sh лаунчеры. Распакуй → двойной клик по AgroCast.bat (Windows) или AgroCast.exe</p>
+
+<p><a class="btn" href="AgroCast-2.3-exe.zip">⬇ AgroCast-2.3-exe.zip — 52 МБ</a></p>
+<p><a class="btn" href="AgroCast-1.1.zip">⬇ AgroCast-1.1.zip — 55 МБ</a></p>
+
+<h2>🪟 Настоящий Windows .exe</h2>
+<p>GitHub Actions собирает настоящий exe:</p>
+<ul>
+<li>Run 2.3: <a href="https://github.com/Igorr112323/Weather/actions/runs/34312251700" target="_blank">34312251700</a> — уже собрался, ищи в Releases</li>
+<li>Скоро Run 2.4: будет <code>AgroCast-windows-x64.zip</code> с настоящим <code>AgroCast.exe</code></li>
+<li>Релизы: <a href="https://github.com/Igorr112323/Weather/releases" target="_blank">github.com/.../releases</a></li>
+</ul>
+
+<h2>Что пофикшено в 2.4</h2>
+<ul>
+<li><b>Карта:</b> была пустая "Загрузка сетки..." — теперь <b>Яндекс.Карта</b> грузится, 28 точек P01-P28, клик → выбор ближайшей, dropdown заполняется</li>
+<li><b>База кукурузы:</b> было "Загрузка..." — теперь грузится, CRUD работает, сохраняется в ~/.agrocast/crops.db</li>
+<li><b>Badge:</b> было "проверка автономности..." — теперь "✓ интернет есть · Яндекс.Карта"</li>
+<li><b>Красивые отчеты:</b> терцили, топ-3 действия, вода м³/га, САТ/GDD, заморозки + безопасная дата, риски, фенология</li>
+<li><b>Код:</b> фикс _find_dir для PyInstaller _internal, CSP для yandex.ru / *.yandex.net / api-maps.yandex.ru</li>
+</ul>
+
+<h2>🚀 Запуск</h2>
+<pre>1. Скачай AgroCast-2.4-exe.zip
+2. Распакуй
+3. Windows: двойной клик AgroCast.bat
+   Linux: ./AgroCast.exe
+4. Откроется Яндекс.Карта с точками → выбери точку, месяц, сорт → Показать прогноз
+</pre>
+</div>
+</body>
+</html>

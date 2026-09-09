@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AgroCast 1.1 — Агропрогнозы Краснодарского края</title>
+<title>AgroCast 2.4 — Агропрогнозы Краснодарского края</title>
 <link rel="stylesheet" href="/assets/vendor/leaflet/leaflet.css" integrity="sha384-3Zp5dU/2e36sCZIslNy0nR/CpV0m2JOEp63JIiahU1YkB0LiKui1CUM8nml2lmU2" crossorigin="anonymous">
 <link rel="stylesheet" href="/assets/desktop.css">
 <link rel="icon" type="image/png" href="/assets/agrocast.png">
+<script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU" type="text/javascript"></script>
 <script src="/assets/vendor/leaflet/leaflet.js" integrity="sha384-/ebwMPBNh/7cTi+L/d2x6DmcjCLDgJc3BRKB1mGbTgltaFzFP0Mi2YU9I0YGhmjx" crossorigin="anonymous" defer></script>
 <script type="module" src="/assets/desktop.js" defer></script>
 </head>
@@ -16,8 +17,8 @@
     <div class="brand">
       <img src="/assets/agrocast.png" alt="" class="brand-logo">
       <div>
-        <h1>AgroCast <span class="ver">1.1</span></h1>
-        <p class="subtitle">локальные прогнозы · Краснодарский край · 28 точек P01–P28 · версия 1.1</p>
+        <h1>AgroCast <span class="ver">2.4</span></h1>
+        <p class="subtitle">локальные прогнозы · Краснодарский край · 28 точек P01–P28 · Яндекс.Карта · версия 2.4</p>
       </div>
     </div>
     <div class="top-actions">
@@ -29,25 +30,26 @@
 
   <div class="layout">
     <section class="map-section">
-      <div id="map" role="application" aria-label="Карта Краснодарского края"></div>
+      <div id="map" role="application" aria-label="Карта Краснодарского края — Яндекс"></div>
       <div class="map-overlay">
         <div class="map-legend">
           <span class="dot dot-selected"></span> выбранная
           <span class="dot dot-grid"></span> сетка 0.5°
           <span class="dot dot-field"></span> поле
+          <span style="margin-left:8px">Яндекс.Карта</span>
         </div>
-        <div id="selected-info" class="selected-chip">Кликните по карте — выберется ближайшая точка</div>
+        <div id="selected-info" class="selected-chip">Кликните по карте — выберется ближайшая точка сетки</div>
       </div>
       <div class="map-footer">
         <span id="map-status">Загрузка сетки…</span>
-        <span class="hint">Офлайн-карта без внешних тайлов · координаты не уходят в интернет</span>
+        <span class="hint">Яндекс.Карта + офлайн fallback · координаты не уходят к OSM</span>
       </div>
     </section>
 
     <aside class="side">
       <div class="card">
         <h2>🌱 Сезонный прогноз</h2>
-        <p class="hint">2004–2024 автоматически проверяются на истории (hindcast). Будущие месяцы — прогноз.</p>
+        <p class="hint">2004–2024 автоматически проверяются на истории (hindcast). Будущие месяцы — прогноз. Интернет есть — используется Яндекс.Карта.</p>
         <div class="grid2">
           <div class="field">
             <label for="start">Месяц выпуска</label>
@@ -65,7 +67,7 @@
         <div class="grid2">
           <div class="field">
             <label for="point-select">Точка сетки</label>
-            <select id="point-select"></select>
+            <select id="point-select"><option>Загрузка сетки…</option></select>
           </div>
           <div class="field">
             <label for="variety-select">Сорт кукурузы</label>
@@ -82,8 +84,8 @@
 
       <div class="card">
         <h3>🌽 Справочник кукурузы</h3>
-        <p class="hint">Заполните гибриды — САТ, ФАО, морозостойкость, урожайность. Используется в прогнозе: дата сева, риск заморозка, накопление GDD.</p>
-        <div id="crops-list" class="crops-list">Загрузка…</div>
+        <p class="hint">Заполните гибриды — САТ, ФАО, морозостойкость, урожайность. Используется в прогнозе: дата сева, риск заморозка, накопление GDD. База в ~/.agrocast/crops.db</p>
+        <div id="crops-list" class="crops-list">Загрузка сортов…</div>
         <details class="details">
           <summary>＋ Добавить / изменить сорт</summary>
           <form id="crop-form" class="form">
@@ -116,7 +118,7 @@
   </div>
 
   <footer class="footer">
-    <span>AgroCast 1.1 · локальная версия · все расчёты на вашем компьютере · интернет не требуется</span>
+    <span>AgroCast 2.4 · Яндекс.Карта · локальная версия · все расчёты на вашем компьютере</span>
     <span id="bundle-info" class="hint"></span>
   </footer>
 </div>

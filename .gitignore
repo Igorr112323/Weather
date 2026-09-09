@@ -14,6 +14,11 @@ data/
 # Виртуальные окружения
 .venv/
 venv/
+.venv_test/
+dist/AgroCast-2.4/
+dist/AgroCast-2.3/
+dist/AgroCast-2.3-portable/
+dist/desktop-2.3/
 
 # IDE
 .idea/

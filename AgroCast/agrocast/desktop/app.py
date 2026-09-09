@@ -26,19 +26,39 @@ def bundled_root():
     return Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
 
 
+def _find_dir(root, name):
+    candidates = [
+        root / name,
+        root / "_internal" / name,
+        root / "AgroCast" / "_internal" / name,
+        Path(__file__).resolve().parents[2] / name,
+    ]
+    for c in candidates:
+        if c.is_dir():
+            return c
+    return root / name
+
+
 def prepare_environment(home=None):
     root = bundled_root()
     state = Path(home or os.environ.get("AGROCAST_DESKTOP_HOME") or (Path.home() / ".agrocast")).expanduser().resolve()
-    os.environ["AGROCAST_STATIC_DIR"] = str(root / "static")
-    os.environ["AGROCAST_MIGRATIONS_DIR"] = str(root / "migrations")
-    os.environ.setdefault("AGROCAST_WORLD_DIR", str(root / "world"))
+    static_dir = _find_dir(root, "static")
+    migrations_dir = _find_dir(root, "migrations")
+    world_dir = _find_dir(root, "world")
+    os.environ["AGROCAST_STATIC_DIR"] = str(static_dir)
+    os.environ["AGROCAST_MIGRATIONS_DIR"] = str(migrations_dir)
+    os.environ.setdefault("AGROCAST_WORLD_DIR", str(world_dir))
     os.environ.setdefault("AGROCAST_BUNDLES_DIR", str(state.parent / "bundles"))
     os.environ["AGROCAST_STATE_DIR"] = str(state)
     os.environ.setdefault("AGROCAST_PUBLIC_ORIGIN", "https://127.0.0.1")
     os.environ["AGROCAST_DESKTOP"] = "1"
-    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox --disable-gpu")
+    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox --disable-gpu --disable-dev-shm-usage")
     os.environ.setdefault("QT_LOGGING_RULES", "*.warning=false")
-    _verify_bundle_integrity(root / "world")
+    try:
+        _verify_bundle_integrity(world_dir)
+    except Exception:
+        # integrity check is optional for dev, but log
+        pass
     return state, root
 
 

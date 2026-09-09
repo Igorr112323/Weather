@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AgroCast — локальные прогнозы</title>
+<title>AgroCast 1.1 — Агропрогнозы Краснодарского края</title>
 <link rel="stylesheet" href="/assets/vendor/leaflet/leaflet.css" integrity="sha384-3Zp5dU/2e36sCZIslNy0nR/CpV0m2JOEp63JIiahU1YkB0LiKui1CUM8nml2lmU2" crossorigin="anonymous">
 <link rel="stylesheet" href="/assets/desktop.css">
 <link rel="icon" type="image/png" href="/assets/agrocast.png">
@@ -11,35 +11,114 @@
 <script type="module" src="/assets/desktop.js" defer></script>
 </head>
 <body>
-<div id="map" role="application" aria-label="Карта Краснодарского края"></div>
-<header class="overlay-title">
-<h1>AgroCast</h1>
-<p class="tag">Агропрогнозы для Краснодарского края</p>
-</header>
-<aside class="panel">
-<h2>Сезонный прогноз</h2>
-<div id="selected-info" class="selected-info">Кликните по карте — будет выбрана ближайшая точка сетки</div>
-<p class="hint">Прошлые месяцы (2004–2024) автоматически проверяются на истории.</p>
-<div class="controls-row">
-<div class="control-group">
-<label for="start">Месяц выпуска</label>
-<input id="start" type="month">
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <img src="/assets/agrocast.png" alt="" class="brand-logo">
+      <div>
+        <h1>AgroCast <span class="ver">1.1</span></h1>
+        <p class="subtitle">локальные прогнозы · Краснодарский край · 28 точек P01–P28 · версия 1.1</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <span id="autonomy-badge" class="badge">проверка автономности…</span>
+      <button id="btn-print" type="button" class="btn ghost">🖨 Печать отчёта</button>
+      <button id="btn-export" type="button" class="btn ghost">⬇ JSON</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <section class="map-section">
+      <div id="map" role="application" aria-label="Карта Краснодарского края"></div>
+      <div class="map-overlay">
+        <div class="map-legend">
+          <span class="dot dot-selected"></span> выбранная
+          <span class="dot dot-grid"></span> сетка 0.5°
+          <span class="dot dot-field"></span> поле
+        </div>
+        <div id="selected-info" class="selected-chip">Кликните по карте — выберется ближайшая точка</div>
+      </div>
+      <div class="map-footer">
+        <span id="map-status">Загрузка сетки…</span>
+        <span class="hint">Офлайн-карта без внешних тайлов · координаты не уходят в интернет</span>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="card">
+        <h2>🌱 Сезонный прогноз</h2>
+        <p class="hint">2004–2024 автоматически проверяются на истории (hindcast). Будущие месяцы — прогноз.</p>
+        <div class="grid2">
+          <div class="field">
+            <label for="start">Месяц выпуска</label>
+            <input id="start" type="month">
+          </div>
+          <div class="field">
+            <label for="horizon">Интервал</label>
+            <select id="horizon">
+              <option value="1">1 месяц</option>
+              <option value="3" selected>3 месяца (сезон)</option>
+              <option value="6">6 месяцев</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label for="point-select">Точка сетки</label>
+            <select id="point-select"></select>
+          </div>
+          <div class="field">
+            <label for="variety-select">Сорт кукурузы</label>
+            <select id="variety-select"><option value="">— без сорта —</option></select>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="run" type="button" class="btn primary">▶ Показать прогноз</button>
+          <button id="cancel" type="button" class="btn danger" hidden>✕ Отменить</button>
+        </div>
+        <p id="status" role="status" aria-live="polite" class="status">Выберите точку на карте и месяц.</p>
+        <div id="log" class="log" hidden></div>
+      </div>
+
+      <div class="card">
+        <h3>🌽 Справочник кукурузы</h3>
+        <p class="hint">Заполните гибриды — САТ, ФАО, морозостойкость, урожайность. Используется в прогнозе: дата сева, риск заморозка, накопление GDD.</p>
+        <div id="crops-list" class="crops-list">Загрузка…</div>
+        <details class="details">
+          <summary>＋ Добавить / изменить сорт</summary>
+          <form id="crop-form" class="form">
+            <div class="grid2">
+              <div class="field"><label>Название *</label><input id="c_name" required maxlength="120" placeholder="Краснодарский 194МВ"></div>
+              <div class="field"><label>Селекционер</label><input id="c_breeder" maxlength="120" placeholder="КНИИСХ"></div>
+              <div class="field"><label>ФАО</label><input id="c_fao" type="number" min="50" max="650" step="1" placeholder="250"></div>
+              <div class="field"><label>САТ, °C</label><input id="c_gdd" type="number" min="1500" max="3500" step="1" placeholder="2600"></div>
+              <div class="field"><label>Вегетация, дней</label><input id="c_vp" type="number" min="60" max="200" step="1" placeholder="115"></div>
+              <div class="field"><label>Урожай, т/га</label><input id="c_yield" type="number" min="0.1" max="30" step="0.1" placeholder="6.5"></div>
+              <div class="field"><label>Переносимый мороз, °C</label><input id="c_ftol" type="number" min="-8" max="0" step="0.5" value="-2"></div>
+              <div class="field"><label>Гибель, °C</label><input id="c_ffat" type="number" min="-8" max="0" step="0.5" value="-3"></div>
+              <div class="field"><label>Сев с (MM-DD)</label><input id="c_sow_from" placeholder="04-20" pattern="[0-9]{2}-[0-9]{2}"></div>
+              <div class="field"><label>Сев по (MM-DD)</label><input id="c_sow_to" placeholder="05-15" pattern="[0-9]{2}-[0-9]{2}"></div>
+            </div>
+            <div class="field"><label>Заметки</label><textarea id="c_notes" rows="2" maxlength="1000" placeholder="Раннеспелый, засухоустойчивый"></textarea></div>
+            <div class="actions">
+              <button type="submit" class="btn">💾 Сохранить сорт</button>
+              <button id="c_clear" type="button" class="btn ghost">Очистить</button>
+            </div>
+            <p id="c_status" class="status"></p>
+          </form>
+        </details>
+      </div>
+
+      <div id="result" class="result" hidden>
+        <div id="summary" class="report"></div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="footer">
+    <span>AgroCast 1.1 · локальная версия · все расчёты на вашем компьютере · интернет не требуется</span>
+    <span id="bundle-info" class="hint"></span>
+  </footer>
 </div>
-<div class="control-group">
-<label for="horizon">Интервал</label>
-<select id="horizon">
-<option value="1">1 месяц</option>
-<option value="3" selected>3 месяца</option>
-<option value="6">6 месяцев</option>
-</select>
-</div>
-</div>
-<button id="run" type="button" class="big">Показать прогноз</button>
-<button id="cancel" type="button" class="secondary" hidden>Отменить</button>
-<p id="status" role="status" aria-live="polite" class="status">Выберите точку на карте и месяц выпуска.</p>
-<div id="result" hidden>
-<div id="summary"></div>
-</div>
-</aside>
 </body>
 </html>

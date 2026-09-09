@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from agrocast.core.contracts import (
-    CONTRACT_VERSION, EmptyQuery, ForecastSpec,
+    CONTRACT_VERSION, Contract, EmptyQuery, ForecastSpec,
     RegionFieldQuery, RegionFieldSpec, RegionId, RegionQuery, ReportQuery,
 )
 from agrocast.core.errors import IssueFreshnessError
@@ -210,8 +210,65 @@ def local_autonomy(request: Request, query: NoQuery = EmptyQuery()):
     }
 
 
+class LocalCropBody(Contract):
+    name: str
+    breeder: str | None = None
+    fao: int | None = None
+    gdd: float | None = None
+    vp_days: int | None = None
+    frost_tol_c: float | None = None
+    frost_fatal_c: float | None = None
+    sow_from: str | None = None
+    sow_to: str | None = None
+    yield_t_ha: float | None = None
+    area_ha: float | None = None
+    notes: str | None = None
+    maturity: str | None = None
+
+
+class LocalForecastRequest(ForecastSpec):
+    variety: str | None = None
+
+
+@router.get("/api/local/crops")
+def local_crops_list(request: Request, query: NoQuery = EmptyQuery()):
+    settings = request.app.state.settings
+    if not settings.desktop_mode:
+        raise APIError("desktop_only", 403)
+    from agrocast.serve.local import list_local_crops
+
+    return {"crops": list_local_crops(settings)}
+
+
+@router.post("/api/local/crops")
+def local_crops_upsert(request: Request, body: LocalCropBody):
+    settings = request.app.state.settings
+    if not settings.desktop_mode:
+        raise APIError("desktop_only", 403)
+    from agrocast.serve.local import upsert_local_crop
+
+    try:
+        crop = upsert_local_crop(settings, body.model_dump(mode="json"))
+    except ValueError as exc:
+        raise APIError("invalid_request", 422, str(exc)) from None
+    return {"crop": crop}
+
+
+@router.delete("/api/local/crops/{name}")
+def local_crops_delete(name: str, request: Request):
+    settings = request.app.state.settings
+    if not settings.desktop_mode:
+        raise APIError("desktop_only", 403)
+    from agrocast.serve.local import delete_local_crop
+
+    ok = delete_local_crop(settings, name)
+    if not ok:
+        raise APIError("resource_not_found", 404)
+    return {"ok": True}
+
+
 @router.post("/api/local/forecast", response_model=LocalForecastResponse)
-def local_forecast(request: Request, spec: ForecastSpec):
+def local_forecast(request: Request, spec: LocalForecastRequest):
     settings = request.app.state.settings
     if not settings.desktop_mode:
         raise APIError("desktop_only", 403, "Локальный расчёт доступен только в десктоп-версии")
@@ -232,7 +289,7 @@ def local_forecast(request: Request, spec: ForecastSpec):
 
 
 @router.post("/api/local/hindcast")
-def local_hindcast(request: Request, spec: ForecastSpec):
+def local_hindcast(request: Request, spec: LocalForecastRequest):
     settings = request.app.state.settings
     if not settings.desktop_mode:
         raise APIError("desktop_only", 403, "Локальный расчёт доступен только в десктоп-версии")
@@ -252,11 +309,9 @@ def local_hindcast(request: Request, spec: ForecastSpec):
             settings.compute_config().to_dict(),
         )
         ensure_point(cfg, settings.world_dir, lambda message: None)
-        # Extract year from spec.start
         start_str = str(spec.start)
         start_period = pd.Period(start_str, "M")
         year = start_period.year
-        # Build start of the year for hindcast
         year_start = f"{year}-01"
         result = run_hindcast(
             cfg, float(spec.lat), float(spec.lon),

@@ -166,16 +166,51 @@ def _local_identity(settings, spec, releases, principal):
     return ResultIdentity.point(spec, releases, _queue_settings(settings), CacheScope.for_principal(principal), variety=None)
 
 
+def _crop_db(settings):
+    from agrocast.crops.db import CropDB
+
+    return CropDB(settings.state_dir / "crops.db", str(Path(settings.world_dir) / "artifacts" / "crop_seed.json"))
+
+
+def list_local_crops(settings):
+    settings = use_active_bundle(settings)[0]
+    db = _crop_db(settings)
+    return db.all()
+
+
+def upsert_local_crop(settings, data):
+    settings = use_active_bundle(settings)[0]
+    db = _crop_db(settings)
+    return db.upsert(data)
+
+
+def delete_local_crop(settings, name):
+    settings = use_active_bundle(settings)[0]
+    db = _crop_db(settings)
+    return db.remove(name)
+
+
+def get_local_crop(settings, name):
+    settings = use_active_bundle(settings)[0]
+    db = _crop_db(settings)
+    return db.get(name)
+
+
 def run_forecast(settings, spec, principal):
     from agrocast.forecast.orchestrator import forecast_point
     from agrocast.serve.pipeline import ensure_point, point_config
 
     settings = use_active_bundle(settings)[0]
     releases = ensure_releases(settings)
+    variety = getattr(spec, "variety", None) or getattr(spec, "variety_name", None) or ""
+    if isinstance(variety, str):
+        variety = variety.strip()
+    else:
+        variety = ""
     identity = _local_identity(settings, spec, releases, principal)
     cache = ResultCache(settings.state_dir)
     hit = cache.read(identity)
-    if hit is not None:
+    if hit is not None and not variety:
         return {
             "cached": True, "payload": hit.payload, "identity": identity.model_dump(mode="json"),
             "computed_at": None, "log": ["результат взят из локального кэша — расчёт не запускался"],
@@ -185,13 +220,14 @@ def run_forecast(settings, spec, principal):
     ensure_point(cfg, settings.world_dir, lambda message: log_lines.append(str(message)[:500]))
     payload = forecast_point(
         cfg, float(spec.lat), float(spec.lon), start=spec.start, horizon=int(spec.horizon),
-        mode=spec.mode, season_len=int(spec.season_len), save=False, variables=("t2m", "tp"), variety="",
+        mode=spec.mode, season_len=int(spec.season_len), save=False, variables=("t2m", "tp"), variety=variety,
     )
     if payload.get("start") != spec.start:
         raise ValueError("forecast payload does not match the requested start")
     if not payload.get("seasons"):
         raise ValueError("forecast payload has no season block")
-    cache.write(identity, payload)
+    if not variety:
+        cache.write(identity, payload)
     return {
         "cached": False, "payload": payload, "identity": identity.model_dump(mode="json"),
         "computed_at": int(time.time()), "log": log_lines[-40:],

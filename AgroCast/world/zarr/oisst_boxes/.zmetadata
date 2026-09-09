@@ -6,7 +6,7 @@
         },
         "black_sst/.zarray": {
             "chunks": [
-                539
+                540
             ],
             "compressor": {
                 "blocksize": 0,
@@ -20,7 +20,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                539
+                540
             ],
             "zarr_format": 2
         },
@@ -31,7 +31,7 @@
         },
         "med_sst/.zarray": {
             "chunks": [
-                539
+                540
             ],
             "compressor": {
                 "blocksize": 0,
@@ -45,7 +45,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                539
+                540
             ],
             "zarr_format": 2
         },
@@ -70,7 +70,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                539
+                540
             ],
             "zarr_format": 2
         },
@@ -79,7 +79,7 @@
                 "time"
             ],
             "calendar": "proleptic_gregorian",
-            "units": "days since 1981-09-01 00:00:00"
+            "units": "days since 1981-09-01"
         }
     },
     "zarr_consolidated_format": 1

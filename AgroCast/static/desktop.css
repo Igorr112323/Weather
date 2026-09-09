@@ -3,18 +3,36 @@
 body { margin:0; font:15px/1.5 system-ui,"Segoe UI",Roboto,sans-serif; color:var(--ink); background:#dfe8ee; }
 
 /* Полноэкранная карта */
-#map { position:fixed; inset:0; z-index:0; }
+#map { position:fixed; inset:56px 0 0 0; z-index:0; }
 .leaflet-container { background:#dfe8ee; font:14px/1.4 system-ui,"Segoe UI",Roboto,sans-serif; }
 
 /* Плавающая шапка */
-.overlay-title { position:fixed; top:12px; left:12px; z-index:1000; background:rgba(255,255,255,.94); border:1px solid var(--line); border-radius:12px; padding:10px 16px; box-shadow:0 2px 10px rgba(23,36,43,.12); }
+.overlay-title { position:fixed; top:68px; left:12px; z-index:1000; background:rgba(255,255,255,.94); border:1px solid var(--line); border-radius:12px; padding:10px 16px; box-shadow:0 2px 10px rgba(23,36,43,.12); }
 .overlay-title h1 { margin:0; font-size:20px; letter-spacing:.3px; }
 .tag { margin:2px 0 0; color:#51646f; font-size:13px; }
 
+/* Верхняя панель с вкладками */
+.topbar { position:fixed; top:0; left:0; right:0; z-index:1100; background:#fff; border-bottom:2px solid var(--accent); box-shadow:0 2px 8px rgba(0,0,0,.08); }
+.topbar-inner { display:flex; align-items:center; gap:18px; padding:10px 18px; flex-wrap:wrap; }
+.topbar h1 { margin:0; font-size:20px; color:var(--accent); }
+.tabs { display:flex; gap:8px; }
+.tab { background:#eef4f7; color:var(--ink); border:1px solid var(--line); padding:8px 16px; border-radius:8px; font-weight:600; cursor:pointer; }
+.tab.active, .tab[aria-selected="true"] { background:var(--accent); color:#fff; border-color:var(--accent); }
+.tab-panel { padding-top:56px; }
+.tab-panel[hidden] { display:none !important; }
+.downloads-wrap, .crops-wrap { max-width:1000px; margin:0 auto; padding:18px; }
+.card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; margin:12px 0; }
+.table-wrap { overflow:auto; max-height:50vh; border:1px solid var(--line); border-radius:8px; padding:8px; background:#fff; }
+.form-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr)); gap:10px; }
+.actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+
 /* Панель управления */
-.panel { position:fixed; top:12px; right:12px; z-index:1000; width:370px; max-width:calc(100vw - 24px); max-height:calc(100vh - 24px); overflow:auto; background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:0 2px 12px rgba(23,36,43,.16); }
+.panel { position:fixed; top:68px; right:12px; z-index:1000; width:370px; max-width:calc(100vw - 24px); max-height:calc(100vh - 68px - 12px); overflow:auto; background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:0 2px 12px rgba(23,36,43,.16); }
 .panel h2 { margin:0 0 8px; font-size:18px; }
 .selected-info { text-align:left; margin:0 0 4px; font-size:14px; color:#41545f; min-height:22px; }
+#point-fallback { background:#f0f7ed; border:2px solid var(--accent); border-radius:8px; padding:8px 10px; margin:8px 0; }
+#point-fallback label { font-weight:700; color:var(--accent); }
+#point-fallback select { width:100%; margin-top:4px; font-weight:600; }
 .hint { color:#51646f; font-size:13px; margin:6px 0; }
 .status { margin:8px 0 0; font-size:14px; min-height:21px; }
 

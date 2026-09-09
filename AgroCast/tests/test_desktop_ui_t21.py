@@ -35,11 +35,13 @@ def test_desktop_page_is_single_view_with_leaflet_map(desktop_client):
     page = desktop_client.get("/desktop.html")
     assert page.status_code == 200
     text = page.text
-    # одна вкладка: старые вкладки и отдельные секции удалены
-    assert "data-tab" not in text
-    assert "hindcast-tab" not in text
-    assert "reports-tab" not in text
-    assert "hindcast-map" not in text
+    # три вкладки: Прогнозы, Скачанные данные, База кукурузы — как просил пользователь
+    assert 'data-tab="forecast"' in text
+    assert 'data-tab="downloads"' in text
+    assert 'data-tab="crops"' in text
+    assert 'Прогнозы' in text
+    assert 'Скачанные данные' in text
+    assert 'База кукурузы' in text
     # Leaflet-карта с SRI-пinned ассетами
     assert "/assets/vendor/leaflet/leaflet.css" in text
     assert "/assets/vendor/leaflet/leaflet.js" in text

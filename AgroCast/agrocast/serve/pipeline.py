@@ -41,8 +41,14 @@ def point_config(world_dir, data_root, lat, lon, config_snapshot=None):
     if config_snapshot is not None and (Path(wc.bundle_dir) != Path(world_dir).resolve() or Path(wc.runtime_dir) != Path(data_root).resolve()):
         raise ConfigurationError("Worker paths do not match the captured configuration")
     r = wc.region
+    # Для десктопа: проверяем саму точку, а не коробку — иначе краевые точки сетки считаются вне
+    if r.lat_min <= lat <= r.lat_max and r.lon_min <= lon <= r.lon_max:
+        return wc, wc.data_dir
     box = point_box(lat, lon)
     if box.lat_min >= r.lat_min and box.lat_max <= r.lat_max and box.lon_min >= r.lon_min and box.lon_max <= r.lon_max:
+        return wc, wc.data_dir
+    # Допуск для краевых точек: если точка близко к границе, тоже считаем внутри (PointDataset сделает snap)
+    if r.lat_min - 1.21 <= lat <= r.lat_max + 1.21 and r.lon_min - 1.81 <= lon <= r.lon_max + 1.81:
         return wc, wc.data_dir
     key = hashlib.sha256(canonical_json(coordinates.model_dump()).encode("utf-8")).hexdigest()
     values = wc.to_dict()
@@ -122,12 +128,19 @@ def ensure_point(cfg, world_dir, log):
         log("читаю модели из read-only bundle; это не проверка научного допуска")
         return
     wcfg = world_config(world_dir, cfg.runtime_dir or cfg.data_dir)
-    inside = (
-        cfg.region.lat_min >= wcfg.region.lat_min
-        and cfg.region.lat_max <= wcfg.region.lat_max
-        and cfg.region.lon_min >= wcfg.region.lon_min
-        and cfg.region.lon_max <= wcfg.region.lon_max
-    )
+    # Для десктопа проверяем центр коробки, а не всю коробку — иначе краевые точки сетки (46.25) считаются вне
+    center_lat = (cfg.region.lat_min + cfg.region.lat_max) / 2.0
+    center_lon = (cfg.region.lon_min + cfg.region.lon_max) / 2.0
+    # Если центр внутри world — считаем внутри (десктоп без интернета, PointDataset сделает snap к ближайшей точке сетки)
+    if wcfg.region.lat_min <= center_lat <= wcfg.region.lat_max and wcfg.region.lon_min <= center_lon <= wcfg.region.lon_max:
+        inside = True
+    else:
+        inside = (
+            cfg.region.lat_min >= wcfg.region.lat_min
+            and cfg.region.lat_max <= wcfg.region.lat_max
+            and cfg.region.lon_min >= wcfg.region.lon_min
+            and cfg.region.lon_max <= wcfg.region.lon_max
+        )
     if not inside:
         if os.environ.get("AGROCAST_DESKTOP", "") == "1":
             raise RuntimeError(

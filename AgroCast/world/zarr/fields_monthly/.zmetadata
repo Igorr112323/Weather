@@ -87,7 +87,7 @@
         },
         "mslp/.zarray": {
             "chunks": [
-                938,
+                944,
                 45,
                 144
             ],
@@ -103,7 +103,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                938,
+                944,
                 45,
                 144
             ],
@@ -149,7 +149,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                938
+                944
             ],
             "zarr_format": 2
         },
@@ -171,7 +171,7 @@
         },
         "z500/.zarray": {
             "chunks": [
-                938,
+                944,
                 45,
                 144
             ],
@@ -187,7 +187,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                938,
+                944,
                 45,
                 144
             ],

@@ -5,11 +5,7 @@ on:
     tags: ["desktop-v*"]
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-22.04, macos-14]
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     env:
       PYTHONUTF8: "1"
       PYTHONIOENCODING: utf-8
@@ -60,7 +56,7 @@ jobs:
         run: python -m scripts.verify_desktop_bundle dist/AgroCast/_internal/world
       - uses: actions/upload-artifact@v4
         with:
-          name: agrocast-desktop-${{ matrix.os }}
+          name: agrocast-desktop-windows-latest
           path: AgroCast/dist/AgroCast
           include-hidden-files: true
           if-no-files-found: error

@@ -11,15 +11,28 @@
 <script type="module" src="/assets/desktop.js" defer></script>
 </head>
 <body>
-<div id="map" role="application" aria-label="Карта Краснодарского края"></div>
-<header class="overlay-title">
+<header class="topbar">
+<div class="topbar-inner">
 <h1>AgroCast</h1>
-<p class="tag">Агропрогнозы для Краснодарского края</p>
+<nav class="tabs" aria-label="Разделы">
+<button type="button" class="tab active" data-tab="forecast" aria-selected="true">Прогнозы</button>
+<button type="button" class="tab" data-tab="downloads" aria-selected="false">Скачанные данные</button>
+<button type="button" class="tab" data-tab="crops" aria-selected="false">База кукурузы</button>
+</nav>
+<span class="tag">Агропрогнозы для Краснодарского края</span>
+</div>
 </header>
+
+<!-- ВКЛАДКА 1: ПРОГНОЗЫ (карта + выбор точки) -->
+<section id="tab-forecast" class="tab-panel active" aria-labelledby="tab-forecast">
+<div id="map" role="application" aria-label="Карта Краснодарского края"></div>
 <aside class="panel">
 <h2>Сезонный прогноз</h2>
-<div id="selected-info" class="selected-info">Кликните по карте — будет выбрана ближайшая точка сетки</div>
-<p class="hint">Прошлые месяцы (2004–2024) автоматически проверяются на истории.</p>
+<div id="selected-info" class="selected-info">Кликните по карте — будет выбрана ближайшая точка сетки, или выберите из списка ниже</div>
+<div id="point-fallback">
+<label for="point-select"><b>Или выберите точку из списка (работает даже если карта не загрузилась):</b></label>
+<select id="point-select"></select>
+</div>
 <div class="controls-row">
 <div class="control-group">
 <label for="start">Месяц выпуска</label>
@@ -41,5 +54,61 @@
 <div id="summary"></div>
 </div>
 </aside>
+</section>
+
+<!-- ВКЛАДКА 2: СКАЧАННЫЕ ДАННЫЕ -->
+<section id="tab-downloads" class="tab-panel" aria-labelledby="tab-downloads" hidden>
+<div class="downloads-wrap">
+<h2>Скачанные данные</h2>
+<p class="hint">Локальный набор данных (world) и кэш результатов. Данные обновляются вместе с приложением, интернет для расчёта не нужен.</p>
+<div class="card">
+<h3>Набор данных программы</h3>
+<p id="bundle-info" class="status">Загрузка...</p>
+<div id="bundle-files" class="table-wrap"></div>
+</div>
+<div class="card">
+<h3>Кэш результатов</h3>
+<p id="cache-info" class="status">Загрузка...</p>
+<div id="cache-files" class="table-wrap"></div>
+</div>
+<div class="card">
+<h3>Источники данных</h3>
+<p class="hint">Даты последнего обновления по источникам (из zarr):</p>
+<div id="sources-through" class="table-wrap"></div>
+</div>
+</div>
+</section>
+
+<!-- ВКЛАДКА 3: БАЗА КУКУРУЗЫ -->
+<section id="tab-crops" class="tab-panel" aria-labelledby="tab-crops" hidden>
+<div class="crops-wrap">
+<h2>База данных для кукурузы</h2>
+<p class="hint">Сорта кукурузы: название, селекционер, группа спелости, ФАО, САТ (°C), дни вегетации, сроки сева, площадь, урожайность, морозостойкость. День, САТ и т.д. — всё как писали.</p>
+<div id="crops-list" class="table-wrap"></div>
+<form id="crop-form">
+<fieldset id="crop-controls">
+<legend>Добавить / изменить сорт</legend>
+<div class="form-grid">
+<div><label for="c_name">Название сорта *</label><input id="c_name" required maxlength="120"></div>
+<div><label for="c_breeder">Селекционер</label><input id="c_breeder" maxlength="120"></div>
+<div><label for="c_maturity">Группа спелости</label><input id="c_maturity" maxlength="120"></div>
+<div><label for="c_fao">ФАО</label><input id="c_fao" type="number" min="50" max="650" step="1"></div>
+<div><label for="c_gdd">САТ, °C</label><input id="c_gdd" type="number" min="1500" max="3500" step="any"></div>
+<div><label for="c_vp">Вегетация, дней</label><input id="c_vp" type="number" min="60" max="200" step="1"></div>
+<div><label for="c_sow_from">Начало сева (ММ-ДД)</label><input id="c_sow_from" placeholder="04-20" maxlength="5"></div>
+<div><label for="c_sow_to">Конец сева (ММ-ДД)</label><input id="c_sow_to" placeholder="05-15" maxlength="5"></div>
+<div><label for="c_area">Площадь, га</label><input id="c_area" type="number" min="0.01" max="1000000" step="any"></div>
+<div><label for="c_yield">Урожайность, т/га</label><input id="c_yield" type="number" min="0.01" max="30" step="any"></div>
+<div><label for="c_ftol">Переносимый мороз, °C</label><input id="c_ftol" type="number" min="-8" max="0" step="any" value="-2"></div>
+<div><label for="c_ffat">Мороз гибели, °C</label><input id="c_ffat" type="number" min="-8" max="0" step="any" value="-3"></div>
+</div>
+<label for="c_notes">Заметки</label><textarea id="c_notes" maxlength="2000" rows="3"></textarea>
+<div class="actions"><button id="c_save" type="submit">Сохранить сорт</button><button id="c_clear" type="button">Очистить</button><button id="c_delete" type="button" class="secondary" hidden>Удалить</button></div>
+</fieldset>
+</form>
+<p id="c_status" class="status" role="status" aria-live="polite"></p>
+</div>
+</section>
+
 </body>
 </html>

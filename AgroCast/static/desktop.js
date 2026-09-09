@@ -205,13 +205,28 @@ function el(tag, className, text) {
 }
 
 function tercileRow(label, probs, words) {
+  const wrap = el("div", "");
   const row = el("div", "prob");
   row.appendChild(el("span", "prob-name", label));
+  const vals = {};
   for (const key of ["below", "normal", "above"]) {
     const value = probs && probs[key];
+    vals[key] = value;
     row.appendChild(el("span", "prob-" + key, words[key] + ": " + (value === undefined ? "—" : Math.round(value * 100) + "%")));
   }
-  return row;
+  wrap.appendChild(row);
+  // цветная полоска — наглядно: синяя/серая/оранжевая = терцили
+  const bar = el("div", "bar-track");
+  bar.setAttribute("role","img");
+  bar.setAttribute("aria-label", `${label}: ниже ${Math.round((vals.below||0)*100)}% норма ${Math.round((vals.normal||0)*100)}% выше ${Math.round((vals.above||0)*100)}%`);
+  for (const key of ["below","normal","above"]) {
+    const seg = el("div", "bar-" + key + " bar-segment");
+    const w = vals[key] == null ? 0 : Math.max(0, Math.min(1, vals[key])) * 100;
+    seg.style.width = w.toFixed(1) + "%";
+    bar.appendChild(seg);
+  }
+  wrap.appendChild(bar);
+  return wrap;
 }
 
 function renderSummary(payload) {
@@ -261,13 +276,17 @@ function renderHindcastSummary(data) {
   }
   for (const item of data.items) {
     const card = el("div", "season");
-    card.appendChild(el("h4", "", item.year + " г., месяц " + item.target_month));
+    const head = el("h4", "", item.year + " г., месяц " + item.target_month);
+    card.appendChild(head);
     for (const v of ["t2m", "tp"]) {
       if (!item[v]) continue;
       const d = item[v];
       const label = v === "t2m" ? "Температура" : "Осадки";
       const unit = d.unit === "c" ? "°C" : "мм";
-      card.appendChild(el("p", "hint", label + ": факт " + d.fact + " " + unit + ", прогноз " + d.p50 + " " + unit + ", норма " + d.norm + " " + unit + " · попал: " + (d.hit ? "✓" : "✗")));
+      const p = el("p", "hint", label + ": факт " + d.fact + " " + unit + " · прогноз " + d.p50 + " " + unit + " · норма " + d.norm + " " + unit + " ");
+      const badge = el("span", d.hit ? "hind-hit ok" : "hind-hit bad", d.hit ? "✓ попал" : "✗ мимо");
+      p.appendChild(badge);
+      card.appendChild(p);
     }
     box.appendChild(card);
   }
@@ -553,6 +572,8 @@ async function init() {
       try { await api(`/api/crops/${id}`, {method:"DELETE"}); $("c_status").textContent="Удалён"; cropForm.reset(); $("c_delete").hidden=true; loadCrops(); } catch(err){ $("c_status").textContent="Ошибка: "+err.message; }
     });
   }
+  const printBtn = document.getElementById("print-report");
+  if (printBtn) printBtn.addEventListener("click", () => window.print());
 }
 
 init();

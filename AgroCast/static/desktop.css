@@ -47,15 +47,26 @@ button.secondary { background:#2e4c5e; font-size:14px; padding:9px 16px; margin-
 #run { width:100%; }
 #cancel { width:100%; }
 
-/* Результаты */
+/* Результаты — красивые карточки + бары */
 #result { margin-top:12px; border-top:1px solid var(--line); padding-top:10px; }
-#result h4 { margin:0 0 8px; font-size:14px; }
-.season { border-top:1px solid var(--line); padding:10px 0; }
-.season:first-of-type { border-top:0; }
-.season h4 { margin:0 0 6px; font-size:15px; }
-.prob { display:flex; gap:12px; flex-wrap:wrap; margin:4px 0; }
-.prob-name { font-weight:600; }
-.prob-below,.prob-normal,.prob-above { background:#eef4f7; border-radius:8px; padding:3px 9px; font-size:13.5px; }
+#result h4 { margin:0 0 8px; font-size:14px; color:var(--accent); }
+.season { background:#fafcfd; border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin:10px 0; box-shadow:0 1px 4px rgba(23,36,43,.06); }
+.season h4 { margin:0 0 8px; font-size:15px; color:var(--ink); }
+.season + .season { margin-top:12px; }
+.prob { display:flex; gap:8px; flex-wrap:wrap; margin:6px 0 4px; align-items:center; }
+.prob-name { font-weight:700; min-width:96px; }
+.prob-below,.prob-normal,.prob-above { background:#eef4f7; border-radius:999px; padding:3px 9px; font-size:13px; font-weight:600; border:1px solid #d7e0e6; }
+.prob-below { background:#e6f0fb; color:#2a5d9b; border-color:#c6dcf2; }
+.prob-normal { background:#eef2f3; color:#3f525e; border-color:#d7e0e6; }
+.prob-above { background:#fdf0e6; color:#9a4a12; border-color:#f2d5b8; }
+.bar-track { display:flex; height:12px; border-radius:999px; overflow:hidden; background:#e8eef2; border:1px solid #d7e0e6; margin:6px 0 8px; }
+.bar-below { background:#4a90d5; }
+.bar-normal { background:#9fb0be; }
+.bar-above { background:#e07a2f; }
+.bar-segment { height:100%; transition:width .35s ease; }
+.hind-hit { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12.5px; font-weight:700; margin-left:6px; }
+.hind-hit.ok { background:#e6f5ec; color:#1c6b3c; border:1px solid #bfe0cc; }
+.hind-hit.bad { background:#fdf0e6; color:#9a4a12; border:1px solid #f2d5b8; }
 
 /* Подписи точек на карте */
 .leaflet-tooltip { background:#fff; border:1px solid var(--line); box-shadow:0 1px 4px rgba(23,36,43,.2); font-size:12px; font-weight:600; color:var(--ink); }
@@ -74,9 +85,10 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 
 @media print {
-  #map, .overlay-title, button, .leaflet-control-container { display:none; }
+  #map, .overlay-title, .topbar, .leaflet-control-container, #print-report, #run, #cancel, #point-fallback { display:none !important; }
   body { background:#fff; color:#111; }
-  .panel { position:static; width:auto; max-width:none; max-height:none; border:1px solid #999; border-radius:0; box-shadow:none; }
-  .season { border-top:1px solid #ccc; }
+  .panel { position:static; width:auto; max-width:none; max-height:none; border:1px solid #999; border-radius:0; box-shadow:none; overflow:visible; }
+  .season { border:1px solid #ccc; box-shadow:none; break-inside:avoid; }
+  .bar-track { -webkit-print-color-adjust:exact; print-color-adjust:exact; border:1px solid #999; }
   @page { size:A4; margin:12mm; }
 }
